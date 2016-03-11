@@ -20,7 +20,7 @@ except :
     print('Error obtaining kerberos ticket for %s; unable to push proxy' )
     sys.exit(1)
 
-proxylist=open('input_file.json','r')
+proxylist=open('/home/rexbatch/input_file.json','r')
 
 #make proxy for each role and push to each machine
 
@@ -40,7 +40,7 @@ for expt in myjson.keys():
 #        print(voms_string)
         outfile=account + '.' + voms_role + '.proxy'
 #        print(outfile)
-        vpi_args=["/usr/bin/voms-proxy-init", '-rfc', '-voms', voms_string, '-cert' , CERT_BASE_DIR + '/' + account + '.cert', '-key', CERT_BASE_DIR + '/' + account + '.key', '-out', 'proxies/' + outfile ]
+        vpi_args=["/usr/bin/voms-proxy-init", '-rfc', '-valid', '24:00', '-voms', voms_string, '-cert' , CERT_BASE_DIR + '/' + account + '.cert', '-key', CERT_BASE_DIR + '/' + account + '.key', '-out', 'proxies/' + outfile ]
 #        print vpi_args
         # do voms-proxy-init now
         try:
