@@ -35,12 +35,13 @@ for expt in myjson.keys():
     for role in myjson[expt]["roles"] :
         voms_role = role.keys()[0]
         account=role[voms_role]
- #       print voms_role, account
+#        print voms_role, account
         voms_string='fermilab:/fermilab/' + expt + '/Role=' + voms_role
- #       print(voms_string)
+#        print(voms_string)
         outfile=account + '.' + voms_role + '.proxy'
- #       print(outfile)
-        vpi_args=["/usr/bin/voms-proxy-init", '-rfc', '-voms', voms_string, '-cert' + CERT_BASE_DIR + '/' + account + '.cert', '-key', CERT_BASE_DIR + '/' + account + '.key', '-out', 'proxies/' + outfile ]
+#        print(outfile)
+        vpi_args=["/usr/bin/voms-proxy-init", '-rfc', '-voms', voms_string, '-cert' , CERT_BASE_DIR + '/' + account + '.cert', '-key', CERT_BASE_DIR + '/' + account + '.key', '-out', 'proxies/' + outfile ]
+#        print vpi_args
         # do voms-proxy-init now
         try:
             vpi=subprocess.Popen(vpi_args,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
@@ -65,10 +66,10 @@ for expt in myjson.keys():
 #                continue
 #            finally:
 #                wcminusl.close()
-            dest=account + '@' + node + ':' + myjson[expt]["dir"] + ':' + account + '/'
+            dest=account + '@' + node + ':' + myjson[expt]["dir"] + '/' + account + '/' + outfile
             scp_cmd = [ 'scp','proxies/'+outfile, dest ]
             try :
-                proxypush=subprocess.Popen(scp_cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE,env=locenv)
+                proxypush=subprocess.Popen(scp_cmd,stdout=subprocess.PIPE,env=locenv)
             except :
                 print("Error copying ../proxies/%s to %s. Trying next node" % (outfile, node))
                 continue
