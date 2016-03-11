@@ -9,9 +9,12 @@ import sys
 locenv=environ.copy()
 locenv['KRB5CCNAME']="FILE:/tmp/krb5cc_push_proxy"
 
+# base location for certs/keys
+CERT_BASE_DIR="/opt/gen_push_proxy/certs"
+
 # Obtain a ticket based on the special use principal
 try :
-    kerbcmd = [ "/usr/krb5/bin/kinit",'-k','-t','/opt/gen_keytabs/gcso_monitor.keytab','monitor/gcso/fermigrid.fnal.gov@FNAL.GOV']
+    kerbcmd = [ "/usr/krb5/bin/kinit",'-k','-t','/opt/gen_keytabs/gcso_monitor_rexbatch.keytab','monitor/gcso/fermigrid.fnal.gov@FNAL.GOV']
     krb5init = subprocess.Popen(kerbcmd,env=locenv)
 except :
     print('Error obtaining kerberos ticket for %s; unable to push proxy' )
@@ -37,7 +40,7 @@ for expt in myjson.keys():
  #       print(voms_string)
         outfile=account + '.' + voms_role + '.proxy'
  #       print(outfile)
-        vpi_args=["/usr/bin/voms-proxy-init", '-rfc', '-voms', voms_string, '-cert', '../certs/' + account + '.cert', '-key', '../certs/' + account + '.key', '-out', '../proxies/' + outfile ]
+        vpi_args=["/usr/bin/voms-proxy-init", '-rfc', '-voms', voms_string, '-cert' + CERT_BASE_DIR + '/' + account + '.cert', '-key', CERT_BASE_DIR + '/' + account + '.key', '-out', 'proxies/' + outfile ]
         # do voms-proxy-init now
         try:
             vpi=subprocess.Popen(vpi_args,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
@@ -63,7 +66,7 @@ for expt in myjson.keys():
 #            finally:
 #                wcminusl.close()
             dest=account + '@' + node + ':' + myjson[expt]["dir"] + ':' + account + '/'
-            scp_cmd = [ 'scp','../proxies/'+outfile, dest ]
+            scp_cmd = [ 'scp','proxies/'+outfile, dest ]
             try :
                 proxypush=subprocess.Popen(scp_cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE,env=locenv)
             except :
