@@ -20,7 +20,7 @@ except :
     print('Error obtaining kerberos ticket for %s; unable to push proxy' )
     sys.exit(1)
 
-proxylist=open('/home/rexbatch/input_file.json','r')
+proxylist=open('input_file.json','r')
 
 #make proxy for each role and push to each machine
 
