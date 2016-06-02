@@ -1,0 +1,71 @@
+#!/bin/bash
+
+# rsync cert and key files from fifebatch1
+
+# By default silently, for all accounts
+# Is specified, verbosely for a single account
+
+VERSION=20160601
+
+# usage via crontab
+#  04 04 * * 1 ${HOME}/gen_push_proxy/update-certkeys
+
+REHOST=fifebatch1.fnal.gov
+
+LOGF=${HOME}/gen_push_proxy/update-certkeys.log
+
+ACCT=${1}
+VERB=${2}
+
+if [ -n "${ACCT}" ] ; then 
+    ACCTS=${ACCT}
+    VERB=verbose
+else
+    ACCTS=`ls /opt/gen_push_proxy/certs| cut -f 1 -d . | sort -u`
+fi
+
+MAIN()
+{ 
+
+printf "\n\n`date` update-certkeys ${VERSION} ${ACCT}\n"
+echo ${ACCTS}
+
+KRB5CCNAME="FILE:/tmp/krb5cc_rexbatch_update-certkeys"
+/usr/krb5/bin/kinit -k -t /opt/gen_keytabs/gcso_monitor_rexbatch.keytab \
+  monitor/gcso/fermigrid.fnal.gov@FNAL.GOV
+
+for ACCT in ${ACCTS} ; do
+for FILE in ${ACCT}.cert ${ACCT}.key ; do
+
+    RFILE=${REHOST}:/var/lib/jobsub/creds/certs/${FILE}
+    LFILE=/opt/gen_push_proxy/certs/${FILE}
+    if [ -n "${VERB}" ] ; then
+        echo
+        ls -l ${LFILE}
+        rsync -p -t --rsh="ssh -c blowfish -akx" ${RFILE} ${LFILE}
+        ls -l ${LFILE}
+    else
+        rsync -p -t --rsh="ssh -c blowfish -akx" ${RFILE} ${LFILE}
+    fi
+
+done
+done
+
+}
+
+if [ -n "${VERB}" ] ; then 
+    MAIN 2>&1 | tee -a ${LOGF}
+else
+    MAIN >> ${LOGF} 2>&1
+fi
+
+exit
+
+2016 06 01    kreymer
+
+Added log file, driven through MAIN
+
+2016 05 31    kreymer
+
+Created this to make it easier to add a new account,
+and to keep files up to date with the maintained copies on fifebatch1
