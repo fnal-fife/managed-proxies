@@ -9,10 +9,10 @@ from pwd import getpwuid
 
 
 #Displays who is running this script.  Will not allow running as root
-print "Running script as %s." % getpwuid(os.geteuid())[0]
+print "Running script as %s." % getpwuid(geteuid())[0]
 
-if geteuid() == 0:      #uid = 0 is root
-    raise OSError("Trying to run as root. Exiting.")
+if geteuid() <> 47535:      #uid = 47535 is rexbatch
+    raise OSError("This script must be run as rexbatch. Exiting.")
 
 
 #grab the initial environment
