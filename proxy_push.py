@@ -2,8 +2,18 @@
 import shlex
 import subprocess
 import json
-from os import environ
+from os import environ, geteuid
 import sys
+from pwd import getpwuid
+
+
+
+#Displays who is running this script.  Will not allow running as root
+print "Running script as %s." % getpwuid(os.geteuid())[0]
+
+if geteuid() == 0:      #uid = 0 is root
+    raise OSError("Trying to run as root. Exiting.")
+
 
 #grab the initial environment
 locenv=environ.copy()
