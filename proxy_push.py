@@ -5,14 +5,20 @@ import json
 from os import environ, geteuid
 import sys
 from pwd import getpwuid
+from datetime import datetime
 
+# Set the output file for errors.  Times in errorfile are UTC.
+errfile = 'proxy_push.err'
 
 
 #Displays who is running this script.  Will not allow running as root
 print "Running script as %s." % getpwuid(geteuid())[0]
 
 if geteuid() <> 47535:      #uid = 47535 is rexbatch
-    raise OSError("This script must be run as rexbatch. Exiting.")
+    err = "This script must be run as rexbatch. Exiting."
+    with open(errfile,"a") as f:
+        f.write("\n%s\n%s\n"%(datetime.utcnow(),err))
+    raise OSError(err)
 
 
 #grab the initial environment
