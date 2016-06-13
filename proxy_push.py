@@ -7,7 +7,7 @@ import sys
 from pwd import getpwuid
 from datetime import datetime
 
-# Set the output file for errors.  Times in errorfile are UTC.
+# Set the output file for errors.  Times in errorfile are local time.
 errfile = 'proxy_push.err'
 
 
@@ -17,7 +17,7 @@ print "Running script as %s." % getpwuid(geteuid())[0]
 if geteuid() <> 47535:      #uid = 47535 is rexbatch
     err = "This script must be run as rexbatch. Exiting."
     with open(errfile,"a") as f:
-        f.write("\n%s\n%s\n"%(datetime.utcnow(),err))
+        f.write("\n%s\n%s\n"%(datetime.now(),err))
     raise OSError(err)
 
 

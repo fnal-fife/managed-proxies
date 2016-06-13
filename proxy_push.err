@@ -1,7 +1,7 @@
 ###############################
 # ERROR LOG FOR PROXY_PUSH.PY #
-# 	All times are UTC     #	
+#     Times are Local time    #	
 ###############################
 
-2016-06-13 20:23:04.365914
-This script must be run as rexbatch. Exiting.  THIS WAS A TEST.
+2016-06-13 15:34:42.706044
+This script must be run as rexbatch. Exiting.  <----THIS WAS A TEST
