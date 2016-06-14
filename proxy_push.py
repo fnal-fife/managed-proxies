@@ -2,7 +2,7 @@
 import shlex
 import subprocess
 import json
-from os import environ, geteuid
+from os import environ, devnull, geteuid
 import sys
 from pwd import getpwuid
 from datetime import datetime
@@ -84,9 +84,10 @@ for expt in myjson.keys():
 #                wcminusl.close()
             dest=account + '@' + node + ':' + myjson[expt]["dir"] + '/' + account + '/' + outfile
             scp_cmd = [ 'scp','proxies/'+outfile, dest ]
-            try :
+	    try :
                 #proxypush=subprocess.Popen(scp_cmd,stdout=subprocess.PIPE,env=locenv)
-                subprocess.check_call(scp_cmd,env=locenv)
+                with open(devnull,'w') as f:
+		    subprocess.check_call(scp_cmd,stdout=f,env=locenv)
             except subprocess.CalledProcessError as e:
                 err = "Error copying ../proxies/%s to %s. Trying next node\n %s" % (outfile, node,str(e))
                 with open(errfile,"a") as f:
