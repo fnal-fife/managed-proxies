@@ -35,7 +35,7 @@ Subject:  proxy_push.py errors
         print err
         with open(errorfile,'a') as f:
             f.write("\n%s"% err)
-        
+        raise 
     return None
 
 
