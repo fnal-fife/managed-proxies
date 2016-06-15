@@ -35,6 +35,7 @@ Subject:  proxy_push.py errors
         print err
         with open(errorfile,'a') as f:
             f.write("\n%s"% err)
+        
     return None
 
 
@@ -71,7 +72,6 @@ print "Running script as %s." % runuser
 if runuser <> should_runuser:      #uid = 47535 is rexbatch
     err = "This script must be run as %s. Exiting." % should_runuser
     allerrstr = errout(err,allerrstr,errfile)    
-    sendemail(allerrstr,errfile)
     raise OSError(err)
 
 #grab the initial environment
