@@ -87,7 +87,7 @@ try :
     kerbcmd = [ "/usr/krb5/bin/kinit",'-k','-t','/opt/gen_keytabs/gcso_monitor_rexbatch.keytab','monitor/gcso/fermigrid.fnal.gov@FNAL.GOV']
     krb5init = subprocess.Popen(kerbcmd,env=locenv)
 except :
-    err='Error obtaining kerberos ticket for %s; unable to push proxy'  #WHO IS THIS SUPPOSED TO BE?
+    err='Error obtaining kerberos ticket; unable to push proxy' 
     allerrstr = errout(err,allerrstr,errfile)
     sendemail(allerrstr,errfile)
     sys.exit(1)
