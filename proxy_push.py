@@ -142,10 +142,9 @@ for expt in myjson.keys():
 #                wcminusl.close()
             dest=account + '@' + node + ':' + myjson[expt]["dir"] + '/' + account + '/' + outfile
             scp_cmd = [ 'scp','proxies/'+outfile, dest ]
-	    try :
-                #proxypush=subprocess.Popen(scp_cmd,stdout=subprocess.PIPE,env=locenv)
+	        try :
                 with open(devnull,'w') as f:
-		    subprocess.check_call(scp_cmd,stdout=f,env=locenv)
+		            subprocess.check_call(scp_cmd,stdout=f,env=locenv)
             except subprocess.CalledProcessError as e:
                 err = "Error copying ../proxies/%s to %s. Trying next node\n %s" % (outfile, node,str(e))
                 allerrstr = errout(err,allerrstr,errfile)
