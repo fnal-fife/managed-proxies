@@ -2,24 +2,77 @@
 import shlex
 import subprocess
 import json
-from os import environ, devnull, geteuid
 import sys
+import smtplib
+from os import environ, devnull, geteuid
 from pwd import getpwuid
 from datetime import datetime
 
-# Set the output file for errors.  Times in errorfile are local time.
-errfile = 'proxy_push.err'
+
+
+
+#Functions
+
+def sendemail(errorstring,errorfile):
+    """Function to send email after error string is populated.
+       Only argument is errorstring, which is a formatted string of the errors generated in this script.
+    """
+    sender = 'fife-group@fnal.gov'
+    receivers = 'fife-group@fnal.gov'    # Change to fife-group@fnal.gov when ready for production
+    messageheader = """From:  FIFEUTILGPVM01 <fife-group.fnal.gov>
+To:  FIFE-GROUP <fife-group@fnal.gov>
+Subject:  proxy_push.py errors
+
+"""
+    message = messageheader + errorstring
+
+    try:
+        smtpObj = smtplib.SMTP('smtp.fnal.gov')
+        smtpObj.sendmail(sender,receivers,message)
+        print "Successfully sent email"
+    except smtplib.SMTPException:
+        err = "Error:  unable to send email.\n"
+        print err
+        with open(errorfile,'a') as f:
+            f.write("\n%s"% err)
+    return None
+
+
+def errout(error,errorstring,errorfile):
+    """Function to handle how errors are logged and displayed.   We write error to the errorfile, and then add error to the errorstring, which gets returned.
+    Arguments:
+        error (string):  The current error being logged
+        errorstring (string):  The string of all errors encountered in this script's execution so far
+        errorfile (string): The file we're writing the errors to
+    """
+    with open(errorfile,'a') as f:
+        if len(errorstring) == 0:
+            f.write("\n%s" % datetime.now())
+        f.write("\n%s"% error)
+    print error
+    errorstring+=error
+    return errorstring
+
+
+
+#Script
+
+# Error handling variables.  
+errfile = 'proxy_push.err'      #Set the output file for errors.  Times in errorfile are local time.
+allerrstr = ''                  #error string that will get passed into the email when populated
 
 
 #Displays who is running this script.  Will not allow running as root
-print "Running script as %s." % getpwuid(geteuid())[0]
+should_runuser= 'rexbatch'
 
-if geteuid() <> 47535:      #uid = 47535 is rexbatch
-    err = "This script must be run as rexbatch. Exiting."
-    with open(errfile,"a") as f:
-        f.write("\n%s\n%s\n"%(datetime.now(),err))
+runuser= getpwuid(geteuid())[0]
+print "Running script as %s." % runuser
+
+if runuser <> should_runuser:      #uid = 47535 is rexbatch
+    err = "This script must be run as %s. Exiting." % should_runuser
+    allerrstr = errout(err,allerrstr,errfile)    
+    sendemail(allerrstr,errfile)
     raise OSError(err)
-
 
 #grab the initial environment
 locenv=environ.copy()
@@ -28,12 +81,15 @@ locenv['KRB5CCNAME']="FILE:/tmp/krb5cc_push_proxy"
 # base location for certs/keys
 CERT_BASE_DIR="/opt/gen_push_proxy/certs"
 
+
 # Obtain a ticket based on the special use principal
 try :
     kerbcmd = [ "/usr/krb5/bin/kinit",'-k','-t','/opt/gen_keytabs/gcso_monitor_rexbatch.keytab','monitor/gcso/fermigrid.fnal.gov@FNAL.GOV']
     krb5init = subprocess.Popen(kerbcmd,env=locenv)
 except :
-    print('Error obtaining kerberos ticket for %s; unable to push proxy' )
+    err='Error obtaining kerberos ticket for %s; unable to push proxy'  #WHO IS THIS SUPPOSED TO BE?
+    allerrstr = errout(err,allerrstr,errfile)
+    sendemail(allerrstr,errfile)
     sys.exit(1)
 
 proxylist=open('input_file.json','r')
@@ -45,7 +101,8 @@ myjson=json.load(proxylist)
 for expt in myjson.keys():
     print('Now processing ' + expt)
     if "roles" not in myjson[expt].keys() or "nodes" not in myjson[expt].keys():
-        print("Error: input file improperly formatted for %s. Please check it. I will skip this experiment for now." % expt)
+        err="Error: input file improperly formatted for %s (roles or nodes don't exist for this experiment). Please check ~rexbatch/gen_push_proxy/input_file.json on fifeutilgpvm01. I will skip this experiment for now.\n" % expt
+        allerrstr = errout(err,allerrstr,errfile)
         continue
     nodes=myjson[expt]["nodes"]
     for role in myjson[expt]["roles"] :
@@ -62,7 +119,8 @@ for expt in myjson.keys():
         try:
             vpi=subprocess.Popen(vpi_args,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
         except:
-            print("Error obtaining %s. Continuing on to next role.\n" % outfile)
+            err = "Error obtaining %s.  Please check the cert in %s on fifeutilgpvm01. Continuing on to next role.\n" % (outfile,CERT_BASE_DIR)
+            allerrstr = errout(err,allerrstr,errfile)
             continue
         # now try to get the proper kerberos ticket
         # Set the name of the temp file to generate
@@ -90,7 +148,9 @@ for expt in myjson.keys():
 		    subprocess.check_call(scp_cmd,stdout=f,env=locenv)
             except subprocess.CalledProcessError as e:
                 err = "Error copying ../proxies/%s to %s. Trying next node\n %s" % (outfile, node,str(e))
-                with open(errfile,"a") as f:
-                    f.write("\n%s\n%s\n"%(datetime.now(),err))
-                print err
+                allerrstr = errout(err,allerrstr,errfile)
                 continue
+
+if len(allerrstr) > 0:
+    sendemail(allerrstr,errfile)
+
