@@ -30,8 +30,8 @@ Subject:  proxy_push.py errors
         smtpObj = smtplib.SMTP('smtp.fnal.gov')
         smtpObj.sendmail(sender,receivers,message)
         print "Successfully sent email"
-    except smtplib.SMTPException:
-        err = "Error:  unable to send email.\n"
+    except Exception as e:
+        err = "Error:  unable to send email.\n%s\n" % e
         print err
         with open(errorfile,'a') as f:
             f.write("\n%s"% err)
