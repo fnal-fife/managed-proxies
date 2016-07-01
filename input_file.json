@@ -4,5 +4,5 @@
 "genie"    : { "roles" : [ { "Production" : "geniepro" } ], "nodes" : [ "geniegpvm01" ], "dir" : "/opt" },
 "lariat"   : { "roles" : [ { "Production" : "lariatpro" } ], "nodes" : [ "lariatsamgpvm01" ], "dir" : "/opt" },
 "minerva"  : { "roles" : [ { "Calibration" : "minervacal" }, { "Production" : "minervapro" }, { "Data" : "minervadat" } ], "nodes" : [ "minervagpvm01", "minervagpvm02", "minervagpvm03", "minervagpvm04", "minervagpvm05" ], "dir" : "/opt" },
-"minos"    : { "roles" : [ { "Production" : "minospro" } ], "nodes" : [ "minos51" ], "dir" : "/opt" }
+"minos"    : { "roles" : [ { "Production" : "minospro" } ], "nodes" : [ "minos27", "minos51" ], "dir" : "/opt" }
 }
