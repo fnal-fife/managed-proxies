@@ -4,5 +4,6 @@
 "genie"    : { "roles" : [ { "Production" : "geniepro" } ], "nodes" : [ "geniegpvm01" ], "dir" : "/opt" },
 "lariat"   : { "roles" : [ { "Production" : "lariatpro" } ], "nodes" : [ "lariatsamgpvm01" ], "dir" : "/opt" },
 "minerva"  : { "roles" : [ { "Calibration" : "minervacal" }, { "Production" : "minervapro" }, { "Data" : "minervadat" } ], "nodes" : [ "minervagpvm01", "minervagpvm02", "minervagpvm03", "minervagpvm04", "minervagpvm05" ], "dir" : "/opt" },
-"minos"    : { "roles" : [ { "Production" : "minospro" } ], "nodes" : [ "minos27", "minos51" ], "dir" : "/opt" }
+"minos"    : { "roles" : [ { "Production" : "minospro" } ], "nodes" : [ "minos27", "minos51" ], "dir" : "/opt" },
+"mu2e"     : { "roles" : [ { "Production" : "mu2epro" } ], "nodes" : [ "mu2egpvm01", "mu2egpvm02", "mu2egpvm03", "mu2egpvm04", "mu2egpvm05" ], "dir" : "/opt" }
 }
