@@ -141,10 +141,20 @@ for expt in myjson.keys():
 #            finally:
 #                wcminusl.close()
             dest=account + '@' + node + ':' + myjson[expt]["dir"] + '/' + account + '/' + outfile
-            scp_cmd = [ 'scp','proxies/'+outfile, dest ]
+            newproxy = myjson[expt]["dir"] + '/' + account + '/' + outfile +'.new'
+            oldproxy = myjson[expt]["dir"] + '/' + account + '/' + outfile
+            chmod_cmd = [ 'ssh', '-ak', account + '@' + node, 'chmod 400 %s ; mv -f %s %s' % ( newproxy, newproxy, oldproxy ) ] 
+            scp_cmd = [ 'scp','proxies/'+outfile, dest + '.new' ]
+
             try :
                 with open(devnull,'w') as f:
                     subprocess.check_call(scp_cmd,stdout=f,env=locenv)
+                    try :
+                        subprocess.check_call(chmod_cmd,stdout=f,env=locenv)
+                    except subprocess.CalledProcessError as e:
+                        err = "Error changing permission of %s to mode 400 on %s. Trying next node\n %s" % (outfile, node,str(e))
+                        allerrstr = errout(err,allerrstr,errfile)
+                        continue
             except subprocess.CalledProcessError as e:
                 err = "Error copying ../proxies/%s to %s. Trying next node\n %s" % (outfile, node,str(e))
                 allerrstr = errout(err,allerrstr,errfile)
