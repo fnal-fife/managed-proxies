@@ -57,7 +57,7 @@ Subject:  proxy_push.py errors
     return None
 
 
-def errout(error)
+def errout(error):
     """Function to handle how errors are logged and displayed.   We write error to the errorfile, and then add error to the errorstring, which gets returned.
     Arguments:
         error (string):  The current error being logged
@@ -79,7 +79,8 @@ def errout(error)
 def check_user(authuser):
     """Check to see who's running script.  If not rexbatch, exit"""
     runuser = getpwuid(geteuid())[0]
-    print "Running script as {}.".format(runuser)
+    print runuser
+    print "Running script as {0}.".format(runuser)
     return runuser == authuser
     
 
@@ -107,7 +108,7 @@ def loadjson(infile):
 def check_keys(expt, myjson):
     """Make sure our JSON file has nodes and roles for the experiment"""
     if "roles" not in myjson[expt].keys() or "nodes" not in myjson[expt].keys():
-        err = "Error: input file improperly formatted for {} (roles or nodes don't exist for this experiment). Please check ~rexbatch/gen_push_proxy/input_file.json on fifeutilgpvm01. I will skip this experiment for now.\n".format(expt)
+        err = "Error: input file improperly formatted for {0} (roles or nodes don't exist for this experiment). Please check ~rexbatch/gen_push_proxy/input_file.json on fifeutilgpvm01. I will skip this experiment for now.\n".format(expt)
         errout(err)
         return False
     return True
@@ -127,7 +128,7 @@ def get_proxy(role, expt):
     try:
         vpi = subprocess.Popen(vpi_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     except:
-        err = "Error obtaining {}.  Please check the cert in {} on fifeutilgpvm01. Continuing on to next role.\n".format(outfile, CERT_BASE_DIR)
+        err = "Error obtaining {0}.  Please check the cert in {1} on fifeutilgpvm01. Continuing on to next role.\n".format(outfile, CERT_BASE_DIR)
         errout(err)
         return False, account
     return outfile, account
@@ -144,7 +145,7 @@ def copy_proxy(node, account, myjson, expt, outfile):
     dest = account + '@' + node + ':' + myjson[expt]["dir"] + '/' + account + '/' + outfile
     newproxy = myjson[expt]["dir"] + '/' + account + '/' + outfile +'.new'
     oldproxy = myjson[expt]["dir"] + '/' + account + '/' + outfile
-    chmod_cmd = ['ssh', '-ak', account + '@' + node, 'chmod 400 {} ; mv -f {} {}'.format(newproxy, newproxy, oldproxy)] 
+    chmod_cmd = ['ssh', '-ak', account + '@' + node, 'chmod 400 {0} ; mv -f {1} {2}'.format(newproxy, newproxy, oldproxy)] 
     scp_cmd = ['scp','proxies/' + outfile, dest + '.new']
 
     try :
@@ -153,11 +154,11 @@ def copy_proxy(node, account, myjson, expt, outfile):
             try :
                 subprocess.check_call(chmod_cmd, stdout = f, env = locenv)
             except subprocess.CalledProcessError as e:
-                err = "Error changing permission of {} to mode 400 on {}. Trying next node\n {}".format(outfile, node,str(e))
+                err = "Error changing permission of {0} to mode 400 on {1}. Trying next node\n {2}".format(outfile, node,str(e))
                 errout(err)
                 return False
     except subprocess.CalledProcessError as e:
-        err = "Error copying ../proxies/{} to {}. Trying next node\n {}".format(outfile, node,str(e))
+        err = "Error copying ../proxies/{0} to {1}. Trying next node\n {2}".format(outfile, node,str(e))
         errout(err)
         return False
     return True
@@ -168,7 +169,7 @@ def process_experiment(expt, myjson):
     print 'Now processing ' + expt
     
     if not check_keys(expt, myjson):
-        continue
+    	return False 
     
     nodes=myjson[expt]["nodes"]
     
@@ -176,7 +177,7 @@ def process_experiment(expt, myjson):
         outfile, account = get_proxy(role, expt)
         
         if outfile == False:
-            continue
+            return False
 
         # OK, we got a ticket and a proxy, so let's try to copy
         for node in nodes :
@@ -190,7 +191,7 @@ def main():
     global allerrstr
 
     if not check_user(should_runuser):      #uid = 47535 is rexbatch
-        err = "This script must be run as {}. Exiting.".format(authuser)
+        err = "This script must be run as {0}. Exiting.".format(authuser)
         errout(err)    
         raise OSError(err)
     
