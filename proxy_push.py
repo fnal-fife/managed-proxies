@@ -7,26 +7,26 @@ from os import environ, devnull, geteuid
 from pwd import getpwuid
 from datetime import datetime
 
-#Global Variables
+# Global Variables
 
-#JSON input file
+# JSON input file
 inputfile = 'input_file.json'
 
-# Error handling variables.  
-errfile = 'proxy_push.err'      #Set the output file for errors.  Times in errorfile are local time.
-allerrstr = ''                  #error string that will get passed into the email when populated
+# Error handling variables.
+errfile = 'proxy_push.err'      # Set the output file for errors.  Times in errorfile are local time.
+allerrstr = ''                  # error string that will get passed into the email when populated
 
-#Displays who is running this script.  Will not allow running as root
+# Displays who is running this script.  Will not allow running as root
 should_runuser = 'rexbatch'
 
-#grab the initial environment
-locenv=environ.copy()
-locenv['KRB5CCNAME']="FILE:/tmp/krb5cc_push_proxy"
+# grab the initial environment
+locenv = environ.copy()
+locenv['KRB5CCNAME'] = "FILE:/tmp/krb5cc_push_proxy"
 
 # base location for certs/keys
-CERT_BASE_DIR="/opt/gen_push_proxy/certs"
+CERT_BASE_DIR = "/opt/gen_push_proxy/certs"
 
-#Functions
+# Functions
 
 def sendemail():
     """Function to send email after error string is populated.
@@ -46,14 +46,14 @@ Subject:  proxy_push.py errors
 
     try:
         smtpObj = smtplib.SMTP('smtp.fnal.gov')
-        smtpObj.sendmail(sender,receivers,message)
+        smtpObj.sendmail(sender, receivers, message)
         print "Successfully sent email"
     except Exception as e:
         err = "Error:  unable to send email.\n%s\n" % e
         print err
-        with open(errfile,'a') as f:
-            f.write("\n%s"% err)
-        raise 
+        with open(errfile, 'a') as f:
+            f.write("\n%s" % err)
+        raise
     return None
 
 
@@ -67,13 +67,13 @@ def errout(error):
     global errfile
     global allerrstring
 
-    with open(errfile,'a') as f:
+    with open(errfile, 'a') as f:
         if len(allerrstring) == 0:
             f.write("\n%s" % datetime.now())
-        f.write("\n%s"% error)
+        f.write("\n%s" % error)
     print error
-    allerrstring+=error
-    return None 
+    allerrstring += error
+    return None
 
 
 def check_user(authuser):
@@ -82,17 +82,17 @@ def check_user(authuser):
     print runuser
     print "Running script as {0}.".format(runuser)
     return runuser == authuser
-    
+
 
 def kerb_ticket_obtain():
     """Obtain a ticket based on the special use principal"""
     global locenv
 
-    try :
-        kerbcmd = ['/usr/krb5/bin/kinit','-k','-t','/opt/gen_keytabs/gcso_monitor_rexbatch.keytab','monitor/gcso/fermigrid.fnal.gov@FNAL.GOV']
+    try:
+        kerbcmd = ['/usr/krb5/bin/kinit', '-k', '-t', '/opt/gen_keytabs/gcso_monitor_rexbatch.keytab', 'monitor/gcso/fermigrid.fnal.gov@FNAL.GOV']
         krb5init = subprocess.check_call(kerbcmd, env = locenv)
-    except :
-        err = 'Error obtaining kerberos ticket; unable to push proxy' 
+    except:
+        err = 'Error obtaining kerberos ticket; unable to push proxy'
         errout(err)
         sendemail()
         sys.exit(1)
@@ -100,8 +100,8 @@ def kerb_ticket_obtain():
 
 
 def loadjson(infile):
-    with open(infile,'r') as proxylist:
-        myjson=json.load(proxylist)
+    with open(infile, 'r') as proxylist:
+        myjson = json.load(proxylist)
     return myjson
 
 
@@ -122,8 +122,8 @@ def get_proxy(role, expt):
     account = role[voms_role]
     voms_string = 'fermilab:/fermilab/' + expt + '/Role=' + voms_role
     outfile = account + '.' + voms_role + '.proxy'
-    vpi_args=["/usr/bin/voms-proxy-init", '-rfc', '-valid', '24:00', '-voms', voms_string, '-cert' , CERT_BASE_DIR + '/' + account + '.cert', '-key', CERT_BASE_DIR + '/' + account + '.key', '-out', 'proxies/' + outfile]
-    
+    vpi_args = ["/usr/bin/voms-proxy-init", '-rfc', '-valid', '24:00', '-voms', voms_string, '-cert' , CERT_BASE_DIR + '/' + account + '.cert', '-key', CERT_BASE_DIR + '/' + account + '.key', '-out', 'proxies/' + outfile]
+
     # do voms-proxy-init now
     try:
         vpi = subprocess.Popen(vpi_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -140,25 +140,25 @@ def copy_proxy(node, account, myjson, expt, outfile):
 
     # first we check the .k5login file to see if we're even allowed to push the proxy
     k5login_check = 'ssh ' + account + '@' + node + ' cat .k5login'
-    nNames=-1
-    
+    nNames = -1
+
     dest = account + '@' + node + ':' + myjson[expt]["dir"] + '/' + account + '/' + outfile
-    newproxy = myjson[expt]["dir"] + '/' + account + '/' + outfile +'.new'
+    newproxy = myjson[expt]["dir"] + '/' + account + '/' + outfile + '.new'
     oldproxy = myjson[expt]["dir"] + '/' + account + '/' + outfile
-    chmod_cmd = ['ssh', '-ak', account + '@' + node, 'chmod 400 {0} ; mv -f {1} {2}'.format(newproxy, newproxy, oldproxy)] 
-    scp_cmd = ['scp','proxies/' + outfile, dest + '.new']
+    chmod_cmd = ['ssh', '-ak', account + '@' + node, 'chmod 400 {0} ; mv -f {1} {2}'.format(newproxy, newproxy, oldproxy)]
+    scp_cmd = ['scp', 'proxies/' + outfile, dest + '.new']
 
     try :
-        with open(devnull,'w') as f:
+        with open(devnull, 'w') as f:
             subprocess.check_call(scp_cmd, stdout = f, env = locenv)
             try :
                 subprocess.check_call(chmod_cmd, stdout = f, env = locenv)
             except subprocess.CalledProcessError as e:
-                err = "Error changing permission of {0} to mode 400 on {1}. Trying next node\n {2}".format(outfile, node,str(e))
+                err = "Error changing permission of {0} to mode 400 on {1}. Trying next node\n {2}".format(outfile, node, str(e))
                 errout(err)
                 return False
     except subprocess.CalledProcessError as e:
-        err = "Error copying ../proxies/{0} to {1}. Trying next node\n {2}".format(outfile, node,str(e))
+        err = "Error copying ../proxies/{0} to {1}. Trying next node\n {2}".format(outfile, node, str(e))
         errout(err)
         return False
     return True
@@ -167,16 +167,16 @@ def copy_proxy(node, account, myjson, expt, outfile):
 def process_experiment(expt, myjson):
     """Function to process each experiment, including sending the proxy onto its nodes"""
     print 'Now processing ' + expt
-    
+
     if not check_keys(expt, myjson):
-    	return False 
-    
-    nodes=myjson[expt]["nodes"]
-    
+        return False
+
+    nodes = myjson[expt]["nodes"]
+
     for role in myjson[expt]["roles"] :
         outfile, account = get_proxy(role, expt)
-        
-        if outfile == False:
+
+        if outfile is False:
             return False
 
         # OK, we got a ticket and a proxy, so let's try to copy
@@ -185,27 +185,25 @@ def process_experiment(expt, myjson):
 
 
 def main():
-    """Main execution module""" 
+    """Main execution module"""
     global should_runuser
     global inputfile
     global allerrstr
 
-    if not check_user(should_runuser):      #uid = 47535 is rexbatch
+    if not check_user(should_runuser):
         err = "This script must be run as {0}. Exiting.".format(authuser)
-        errout(err)    
+        errout(err)
         raise OSError(err)
-    
+
     kerb_ticket_obtain()
     myjson = loadjson(inputfile)
 
     for expt in myjson.keys():
-        process_experiment(expt,myjson)
+        process_experiment(expt, myjson)
 
     if len(allerrstr) > 0:
         sendemail()
 
 
-if __name__=='__main__':
+if __name__ == '__main__':
     main()
-
-
