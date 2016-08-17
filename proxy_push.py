@@ -14,7 +14,7 @@ inputfile = 'input_file.json'
 
 # Error handling variables.
 errfile = 'proxy_push.err'      # Set the output file for errors.  Times in errorfile are local time.
-allerrstr = ''                  # error string that will get passed into the email when populated
+allerrstring = ''                  # error string that will get passed into the email when populated
 
 # Displays who is running this script.  Will not allow running as root
 should_runuser = 'rexbatch'
@@ -188,7 +188,7 @@ def main():
     """Main execution module"""
     global should_runuser
     global inputfile
-    global allerrstr
+    global allerrstring
 
     if not check_user(should_runuser):
         err = "This script must be run as {0}. Exiting.".format(should_runuser)
@@ -201,7 +201,7 @@ def main():
     for expt in myjson.keys():
         process_experiment(expt, myjson)
 
-    if len(allerrstr) > 0:
+    if len(allerrstring) > 0:
         sendemail()
 
 
