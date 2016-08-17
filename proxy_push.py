@@ -191,7 +191,7 @@ def main():
     global allerrstr
 
     if not check_user(should_runuser):
-        err = "This script must be run as {0}. Exiting.".format(authuser)
+        err = "This script must be run as {0}. Exiting.".format(should_runuser)
         errout(err)
         raise OSError(err)
 
