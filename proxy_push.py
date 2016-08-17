@@ -69,7 +69,7 @@ def errout(error):
 
     with open(errfile, 'a') as f:
         if len(allerrstring) == 0:
-            f.write("\n%s" % datetime.now())
+            f.write("\n\n%s" % datetime.now())
         f.write("\n%s" % error)
     print error
     allerrstring += error
