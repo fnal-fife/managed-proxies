@@ -21,8 +21,8 @@ echo "Error, $KEYFILE not found"
 exit 1
 fi
 
-X509_USER_CERT=$CERTFILE
-X509_USER_KEY=$KEYFILE
+export X509_USER_CERT=$CERTFILE
+export X509_USER_KEY=$KEYFILE
 
 # store in myproxy-int for the preprod and dev servers
 
