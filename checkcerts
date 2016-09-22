@@ -1,6 +1,6 @@
 #!/bin/bash
 
-VERSION=20160528
+VERSION=20160602
 
 # check certificates for expiration
 
@@ -10,7 +10,7 @@ LOG=${HOME}/maint/checkcerts.log
 
 ALARM=${HOME}/maint/checkcerts.alarm
 
-MAILTO=kreymer@fnal.gov
+MAILTO=fermigrid-help@fnal.gov
 
 WARN=30
 
@@ -44,7 +44,7 @@ NALARM=`wc -l ${ALARM} | cut -f 1 -d ' '`
 
 if [ -z ${TEST} ] ; then
 if [ ${NALARM} -eq 0 ] ; then
-     echo "All Is Well" | /bin/mail -s "checkcerts report - no issues"
+     echo "All Is Well" | /bin/mail -s "checkcerts report - no issues"  ${MAILTO}
 else
     cat ${ALARM} | /bin/mail -s "checkcerts report - ${NALARMS} ALARMS" ${MAILTO}
 fi
@@ -52,4 +52,8 @@ fi
 
 exit
 
-20160528  kreymer
+20160602   kreymer
+changed mail from kreymer to fermigrid-help
+
+20160528   kreymer
+created
