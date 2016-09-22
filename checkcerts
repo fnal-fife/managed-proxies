@@ -1,0 +1,55 @@
+#!/bin/bash
+
+VERSION=20160528
+
+# check certificates for expiration
+
+TEST=${1}
+
+LOG=${HOME}/maint/checkcerts.log
+
+ALARM=${HOME}/maint/checkcerts.alarm
+
+MAILTO=kreymer@fnal.gov
+
+WARN=30
+
+rm -f ${ALARM}
+touch ${ALARM}
+
+{
+
+printf "\ncheckcerts ${VERSION} `date`\n"
+
+CERTDIR=/var/lib/jobsub/creds/certs
+
+cd ${CERTDIR}
+
+PRS=`ls *.cert | cut -f 1 -d .`
+
+for PR in ${PRS} ; do
+    EXP=`openssl x509 -noout -in ${PR}.cert -enddate | cut -f 2- -d =`
+    SUB=`openssl x509 -noout -in ${PR}.cert -subject | cut -f 2- -d =`
+    EXS=`date +%s -d "${EXP}"`
+    NOW=`date +%s`
+    (( EXD = ( EXS - NOW ) / 86400 ))
+    printf "%15s %5d ${SUB}\n" ${PR} ${EXD}
+    [ ${EXD} -lt ${WARN} ] && \
+    printf "%15s %5d ${SUB}\n" ${PR} ${EXD} > ${ALARM}
+done | sort -n -k 2
+
+} >> ${LOG} 2>&1
+
+NALARM=`wc -l ${ALARM} | cut -f 1 -d ' '`
+
+if [ -z ${TEST} ] ; then
+if [ ${NALARM} -eq 0 ] ; then
+     echo "All Is Well" | /bin/mail -s "checkcerts report - no issues"
+else
+    cat ${ALARM} | /bin/mail -s "checkcerts report - ${NALARMS} ALARMS" ${MAILTO}
+fi
+fi
+
+exit
+
+20160528  kreymer
