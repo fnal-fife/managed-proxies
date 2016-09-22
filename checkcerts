@@ -1,6 +1,6 @@
 #!/bin/bash
 
-VERSION=20160608
+VERSION=20160810
 
 # check certificates for expiration
 
@@ -35,7 +35,7 @@ for PR in ${PRS} ; do
     (( EXD = ( EXS - NOW ) / 86400 ))
     printf "%15s %5d ${SUB}\n" ${PR} ${EXD}
     [ ${EXD} -lt ${WARN} ] && \
-    printf "%15s %5d ${SUB}\n" ${PR} ${EXD} > ${ALARM}
+    printf "%15s %5d ${SUB}\n" ${PR} ${EXD} >> ${ALARM}
 done | sort -n -k 2
 } > ${LIST} 2>&1
 
@@ -58,6 +58,9 @@ else
 fi
 
 exit
+
+20160810   kreymer
+Corrected typo so ALARM is appended to
 
 20160608   kreymer
 Added echo in test mode
