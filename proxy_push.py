@@ -92,10 +92,9 @@ def kerb_ticket_obtain():
         kerbcmd = ['/usr/krb5/bin/kinit', '-k', '-t', '/opt/gen_keytabs/config/gcso_monitor.keytab', 'monitor/gcso/fermigrid.fnal.gov@FNAL.GOV']
         krb5init = subprocess.check_call(kerbcmd, env = locenv)
     except:
-        err = 'Error obtaining kerberos ticket; unable to push proxy'
+        err = ' WARNING: Error obtaining kerberos ticket; may be unable to push proxies'
         errout(err)
         sendemail()
-        sys.exit(1)
     return None
 
 
