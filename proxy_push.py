@@ -89,7 +89,7 @@ def kerb_ticket_obtain():
     global locenv
 
     try:
-        kerbcmd = ['/usr/krb5/bin/kinit', '-k', '-t', '/opt/gen_keytabs/gcso_monitor_rexbatch.keytab', 'monitor/gcso/fermigrid.fnal.gov@FNAL.GOV']
+        kerbcmd = ['/usr/krb5/bin/kinit', '-k', '-t', '/opt/gen_keytabs/config/gcso_monitor.keytab', 'monitor/gcso/fermigrid.fnal.gov@FNAL.GOV']
         krb5init = subprocess.check_call(kerbcmd, env = locenv)
     except:
         err = 'Error obtaining kerberos ticket; unable to push proxy'
