@@ -120,6 +120,8 @@ def get_proxy(role, expt):
     voms_role = role.keys()[0]
     account = role[voms_role]
     voms_string = 'fermilab:/fermilab/' + expt + '/Role=' + voms_role
+    if expt == "des":
+        voms_string = expt +':/' + expt + '/Role=' + voms_role
     outfile = account + '.' + voms_role + '.proxy'
     vpi_args = ["/usr/bin/voms-proxy-init", '-rfc', '-valid', '24:00', '-voms', voms_string, '-cert' , CERT_BASE_DIR + '/' + account + '.cert', '-key', CERT_BASE_DIR + '/' + account + '.key', '-out', 'proxies/' + outfile]
 
