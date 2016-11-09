@@ -4,7 +4,7 @@ import json
 import sys
 import smtplib
 import logging
-from os import environ, devnull, geteuid, remove
+from os import environ, devnull, geteuid, remove, stat
 from os.path import exists
 from pwd import getpwuid
 from datetime import datetime
@@ -21,9 +21,7 @@ inputfile = 'input_file.json'
 # Logging/Error handling variables.
 logfile = 'proxy_push.log'
 errfile = 'proxy_push.err'      # Set the output file for errors.  Times in errorfile are local time.
-# allerrstring = ''                  # error string that will get passed into the email when populated
 
-expt_error = False
 numerrors = 0
 logger = None
 
@@ -105,14 +103,15 @@ def sendemail():
         message = f.read()
 
     sender = 'fife-group@fnal.gov'
+    to = 'sbhat@fnal.gov'
     msg = MIMEText(message)
-    msg['To'] = email.utils.formataddr(('FIFE GROUP', 'fife-group@fnal.gov'))
+    msg['To'] = email.utils.formataddr(('FIFE GROUP', to))
     msg['From'] = email.utils.formataddr(('FIFEUTILGPVM01', sender))
     msg['Subject'] = "proxy_push.py errors"
 
     try:
         smtpObj = smtplib.SMTP('smtp.fnal.gov')
-        smtpObj.sendmail(sender, [sender], msg.as_string())
+        smtpObj.sendmail(sender, [to], msg.as_string())
         # logger.info(message)
         logger.info("Successfully sent error email")
     except Exception as e:
@@ -188,7 +187,7 @@ def check_keys(expt, myjson):
 
 def get_proxy(role, expt):
     """Get the proxy for the role and experiment"""
-    global CERT_BASE_DIR, logger, expt_error
+    global CERT_BASE_DIR, logger
     voms_role = role.keys()[0]
     account = role[voms_role]
     voms_string = 'fermilab:/fermilab/' + expt + '/Role=' + voms_role
@@ -251,7 +250,6 @@ def process_experiment(expt, myjson):
     """Function to process each experiment, including sending the proxy onto its nodes"""
     global expt_success, numerrors
     print 'Now processing ' + expt
-    expt_error = False
 
     numerrors = 0
 
@@ -302,7 +300,7 @@ def main():
     logger.info("This run completed successfully for the following "
                 "experiments: {0}.".format(', '.join(successful_expts)))
 
-    if exists(errfile):
+    if exists(errfile) and os.stat(errfile).st_size:
         sendemail()
         remove(errfile)
 
