@@ -244,7 +244,7 @@ def main():
 
     successful_expts = []
     for expt in myjson.keys():
-        process_experiment(expt, myjson)
+        numerrors = process_experiment(expt, myjson)
         if not numerrors:
             successful_expts.append(expt)
 
