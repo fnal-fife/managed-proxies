@@ -66,34 +66,6 @@ def setupLogger(scriptname):
 
     return logger
 
-# def sendemail():
-#     """Function to send email after error string is populated.
-#        Only argument is errorstring, which is a formatted string of
-#        the errors generated in this script.
-#     """
-#     global errfile
-#
-#     sender = 'fife-group@fnal.gov'
-#     receivers = 'fife-group@fnal.gov'    # Change to fife-group@fnal.gov when ready for production
-#     messageheader = """From:  FIFEUTILGPVM01 <fife-group.fnal.gov>
-# To:  FIFE-GROUP <fife-group@fnal.gov>
-# Subject:  proxy_push.py errors
-#
-# """
-#     message = messageheader + allerrstring
-#
-#     try:
-#         smtpObj = smtplib.SMTP('smtp.fnal.gov')
-#         smtpObj.sendmail(sender, receivers, message)
-#         print "Successfully sent email"
-#     except Exception as e:
-#         err = "Error:  unable to send email.\n%s\n" % e
-#         print err
-#         with open(errfile, 'a') as f:
-#             f.write("\n%s" % err)
-#         raise
-#     return None
-
 
 def sendemail():
     """Function to send email after message string is populated."""
@@ -119,26 +91,6 @@ def sendemail():
         logger.error(err)
         raise
     return
-
-
-
-# def errout(error):
-#     """Function to handle how errors are logged and displayed.   We write error to the errorfile, and then add error to the errorstring, which gets returned.
-#     Arguments:
-#         error (string):  The current error being logged
-#         errorstring (string):  The string of all errors encountered in this script's execution so far
-#         errorfile (string): The file we're writing the errors to
-#     """
-#     global errfile
-#     global allerrstring
-#
-#     with open(errfile, 'a') as f:
-#         if len(allerrstring) == 0:
-#             f.write("\n\n%s" % datetime.now())
-#         f.write("\n%s" % error)
-#     print error
-#     allerrstring += error
-#     return None
 
 
 def check_user(authuser):
