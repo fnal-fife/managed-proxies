@@ -75,7 +75,7 @@ def sendemail():
         message = f.read()
 
     sender = 'fife-group@fnal.gov'
-    to = 'sbhat@fnal.gov'
+    to = 'fife-group@fnal.gov'
     msg = MIMEText(message)
     msg['To'] = email.utils.formataddr(('FIFE GROUP', to))
     msg['From'] = email.utils.formataddr(('FIFEUTILGPVM01', sender))
@@ -230,7 +230,7 @@ def process_experiment(expt, myjson):
 
 def main():
     """Main execution module"""
-    global should_runuser, inputfile, logger
+    global should_runuser, inputfile, errfile, logger
 
     logger = setupLogger("Managed Proxy Push")
 
@@ -242,7 +242,6 @@ def main():
     kerb_ticket_obtain()
     myjson = loadjson(inputfile)
 
-
     successful_expts = []
     for expt in myjson.keys():
         process_experiment(expt, myjson)
@@ -252,8 +251,10 @@ def main():
     logger.info("This run completed successfully for the following "
                 "experiments: {0}.".format(', '.join(successful_expts)))
 
-    if exists(errfile) and os.stat(errfile).st_size:
-        sendemail()
+    if exists(errfile):
+        lc = sum(1 for line in open(errfile,'r'))    # Get a line count
+        if lc: 
+            sendemail()
         remove(errfile)
 
     return
