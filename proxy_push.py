@@ -111,7 +111,6 @@ def kerb_ticket_obtain():
         err = 'WARNING: Error obtaining kerberos ticket; ' \
               'may be unable to push proxies'
         logger.warning(err)
-        # sendemail()
     return None
 
 
