@@ -20,7 +20,7 @@ inputfile = 'input_file.json'
 
 # Logging/Error handling variables.
 logfile = 'proxy_push.log'
-errfile = 'proxy_push.err'      # Set the output file for errors.  Times in errorfile are local time.
+errfile = 'proxy_push.err'      # Set the temporary output file for errors.  Times in errorfile are local time.
 logger = None
 
 # Displays who is running this script.  Will not allow running as root
@@ -82,7 +82,6 @@ def sendemail():
     try:
         smtpObj = smtplib.SMTP('smtp.fnal.gov')
         smtpObj.sendmail(sender, [to], msg.as_string())
-        # logger.info(message)
         logger.info("Successfully sent error email")
     except Exception as e:
         err = "Error:  unable to send email.\n%s\n" % e
@@ -249,7 +248,7 @@ def main():
                 "experiments: {0}.".format(', '.join(successful_expts)))
 
     if exists(errfile):
-        lc = sum(1 for line in open(errfile,'r'))    # Get a line count
+        lc = sum(1 for line in open(errfile,'r'))    # Get a line count for the tmp err file
         if lc: 
             sendemail()
         remove(errfile)
