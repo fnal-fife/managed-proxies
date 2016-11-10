@@ -21,8 +21,6 @@ inputfile = 'input_file.json'
 # Logging/Error handling variables.
 logfile = 'proxy_push.log'
 errfile = 'proxy_push.err'      # Set the output file for errors.  Times in errorfile are local time.
-
-numerrors = 0
 logger = None
 
 # Displays who is running this script.  Will not allow running as root
@@ -200,7 +198,7 @@ def copy_proxy(node, account, myjson, expt, outfile):
 
 def process_experiment(expt, myjson):
     """Function to process each experiment, including sending the proxy onto its nodes"""
-    global expt_success, numerrors
+    global expt_success
     print 'Now processing ' + expt
 
     numerrors = 0
