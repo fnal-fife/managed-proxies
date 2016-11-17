@@ -6,7 +6,6 @@ import logging
 from os import environ, devnull, geteuid, remove
 from os.path import exists
 from pwd import getpwuid
-from datetime import datetime
 import smtplib
 import email.utils
 from email.mime.text import MIMEText
