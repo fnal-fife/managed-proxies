@@ -21,6 +21,9 @@ inputfile = 'input_file.json'
 logfile = 'proxy_push.log'
 errfile = 'proxy_push.err'      # Set the temporary output file for errors.  Times in errorfile are local time.
 logger = None
+# admin_email = 'fife-group@fnal.gov'
+admin_email = 'sbhat@fnal.gov'
+
 
 # Displays who is running this script.  Will not allow running as root
 should_runuser = 'rexbatch'
@@ -72,7 +75,7 @@ def sendemail():
         message = f.read()
 
     sender = 'fife-group@fnal.gov'
-    to = 'fife-group@fnal.gov'
+    to = admin_email
     msg = MIMEText(message)
     msg['To'] = email.utils.formataddr(('FIFE GROUP', to))
     msg['From'] = email.utils.formataddr(('FIFEUTILGPVM01', sender))
@@ -80,7 +83,7 @@ def sendemail():
 
     try:
         smtpObj = smtplib.SMTP('smtp.fnal.gov')
-        smtpObj.sendmail(sender, [to], msg.as_string())
+        smtpObj.sendmail(sender, to, msg.as_string())
         logger.info("Successfully sent error email")
     except Exception as e:
         err = "Error:  unable to send email.\n%s\n" % e
