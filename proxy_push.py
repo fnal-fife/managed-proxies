@@ -2,9 +2,8 @@
 import subprocess
 import json
 import sys
-import smtplib
 import logging
-from os import environ, devnull, geteuid, remove, stat
+from os import environ, devnull, geteuid, remove
 from os.path import exists
 from pwd import getpwuid
 from datetime import datetime
@@ -161,6 +160,19 @@ def get_proxy(role, expt):
     return outfile, account
 
 
+def check_node(node):
+    """Pings the node to see if it's up or at least pingable"""
+    global logger
+    pingcmd = ['ping', '-t', '5', '-o', 'fermicloud062.fnal.gov']
+    retcode = subprocess.call(pingcmd)
+    if retcode == 0:
+        return True
+    else:
+        logger.warning("The node {0} didn't return a response to ping after 5 "
+                    "seconds.  Moving to the next node".format(node))
+        return False
+
+
 def copy_proxy(node, account, myjson, expt, outfile):
     """Copies the proxies to submit nodes"""
     global locenv, logger
@@ -196,15 +208,16 @@ def copy_proxy(node, account, myjson, expt, outfile):
 
 def process_experiment(expt, myjson):
     """Function to process each experiment, including sending the proxy onto its nodes"""
-    global expt_success
+    # global expt_success
     print 'Now processing ' + expt
 
-    numerrors = 0
+    # numerrors = 0
+    expt_success = True
 
     if not check_keys(expt, myjson):
         expt_success = False
-        numerrors += 1
-        return False
+        # numerrors += 1
+        return expt_success
 
     nodes = myjson[expt]["nodes"]
 
@@ -212,16 +225,20 @@ def process_experiment(expt, myjson):
         outfile, account = get_proxy(role, expt)
 
         if not outfile:
-            numerrors += 1
-            expt_success = True
+            # numerrors += 1
+            expt_success = False
+            continue
             # return False
 
         # OK, we got a ticket and a proxy, so let's try to copy
         for node in nodes :
+            if not check_node(node):
+                expt_success = False
+                continue
             if not copy_proxy(node, account, myjson, expt, outfile):
-                numerrors += 1
+                expt_success = False
 
-    return numerrors
+    return expt_success
 
 
 def main():
@@ -240,8 +257,8 @@ def main():
 
     successful_expts = []
     for expt in myjson.keys():
-        numerrors = process_experiment(expt, myjson)
-        if not numerrors:
+        expt_success = process_experiment(expt, myjson)
+        if expt_success:
             successful_expts.append(expt)
 
     logger.info("This run completed successfully for the following "
