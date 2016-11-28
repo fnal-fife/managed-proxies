@@ -224,6 +224,11 @@ def process_experiment(expt, myjson):
 
     nodes = myjson[expt]["nodes"]
 
+    for node in nodes:
+        if not check_node(node):
+            expt_success = False
+            continue
+
     for role in myjson[expt]["roles"] :
         outfile, account = get_proxy(role, expt)
 
@@ -235,9 +240,9 @@ def process_experiment(expt, myjson):
 
         # OK, we got a ticket and a proxy, so let's try to copy
         for node in nodes:
-            if not check_node(node):
-                expt_success = False
-                continue
+            # if not check_node(node):
+            #     expt_success = False
+            #     continue
             if not copy_proxy(node, account, myjson, expt, outfile):
                 expt_success = False
 
