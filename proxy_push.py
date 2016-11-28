@@ -21,8 +21,8 @@ inputfile = 'input_file.json'
 logfile = 'proxy_push.log'
 errfile = 'proxy_push.err'      # Set the temporary output file for errors.  Times in errorfile are local time.
 logger = None
-# admin_email = 'fife-group@fnal.gov'
-admin_email = 'sbhat@fnal.gov'
+admin_email = 'fife-group@fnal.gov'
+# admin_email = 'sbhat@fnal.gov'
 
 
 # Displays who is running this script.  Will not allow running as root
