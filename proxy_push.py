@@ -166,7 +166,7 @@ def get_proxy(role, expt):
 def check_node(node):
     """Pings the node to see if it's up or at least pingable"""
     global logger
-    pingcmd = ['ping', '-t', '5', '-o', 'fermicloud062.fnal.gov']
+    pingcmd = ['ping', '-W', '5', '-c', '1', 'fermicloud062.fnal.gov']
     retcode = subprocess.call(pingcmd)
     if retcode == 0:
         return True
