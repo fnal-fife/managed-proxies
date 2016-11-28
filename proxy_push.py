@@ -211,33 +211,31 @@ def copy_proxy(node, account, myjson, expt, outfile):
 
 def process_experiment(expt, myjson):
     """Function to process each experiment, including sending the proxy onto its nodes"""
-    # global expt_success
     print 'Now processing ' + expt
 
-    # numerrors = 0
     expt_success = True
 
     if not check_keys(expt, myjson):
         expt_success = False
-        # numerrors += 1
         return expt_success
 
     nodes = myjson[expt]["nodes"]
+
+    # Ping nodes to see if they're up
+    for node in nodes:
+        if not check_node(node):
+            expt_success = False
+            continue
 
     for role in myjson[expt]["roles"] :
         outfile, account = get_proxy(role, expt)
 
         if not outfile:
-            # numerrors += 1
             expt_success = False
             continue
-            # return False
 
         # OK, we got a ticket and a proxy, so let's try to copy
         for node in nodes:
-            if not check_node(node):
-                expt_success = False
-                continue
             if not copy_proxy(node, account, myjson, expt, outfile):
                 expt_success = False
 
