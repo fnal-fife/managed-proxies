@@ -166,7 +166,7 @@ def get_proxy(role, expt):
 def check_node(node):
     """Pings the node to see if it's up or at least pingable"""
     global logger
-    pingcmd = ['ping', '-W', '5', '-c', '1', 'fermicloud062.fnal.gov']
+    pingcmd = ['ping', '-W', '5', '-c', '1', node]
     retcode = subprocess.call(pingcmd)
     if retcode == 0:
         return True
@@ -234,7 +234,7 @@ def process_experiment(expt, myjson):
             # return False
 
         # OK, we got a ticket and a proxy, so let's try to copy
-        for node in nodes :
+        for node in nodes:
             if not check_node(node):
                 expt_success = False
                 continue
