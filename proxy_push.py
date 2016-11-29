@@ -23,6 +23,7 @@ errfile = 'proxy_push.err'      # Set the temporary output file for errors.  Tim
 logger = None
 admin_email = 'fife-group@fnal.gov'
 # admin_email = 'sbhat@fnal.gov'
+# admin_email = 'kherner@fnal.gov'
 
 
 # Displays who is running this script.  Will not allow running as root
@@ -107,7 +108,7 @@ def kerb_ticket_obtain():
         kerbcmd = ['/usr/krb5/bin/kinit', '-k', '-t',
                    '/opt/gen_keytabs/config/gcso_monitor.keytab',
                    'monitor/gcso/fermigrid.fnal.gov@FNAL.GOV']
-        krb5init = subprocess.check_call(kerbcmd, env = locenv)
+        subprocess.check_call(kerbcmd, env=locenv)
     except:
         err = 'WARNING: Error obtaining kerberos ticket; ' \
               'may be unable to push proxies'
@@ -143,7 +144,7 @@ def get_proxy(role, expt):
     voms_string = 'fermilab:/fermilab/' + expt + '/Role=' + voms_role
 
     if expt == "des":
-        voms_string = expt +':/' + expt + '/Role=' + voms_role
+        voms_string = expt + ':/' + expt + '/Role=' + voms_role
 
     outfile = account + '.' + voms_role + '.proxy'
     vpi_args = ["/usr/bin/voms-proxy-init", '-rfc', '-valid', '24:00', '-voms',
@@ -153,7 +154,7 @@ def get_proxy(role, expt):
 
     # do voms-proxy-init now
     try:
-        vpi = subprocess.Popen(vpi_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        subprocess.Popen(vpi_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     except:
         err = "Error obtaining {0}.  Please check the cert in {1} on " \
               "fifeutilgpvm01. " \
@@ -181,8 +182,8 @@ def copy_proxy(node, account, myjson, expt, outfile):
     global locenv, logger
 
     # first we check the .k5login file to see if we're even allowed to push the proxy
-    k5login_check = 'ssh ' + account + '@' + node + ' cat .k5login'
-    nNames = -1
+#    k5login_check = 'ssh ' + account + '@' + node + ' cat .k5login'
+#    nNames = -1
 
     dest = account + '@' + node + ':' + myjson[expt]["dir"] + '/' + account + '/' + outfile
     newproxy = myjson[expt]["dir"] + '/' + account + '/' + outfile + '.new'
@@ -266,8 +267,8 @@ def main():
                 "experiments: {0}.".format(', '.join(successful_expts)))
 
     if exists(errfile):
-        lc = sum(1 for line in open(errfile,'r'))    # Get a line count for the tmp err file
-        if lc: 
+        lc = sum(1 for line in open(errfile, 'r'))    # Get a line count for the tmp err file
+        if lc:
             sendemail()
         remove(errfile)
 
