@@ -3,9 +3,14 @@
 # rsync cert and key files from fifebatch1
 
 # By default silently, for all accounts
-# Is specified, verbosely for a single account
+# If specified, verbosely for a single account
 
 VERSION=20160601
+VERSION=20161201
+
+printf " THIS SCRIPT IS OBSOLETE. DO NOT RUN IT \n"
+printf " The primary copies of certs/keys are in /opt/gen_push_proxy/certs \n"
+exit 1
 
 # usage via crontab
 #  04 04 * * 1 ${HOME}/gen_push_proxy/update-certkeys
