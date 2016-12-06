@@ -30,4 +30,4 @@ myproxy-init  -c 0 -s myproxy-int.fnal.gov -xZ '/DC=org/DC=opensciencegrid/O=Ope
 
 # store in production
 
-myproxy-init  -c 0 -s myproxy.fnal.gov -xZ '/DC=org/DC=opensciencegrid/O=Open Science Grid/OU=Services/CN=fifebatch.fnal.gov'  -t 24 -l "`openssl x509 -in $X509_USER_CERT -noout -subject | cut -d " " -f 2-`"
+myproxy-init  -c 0 -s myproxy.fnal.gov -xZ '/DC=org/DC=opensciencegrid/O=Open Science Grid/OU=Services/CN=(fifebatch|(hepcjobsub0(1|2))).fnal.gov'  -t 24 -l "`openssl x509 -in $X509_USER_CERT -noout -subject | cut -d " " -f 2-`"
