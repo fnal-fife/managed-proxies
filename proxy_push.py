@@ -3,7 +3,7 @@ import subprocess
 import json
 import sys
 import logging
-from logging.handlers import TimedRotatingFileHandler
+from logging.handlers import RotatingFileHandler
 from os import environ, devnull, geteuid, remove
 from os.path import exists
 from pwd import getpwuid
@@ -49,7 +49,7 @@ def setupLogger(scriptname):
     ch.setLevel(logging.INFO)
 
     # Logfile Handler
-    lh = TimedRotatingFileHandler(logfile, when='D', interval=14, backupCount=3)
+    lh = RotatingFileHandler(logfile, maxBytes=2097152, backupCount=3)
     lh.setLevel(logging.DEBUG)
     logfileformat = logging.Formatter(
         "%(asctime)s - %(name)s - %(levelname)s - %(message)s")
