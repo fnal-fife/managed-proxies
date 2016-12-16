@@ -25,9 +25,34 @@ export X509_USER_CERT=$CERTFILE
 export X509_USER_KEY=$KEYFILE
 
 # store in myproxy-int for the preprod and dev servers
+default_ppretrievers="'/DC=org/DC=opensciencegrid/O=Open Science Grid/OU=Services/CN=fifebatch-(preprod|dev).fnal.gov'"
+cigetcertopts=`curl -f -s --capath /etc/grid-security/certificates https://fifebatch-preprod.fnal.gov/cigetcertopts.txt`
+if [ $? -eq 0 ]; then
+    ppretrievers=`echo $cigetcertopts | grep -o -E -e "--myproxyretrievers=('.*')" | sed -e "s/--myproxyretrievers=//"`
+    if [ "$ppretrievers" != "$default_ppretrievers" ]; then 
+	echo "ATTENTION: The dev and preprod retrievers option, ${ppretrievers}, has changed from the default option. Contact HTC to see if this is a permanent change. If so, consider changing the default option in this script."
+    fi
+else
+    echo "Error reading cigetcertopts.txt. Using default value."
+    ppretrievers=$default_ppretrievers
+fi
 
-myproxy-init  -c 0 -s myproxy-int.fnal.gov -xZ '/DC=org/DC=opensciencegrid/O=Open Science Grid/OU=Services/CN=fifebatch-(preprod|dev).fnal.gov'  -t 24 -l "`openssl x509 -in $X509_USER_CERT -noout -subject | cut -d " " -f 2-`"
+echo myproxy-init  -c 0 -s myproxy-int.fnal.gov -xZ $ppretrievers -t 24 -l "`openssl x509 -in $X509_USER_CERT -noout -subject | cut -d " " -f 2-`"
 
-# store in production
+# read cigetcertopts from the production fifebatch server, then store in production
 
-myproxy-init  -c 0 -s myproxy.fnal.gov -xZ '/DC=org/DC=opensciencegrid/O=Open Science Grid/OU=Services/CN=(fifebatch|(hepcjobsub0(1|2))).fnal.gov'  -t 24 -l "`openssl x509 -in $X509_USER_CERT -noout -subject | cut -d " " -f 2-`"
+default_retrievers="'/DC=org/DC=opensciencegrid/O=Open Science Grid/OU=Services/CN=(fifebatch|(hepcjobsub0(1|2))).fnal.gov'"
+cigetcertopts=`curl -f -s --capath /etc/grid-security/certificates  https://fifebatch.fnal.gov/cigetcertopts.txt`
+RESULT=$?
+if [ $RESULT -eq 0 ]; then
+    retrievers=`echo $cigetcertopts | grep -o -E -e "--myproxyretrievers=('.*')" | sed -e "s/--myproxyretrievers=//"`
+    if [ "$retrievers" != "$default_retrievers" ]; then
+        echo "ATTENTION: The production retrievers option, ${retrievers}, has changed from the default option. Contact HTC to see if this is a permanent change. If so, consider changing the default option in this script."
+    fi
+else
+    echo "Error reading cigetcertopts.txt. Using default value."
+    retrievers=$default_retrievers
+fi
+
+
+echo myproxy-init  -c 0 -s myproxy.fnal.gov -xZ $retrievers -t 24 -l "`openssl x509 -in $X509_USER_CERT -noout -subject | cut -d " " -f 2-`"
