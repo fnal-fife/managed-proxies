@@ -32,12 +32,11 @@ if [ $? -eq 0 ]; then
     if [ "$ppretrievers" != "$default_ppretrievers" ]; then 
 	echo "ATTENTION: The dev and preprod retrievers option, ${ppretrievers}, has changed from the default option. Contact HTC to see if this is a permanent change. If so, consider changing the default option in this script."
     fi
+    myproxy-init -c 0 -s myproxy-int.fnal.gov -xZ $ppretrievers -t 24 -l "`openssl x509 -in $X509_USER_CERT -noout -subject | cut -d " " -f 2-`" || echo "Error when storing proxy in myproxy-int."
 else
     echo "Error reading cigetcertopts.txt. Using default value."
     ppretrievers=$default_ppretrievers
 fi
-
-echo myproxy-init  -c 0 -s myproxy-int.fnal.gov -xZ $ppretrievers -t 24 -l "`openssl x509 -in $X509_USER_CERT -noout -subject | cut -d " " -f 2-`"
 
 # read cigetcertopts from the production fifebatch server, then store in production
 
@@ -49,10 +48,11 @@ if [ $RESULT -eq 0 ]; then
     if [ "$retrievers" != "$default_retrievers" ]; then
         echo "ATTENTION: The production retrievers option, ${retrievers}, has changed from the default option. Contact HTC to see if this is a permanent change. If so, consider changing the default option in this script."
     fi
+    myproxy-init  -c 0 -s myproxy.fnal.gov -xZ $retrievers -t 24 -l "`openssl x509 -in $X509_USER_CERT -noout -subject | cut -d " " -f 2-`" || echo "Error when storing proxy in myproxy."
 else
     echo "Error reading cigetcertopts.txt. Using default value."
     retrievers=$default_retrievers
 fi
 
 
-echo myproxy-init  -c 0 -s myproxy.fnal.gov -xZ $retrievers -t 24 -l "`openssl x509 -in $X509_USER_CERT -noout -subject | cut -d " " -f 2-`"
+
