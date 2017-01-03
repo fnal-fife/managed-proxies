@@ -49,7 +49,8 @@ def setupLogger(scriptname):
     ch.setLevel(logging.INFO)
 
     # Logfile Handler
-    lh = RotatingFileHandler(logfile, maxBytes=2097152, backupCount=3)
+    lh = RotatingFileHandler(logfile, maxBytes=68500, backupCount=3) # For testing
+    # lh = RotatingFileHandler(logfile, maxBytes=2097152, backupCount=3)
     lh.setLevel(logging.DEBUG)
     logfileformat = logging.Formatter(
         "%(asctime)s - %(name)s - %(levelname)s - %(message)s")
