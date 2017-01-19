@@ -244,8 +244,8 @@ def process_experiment(expt, myjson):
             if not copy_proxy(node, account, myjson, expt, outfile):
                 expt_success = False
                 if node in badnodes:
-                    string = "Node {0} didn't respond to pings earlier - so " \
-                             "so it's expected that copying there would fail."
+                    string = "Node {0} didn't respond to pings earlier - " \
+                             "so it's expected that copying there would fail.".format(node)
                     logger.warn(string)
 
     return expt_success
