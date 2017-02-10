@@ -22,12 +22,12 @@ inputfile = 'input_file.json'
 logfile = 'proxy_push.log'
 errfile = 'proxy_push.err'      # Set the temporary output file for errors.  Times in errorfile are local time.
 logger = None
+SLACK_ALERTS_URL = 'https://hooks.slack.com/services/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'      # Slack url for #alerts channel in fife-group slack
+# SLACK_ALERTS_URL = 'https://hooks.slack.com/services/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'      # Slack url for #alerts-dev channel in fife-group slack.  Use for testing
+
 admin_email = 'fife-group@fnal.gov'
 # admin_email = 'sbhat@fnal.gov'
 # admin_email = 'kherner@fnal.gov'
-SLACK_ALERTS_URL = 'https://hooks.slack.com/services/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'      # Slack url for #alerts-dev channel in fife-group slack.  Use for testing
-# SLACK_ALERTS_URL = 'https://hooks.slack.com/services/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'      # Slack url for #alerts channel in fife-group slack
-
 
 # Displays who is running this script.  Will not allow running as root
 should_runuser = 'rexbatch'
