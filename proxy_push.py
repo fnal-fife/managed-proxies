@@ -3,6 +3,7 @@ import subprocess
 import json
 import sys
 import logging
+import requests
 from logging.handlers import RotatingFileHandler
 from os import environ, devnull, geteuid, remove
 from os.path import exists
@@ -24,6 +25,8 @@ logger = None
 admin_email = 'fife-group@fnal.gov'
 # admin_email = 'sbhat@fnal.gov'
 # admin_email = 'kherner@fnal.gov'
+SLACK_ALERTS_URL = 'https://hooks.slack.com/services/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'      # Slack url for #alerts-dev channel in fife-group slack.  Use for testing
+# SLACK_ALERTS_URL = 'https://hooks.slack.com/services/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'      # Slack url for #alerts channel in fife-group slack
 
 
 # Displays who is running this script.  Will not allow running as root
@@ -90,6 +93,23 @@ def sendemail():
         err = "Error:  unable to send email.\n%s\n" % e
         logger.error(err)
         raise
+    return
+
+
+def sendslackmessage():
+    """Function to send notification to fife-group #alerts slack channel"""
+    global logger
+
+    with open(errfile, 'r') as f:
+        payloadtext = f.read()
+
+    payload = {"text": payloadtext}
+    headers = {"Content-type": "application/json"}
+
+    r = requests.post(SLACK_ALERTS_URL, data=json.dumps(payload), headers=headers)
+
+    if r.status_code != requests.codes.ok:
+        logger.error("Could not send slack message.  Status code {0}, response text {1}".format(r.status_code, r.text))
     return
 
 
@@ -231,7 +251,6 @@ def process_experiment(expt, myjson):
             badnodes.append(node)
             continue
 
-
     for role in myjson[expt]["roles"] :
         outfile, account = get_proxy(role, expt)
 
@@ -277,6 +296,7 @@ def main():
     if exists(errfile):
         lc = sum(1 for line in open(errfile, 'r'))    # Get a line count for the tmp err file
         if lc:
+            sendslackmessage()
             sendemail()
         remove(errfile)
 
