@@ -3,9 +3,10 @@
 "darkside" : { "roles" : [ { "Production" : "darksidepro" } ], "nodes" : [ "ds50samgpvm01" ], "dir" : "/opt" },
 "des"      : { "roles" : [ { "DESGW" : "desgw" } ], "nodes" : [ "des41" ], "dir" : "/opt" },
 "genie"    : { "roles" : [ { "Production" : "geniepro" } ], "nodes" : [ "geniegpvm01" ], "dir" : "/opt" },
+"gm2"      : { "roles" : [ { "Production" : "gm2pro" } ], "nodes" : [ "gm2gpvm01", "gm2gpvm02", "gm2gpvm03", "gm2gpvm04", "gm2samgpvm01" ], "dir" : "/opt" },
 "lariat"   : { "roles" : [ { "Production" : "lariatpro" } ], "nodes" : [ "lariatsamgpvm01" ], "dir" : "/opt" },
 "minerva"  : { "roles" : [ { "Calibration" : "minervacal" }, { "Production" : "minervapro" }, { "Data" : "minervadat" } ], "nodes" : [ "minervagpvm01", "minervagpvm02", "minervagpvm03", "minervagpvm04", "minervagpvm05" ], "dir" : "/opt" },
-"minos"    : { "roles" : [ { "Production" : "minospro" } ], "nodes" : [ "minos27", "minos51", "minosdatagpvm01", "minosgpvm05" ], "dir" : "/opt" },
+"minos"    : { "roles" : [ { "Production" : "minospro" } ], "nodes" : [ "minosdatagpvm01", "minosgpvm05" ], "dir" : "/opt" },
 "mu2e"     : { "roles" : [ { "Production" : "mu2epro" } ], "nodes" : [ "mu2egpvm01", "mu2egpvm02", "mu2egpvm03", "mu2egpvm04", "mu2egpvm05" ], "dir" : "/opt" },
 "nova"     : { "roles" : [ { "Production" : "novapro" } ], "nodes" : [ "novagpvm01", "novagpvm02", "novagpvm03", "novagpvm04", "novagpvm05", "novagpvm06", "novagpvm07"
 , "novagpvm08", "novagpvm09", "novagpvm10", "novagpvm11", "novagpvm12", "novagpvm13", "novagpvm14", "novagpvm15", "novadqgpvm01" ], "dir" : "/opt" },
