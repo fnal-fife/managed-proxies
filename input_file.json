@@ -10,5 +10,5 @@
 "mu2e"     : { "roles" : [ { "Production"  : "mu2epro" } ],     "nodes" : [ "mu2egpvm01", "mu2egpvm02", "mu2egpvm03", "mu2egpvm04", "mu2egpvm05" ], "dir" : "/opt" },
 "nova"     : { "roles" : [ { "Production"  : "novapro" } ],     "nodes" : [ "novagpvm01", "novagpvm02", "novagpvm03", "novagpvm04", "novagpvm05", "novagpvm06", "novagpvm07"
 , "novagpvm08", "novagpvm09", "novagpvm10", "novagpvm11", "novagpvm12", "novagpvm13", "novagpvm14", "novagpvm15", "novadqgpvm01" ], "dir" : "/opt" },
-"uboone"   : { "roles" : [ { "Production"  : "uboonepro" } ],   "nodes" : [ "uboonegpvm01", "uboonegpvm02", "uboonegpvm03", "uboonegpvm04", "uboonegpvm05", "uboonegpvm06", "uboonegpvm07", "uboonepubsgpvm01" ], "dir" : "/opt" }
+"uboone"   : { "roles" : [ { "Production"  : "uboonepro" } ],   "nodes" : [ "uboonegpvm01", "uboonegpvm02", "uboonegpvm03", "uboonegpvm04", "uboonegpvm05", "uboonegpvm06", "uboonegpvm07", "uboonepubsgpvm01", "uboonepubsgpvm02", "uboonepubsgpvm03", "uboonepubsgpvm04", "uboonepubsgpvm05", "uboonepubsgpvm06"], "dir" : "/opt" }
 }
