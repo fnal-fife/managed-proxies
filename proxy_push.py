@@ -39,6 +39,9 @@ locenv['KRB5CCNAME'] = "FILE:/tmp/krb5cc_push_proxy"
 # base location for certs/keys
 CERT_BASE_DIR = "/opt/gen_push_proxy/certs"
 
+# Experiments that have their own VOMS server
+expt_vos = ["des", "dune"]
+
 # Functions
 
 def setupLogger(scriptname):
@@ -163,7 +166,7 @@ def get_proxy(role, expt):
     account = role[voms_role]
     voms_string = 'fermilab:/fermilab/' + expt + '/Role=' + voms_role
 
-    if expt == "des":
+    if expt in expt_vos:		# Experiments with their own VO server
         voms_string = expt + ':/' + expt + '/Role=' + voms_role
 
     outfile = account + '.' + voms_role + '.proxy'

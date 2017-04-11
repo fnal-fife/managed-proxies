@@ -2,6 +2,7 @@
 "coupp"    : { "roles" : [ { "Production"  : "coupp" } ],       "nodes" : [ "couppgpvm01", "couppgpvm02" ], "dir" : "/opt" },
 "darkside" : { "roles" : [ { "Production"  : "darksidepro" } ], "nodes" : [ "ds50samgpvm01" ], "dir" : "/opt" },
 "des"      : { "roles" : [ { "DESGW"       : "desgw" } ],       "nodes" : [ "des41" ], "dir" : "/opt" },
+"dune"     : { "roles" : [ { "Production"  : "dunepro" } ],     "nodes" : [ "dunegpvm01", "dunegpvm02", "dunegpvm03", "dunegpvm04", "dunegpvm05", "dunegpvm06", "dunegpvm07", "dunegpvm08", "dunegpvm09", "dunegpvm10" ], "dir" : "/opt" },
 "genie"    : { "roles" : [ { "Production"  : "geniepro" } ],    "nodes" : [ "geniegpvm01" ], "dir" : "/opt" },
 "gm2"      : { "roles" : [ { "Production"  : "gm2pro" } ],      "nodes" : [ "gm2gpvm01", "gm2gpvm02", "gm2gpvm03", "gm2gpvm04", "gm2samgpvm01" ], "dir" : "/opt" },
 "lariat"   : { "roles" : [ { "Production"  : "lariatpro" } ],   "nodes" : [ "lariatsamgpvm01" ], "dir" : "/opt" },
