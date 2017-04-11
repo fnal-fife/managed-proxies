@@ -5,6 +5,7 @@ import sys
 import logging
 import requests
 from logging.handlers import RotatingFileHandler
+from traceback import format_exc
 from os import environ, devnull, geteuid, remove
 from os.path import exists
 from pwd import getpwuid
@@ -22,6 +23,7 @@ inputfile = 'input_file.json'
 logfile = 'proxy_push.log'
 errfile = 'proxy_push.err'      # Set the temporary output file for errors.  Times in errorfile are local time.
 logger = None
+
 SLACK_ALERTS_URL = 'https://hooks.slack.com/services/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'      # Slack url for #alerts channel in fife-group slack
 # SLACK_ALERTS_URL = 'https://hooks.slack.com/services/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'      # Slack url for #alerts-dev channel in fife-group slack.  Use for testing
 
@@ -74,6 +76,14 @@ def setupLogger(scriptname):
     return logger
 
 
+def error_handler(exception):
+    """Splits out any error into the right error streams"""
+    global logger
+    logger.error(exception)
+    logger.debug(format_exc())
+    return
+
+
 def sendemail():
     """Function to send email after message string is populated."""
     global logger
@@ -94,14 +104,13 @@ def sendemail():
         logger.info("Successfully sent error email")
     except Exception as e:
         err = "Error:  unable to send email.\n%s\n" % e
-        logger.error(err)
+        error_handler(err)
         raise
     return
 
 
 def sendslackmessage():
     """Function to send notification to fife-group #alerts slack channel"""
-    global logger
 
     with open(errfile, 'r') as f:
         payloadtext = f.read()
@@ -112,7 +121,7 @@ def sendslackmessage():
     r = requests.post(SLACK_ALERTS_URL, data=json.dumps(payload), headers=headers)
 
     if r.status_code != requests.codes.ok:
-        logger.error("Could not send slack message.  Status code {0}, response text {1}".format(r.status_code, r.text))
+        error_handler("Could not send slack message.  Status code {0}, response text {1}".format(r.status_code, r.text))
     return
 
 
@@ -147,14 +156,13 @@ def loadjson(infile):
 
 def check_keys(expt, myjson):
     """Make sure our JSON file has nodes and roles for the experiment"""
-    global logger
     if "roles" not in myjson[expt].keys() or "nodes" not in myjson[expt].keys():
         err = "Error: input file improperly formatted for {0}" \
               " (roles or nodes don't exist for this experiment)." \
               " Please check ~rexbatch/gen_push_proxy/input_file.json" \
               " on fifeutilgpvm01. I will skip this experiment for now." \
               "\n".format(expt)
-        logger.error(err)
+        error_handler(err)
         return False
     return True
 
@@ -171,7 +179,7 @@ def check_output_mod(cmd, env=None):
 
 def get_proxy(role, expt):
     """Get the proxy for the role and experiment"""
-    global CERT_BASE_DIR, logger
+    global CERT_BASE_DIR
     voms_role = role.keys()[0]
     account = role[voms_role]
     voms_string = 'fermilab:/fermilab/' + expt + '/Role=' + voms_role
@@ -192,7 +200,7 @@ def get_proxy(role, expt):
         err = "Error obtaining {0}.  Please check the cert in {1} on " \
               "fifeutilgpvm01. " \
               "Continuing on to next role.".format(outfile, CERT_BASE_DIR)
-        logger.error(err)
+        error_handler(err)
         return False, account
     return outfile, account
 
@@ -212,7 +220,7 @@ def check_node(node):
 
 def copy_proxy(node, account, myjson, expt, outfile):
     """Copies the proxies to submit nodes"""
-    global locenv, logger
+    global locenv
 
     # first we check the .k5login file to see if we're even allowed to push the proxy
 #    k5login_check = 'ssh ' + account + '@' + node + ' cat .k5login'
@@ -233,12 +241,12 @@ def copy_proxy(node, account, myjson, expt, outfile):
             except Exception as e:
                 err = "Error changing permission of {0} to mode 400 on {1}. " \
                       "Trying next node\n {2}".format(outfile, node, str(e))
-                logger.exception(err)
+                error_handler(err)
                 return False
     except Exception as e:
         err = "Error copying ../proxies/{0} to {1}. " \
               "Trying next node\n {2}".format(outfile, node, str(e))
-        logger.exception(err)
+        error_handler(err)
         return False
     return True
 
@@ -291,7 +299,7 @@ def main():
 
     if not check_user(should_runuser):
         err = "This script must be run as {0}. Exiting.".format(should_runuser)
-        logger.error(err)
+        error_handler(err)
         raise OSError(err)
 
     kerb_ticket_obtain()
