@@ -159,6 +159,16 @@ def check_keys(expt, myjson):
     return True
 
 
+def check_output_mod(cmd, env=None):
+    """A stripped-down version of subprocess.check_output in python 2.7+. Returns the stdout and return code"""
+    process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env)
+    output, _ = process.communicate()
+    retcode = process.poll()
+    if retcode:
+        raise Exception(output)
+    return output, retcode
+
+
 def get_proxy(role, expt):
     """Get the proxy for the role and experiment"""
     global CERT_BASE_DIR, logger
@@ -177,7 +187,7 @@ def get_proxy(role, expt):
 
     # do voms-proxy-init now
     try:
-        subprocess.Popen(vpi_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        check_output_mod(vpi_args)
     except:
         err = "Error obtaining {0}.  Please check the cert in {1} on " \
               "fifeutilgpvm01. " \
@@ -217,15 +227,15 @@ def copy_proxy(node, account, myjson, expt, outfile):
 
     try:
         with open(devnull, 'w') as f:
-            subprocess.check_call(scp_cmd, stdout=f, env=locenv)
+            check_output_mod(scp_cmd, env=locenv) 
             try:
-                subprocess.check_call(chmod_cmd, stdout=f, env=locenv)
-            except subprocess.CalledProcessError as e:
+                check_output_mod(chmod_cmd, env=locenv)
+            except Exception as e:
                 err = "Error changing permission of {0} to mode 400 on {1}. " \
                       "Trying next node\n {2}".format(outfile, node, str(e))
                 logger.exception(err)
                 return False
-    except subprocess.CalledProcessError as e:
+    except Exception as e:
         err = "Error copying ../proxies/{0} to {1}. " \
               "Trying next node\n {2}".format(outfile, node, str(e))
         logger.exception(err)
@@ -310,5 +320,5 @@ if __name__ == '__main__':
     try:
         main()
         sys.exit(0)
-    except:
+    except Exception as e:
         sys.exit(1)
