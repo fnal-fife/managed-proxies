@@ -229,9 +229,9 @@ def copy_proxy(node, account, myjson, expt, outfile):
     dest = account + '@' + node + ':' + myjson[expt]["dir"] + '/' + account + '/' + outfile
     newproxy = myjson[expt]["dir"] + '/' + account + '/' + outfile + '.new'
     oldproxy = myjson[expt]["dir"] + '/' + account + '/' + outfile
-    chmod_cmd = ['ssh', '-ak', account + '@' + node,
+    scp_cmd = ['scp', '-o', 'ConnectTimeout=30', 'proxies/' + outfile, dest + '.new']
+    chmod_cmd = ['ssh', '-ak', '-o', 'ConnectTimeout=30', account + '@' + node,
                  'chmod 400 {0} ; mv -f {1} {2}'.format(newproxy, newproxy, oldproxy)]
-    scp_cmd = ['scp', 'proxies/' + outfile, dest + '.new']
 
     try:
         with open(devnull, 'w') as f:
