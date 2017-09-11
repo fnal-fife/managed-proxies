@@ -6,8 +6,7 @@ import logging
 import requests
 from logging.handlers import RotatingFileHandler
 from traceback import format_exc
-from os import environ, devnull, geteuid, remove
-from os.path import exists
+from os import environ, geteuid, remove
 from pwd import getpwuid
 import smtplib
 import email.utils
@@ -24,21 +23,18 @@ logfile = 'proxy_push.log'
 errfile = 'proxy_push.err'      # Set the temporary output file for errors.  Times in errorfile are local time.
 logger = None
 
-# SLACK_ALERTS_URL = 'https://hooks.slack.com/services/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'      # Slack url for #alerts channel in fife-group slack
-SLACK_ALERTS_URL = 'https://hooks.slack.com/services/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'      # Slack url for #alerts-dev channel in fife-group slack.  Use for testing
+SLACK_ALERTS_URL = 'https://hooks.slack.com/services/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'      # Slack url for #alerts channel in fife-group slack
+# SLACK_ALERTS_URL = 'https://hooks.slack.com/services/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'      # Slack url for #alerts-dev channel in fife-group slack.  Use for testing
 
-# admin_email = 'fife-group@fnal.gov'
-admin_email = 'sbhat@fnal.gov'
+admin_email = 'fife-group@fnal.gov'
+# admin_email = 'sbhat@fnal.gov'
 # admin_email = 'kherner@fnal.gov'
 
 # Displays who is running this script.  Will not allow running as root
 should_runuser = 'rexbatch'
 
 # # grab the initial environment
-# locenv = environ.copy()
-# locenv['KRB5CCNAME'] = "FILE:/tmp/krb5cc_push_proxy"
 KRB5CCNAME = "FILE:/tmp/krb5cc_push_proxy"
-
 
 # base location for certs/keys
 CERT_BASE_DIR = "/opt/gen_push_proxy/certs"
@@ -74,7 +70,6 @@ def sendemail():
         else:
             print err
         raise
-    return
 
 
 def sendslackmessage():
@@ -96,11 +91,11 @@ def sendslackmessage():
             error_handler(errmsg)
         else:
             print errmsg
-    return
 
 
 def setup_logger(name):
     """Sets up the logger"""
+    global logger
     # Create Logger
     logger = logging.getLogger(name)
     logger.setLevel(logging.DEBUG)
@@ -134,18 +129,21 @@ def error_handler(exception):
     if logger is not None:
         logger.error(exception)
         logger.debug(format_exc())
+    else:
+        print exception, format_exc()
 
 
 class ManagedProxyPush:
-    def __init__(self, logger):
+    """Class that holds all of the procedures/methods to push proxies and do
+    necessary checks"""
+    def __init__(self, logger=None):
         self.logger = logger
 
         try:
-            assert self.check_user(should_runuser)
+            assert self.check_user()
         except AssertionError:
             err = "This script must be run as {0}. Exiting.".format(
                 should_runuser)
-            # error_handler(err)
             raise AssertionError(err)
 
         self.locenv = environ.copy()
@@ -155,16 +153,14 @@ class ManagedProxyPush:
             self.myjson = self.loadjson(inputfile)
         except Exception as e:
             err = 'Could not load json file.  Error is {0}'.format(e)
-            # error_handler(e)
             raise Exception(err)
 
     @staticmethod
-    def check_user(authuser):
-        """Check to see who's running script.  If not rexbatch, exit"""
+    def check_user():
+        """Exit if user running script is not the authorized user"""
         runuser = getpwuid(geteuid())[0]
-        print runuser
         print "Running script as {0}.".format(runuser)
-        return runuser == authuser
+        return runuser == should_runuser
 
     @staticmethod
     def loadjson(infile):
@@ -180,16 +176,6 @@ class ManagedProxyPush:
                    'monitor/gcso/fermigrid.fnal.gov@FNAL.GOV']
         subprocess.check_call(kerbcmd, env=self.locenv)
 
-        # try:
-        #     kerbcmd = ['/usr/krb5/bin/kinit', '-k', '-t',
-        #                '/opt/gen_keytabs/config/gcso_monitor.keytab',
-        #                'monitor/gcso/fermigrid.fnal.gov@FNAL.GOV']
-        #     subprocess.check_call(kerbcmd, env=self.locenv)
-        # except:
-        #     err = 'WARNING: Error obtaining kerberos ticket; ' \
-        #           'may be unable to push proxies'
-        #     self.logger.warning(err)
-
     def check_keys(self, expt):
         """Make sure our JSON file has nodes and roles for the experiment"""
         if "roles" not in self.myjson[expt].keys() \
@@ -199,7 +185,6 @@ class ManagedProxyPush:
                   " Please check ~rexbatch/gen_push_proxy/input_file.json" \
                   " on fifeutilgpvm01. I will skip this experiment for now." \
                   "\n".format(expt)
-            # raise KeyError(err)
             error_handler(err)
             return False
         return True
@@ -220,13 +205,9 @@ class ManagedProxyPush:
 
         Returns proxy path (outfile) if proxy was successfully generated
         """
-        # voms_role = role.keys()[0]
-        # account = role[voms_role]
 
-        if expt in expt_vos:		# Experiments with their own VO server
-            voms_string = expt + ':/' + expt + '/Role=' + voms_role
-        else:
-            voms_string = 'fermilab:/fermilab/' + expt + '/Role=' + voms_role
+        voms_prefix = '{0}:/'.format(expt) if expt in expt_vos else 'fermilab:/fermilab/'
+        voms_string = '{0}{1}/Role={2}'.format(voms_prefix, expt, voms_role)
 
         outfile = account + '.' + voms_role + '.proxy'
         vpi_args = ["/usr/bin/voms-proxy-init", '-rfc', '-valid', '24:00', '-voms',
@@ -241,9 +222,7 @@ class ManagedProxyPush:
             err = "Error obtaining {0}.  Please check the cert in {1} on " \
                   "fifeutilgpvm01. " \
                   "Continuing on to next role.".format(outfile, CERT_BASE_DIR)
-            # error_handler(err)
             raise Exception(err)
-            # return False, account
         return outfile
 
     @staticmethod
@@ -252,13 +231,6 @@ class ManagedProxyPush:
         pingcmd = ['ping', '-W', '5', '-c', '1', node]
         retcode = subprocess.call(pingcmd)
         return True if retcode == 0 else False
-        # if retcode == 0:
-        #     return True
-        # else:
-        #     self.logger.warning(
-        #         "The node {0} didn't return a response to ping after 5 "
-        #         "seconds.  Moving to the next node".format(node))
-        #     return False
 
     def copy_proxy(self, node, account, expt, outfile):
         """Copies the proxies to submit nodes"""
@@ -275,10 +247,7 @@ class ManagedProxyPush:
                      'chmod 400 {0} ; mv -f {1} {2}'.format(newproxy, newproxy, oldproxy)]
 
         try:
-            # with open(devnull, 'w') as f:
             self.check_output_mod(scp_cmd)
-                    # error_handler(err)
-                    # return False
         except Exception as e:
             err = "Error copying ../proxies/{0} to {1}. " \
                   "Trying next node\n {2}".format(outfile, node, str(e))
@@ -290,9 +259,6 @@ class ManagedProxyPush:
             err = "Error changing permission of {0} to mode 400 on {1}. " \
                   "Trying next node\n {2}".format(outfile, node, str(e))
             raise Exception(err)
-            # error_handler(err)
-            # return False
-        # return True
 
     def process_experiment(self, expt):
         """Function to process each experiment, including sending the proxy onto its nodes"""
@@ -300,12 +266,6 @@ class ManagedProxyPush:
 
         badnodes = []
         expt_success = True
-
-        # try:
-        #     self.check_keys(expt)
-        # except KeyError as e:
-        #     error_handler(e)
-        #     return False
 
         if not self.check_keys(expt): return False
 
@@ -331,10 +291,6 @@ class ManagedProxyPush:
                 error_handler(e)
                 continue
 
-            # if not outfile:
-            #     expt_success = False
-            #     continue
-
             # OK, we got a ticket and a proxy, so let's try to copy
             for node in nodes:
                 try:
@@ -347,13 +303,6 @@ class ManagedProxyPush:
                                  "so it's expected that copying there would fail.".format(node)
                         self.logger.warn(string)
 
-                # if not self.copy_proxy(node, acct, myjson, expt, outfile):
-                #     expt_success = False
-                #     if node in badnodes:
-                #         string = "Node {0} didn't respond to pings earlier - " \
-                #                  "so it's expected that copying there would fail.".format(node)
-                #         logger.warn(string)
-
         return expt_success
 
     def process_all_experiments(self):
@@ -364,38 +313,19 @@ class ManagedProxyPush:
             err = 'WARNING: Error obtaining kerberos ticket; ' \
                   'may be unable to push proxies.  Error was {0}\n'.format(e)
             self.logger.warning(err)
-        # myjson = loadjson(inputfile)
-
-        # successful_expts = []
-        # for expt in self.myjson.iterkeys():
-        #     expt_success = self.process_experiment(expt, self.myjson)
-        #     if expt_success:
-        #         successful_expts.append(expt)
-
-        # successful_expts = filter(lambda x: x, [self.process_experiment(expt)
-        #                     for expt in self.myjson.iterkeys()])
 
         successful_expts = (expt for expt in self.myjson.iterkeys()
                             if self.process_experiment(expt))
 
-
         self.logger.info("This run completed successfully for the following "
                       "experiments: {0}.".format(', '.join(successful_expts)))
-        #
-        # if exists(errfile):
-        #     # Get a line count for the tmp err file
-        #     lc = sum(1 for _ in open(errfile,'r'))
-        #     if lc:
-        #         self.sendslackmessage()
-        #         self.sendemail()
-        #     remove(errfile)
 
 
 def main():
     """Main execution module"""
-    # global logger
+    global logger
     logger = setup_logger("Managed Proxy Push")
-    # m = None
+
     try:
         m = ManagedProxyPush(logger)
     except Exception as e:
@@ -418,42 +348,8 @@ def main():
             remove(errfile)
         except IOError:     # File doesn't exist - so no errors
             pass
-    #
-    # # logger = setupLogger("Managed Proxy Push")
-    #
-    # # if not check_user(should_runuser):
-    # #     err = "This script must be run as {0}. Exiting.".format(should_runuser)
-    # #     error_handler(err)
-    # #     raise OSError(err)
-    #
-    # m.kerb_ticket_obtain()
-    # # myjson = loadjson(inputfile)
-    #
-    # successful_expts = []
-    # for expt in m.myjson.iterkeys():
-    #     expt_success = m.process_experiment(expt, m.myjson)
-    #     if expt_success:
-    #         successful_expts.append(expt)
-    #
-    # m.logger.info("This run completed successfully for the following "
-    #               "experiments: {0}.".format(', '.join(successful_expts)))
-    #
-    # if exists(errfile):
-    #     lc = sum(1 for line in open(errfile, 'r'))    # Get a line count for the tmp err file
-    #     if lc:
-    #         m.sendslackmessage()
-    #         m.sendemail()
-    #     remove(errfile)
-
-    # return
 
 
 if __name__ == '__main__':
-    # try:
-    #     main()
-    #     sys.exit(0)
-    # except Exception as e:
-    #     print e
-    #     sys.exit(1)
     main()
     sys.exit(0)
