@@ -77,7 +77,7 @@ def sendemail():
     return
 
 
-def sendslackmessage(self):
+def sendslackmessage():
     """Function to send notification to fife-group #alerts slack channel"""
     with open(errfile, 'r') as f:
         payloadtext = f.read()
@@ -199,6 +199,7 @@ class ManagedProxyPush:
                   " Please check ~rexbatch/gen_push_proxy/input_file.json" \
                   " on fifeutilgpvm01. I will skip this experiment for now." \
                   "\n".format(expt)
+            # raise KeyError(err)
             error_handler(err)
             return False
         return True
@@ -236,16 +237,17 @@ class ManagedProxyPush:
         # do voms-proxy-init now
         try:
             self.check_output_mod(vpi_args)
-        except:
+        except Exception:
             err = "Error obtaining {0}.  Please check the cert in {1} on " \
                   "fifeutilgpvm01. " \
                   "Continuing on to next role.".format(outfile, CERT_BASE_DIR)
-            error_handler(err)
-            raise
+            # error_handler(err)
+            raise Exception(err)
             # return False, account
         return outfile
 
-    def check_node(self, node):
+    @staticmethod
+    def check_node(node):
         """Pings the node to see if it's up or at least pingable"""
         pingcmd = ['ping', '-W', '5', '-c', '1', node]
         retcode = subprocess.call(pingcmd)
@@ -258,50 +260,54 @@ class ManagedProxyPush:
         #         "seconds.  Moving to the next node".format(node))
         #     return False
 
-    def copy_proxy(self, node, account, myjson, expt, outfile):
+    def copy_proxy(self, node, account, expt, outfile):
         """Copies the proxies to submit nodes"""
 
         """ first we check the .k5login file to see if we're even allowed to push the proxy
         k5login_check = 'ssh ' + account + '@' + node + ' cat .k5login'
         nNames = -1
         """
-        dest = account + '@' + node + ':' + myjson[expt]["dir"] + '/' + account + '/' + outfile
-        newproxy = myjson[expt]["dir"] + '/' + account + '/' + outfile + '.new'
-        oldproxy = myjson[expt]["dir"] + '/' + account + '/' + outfile
+        dest = account + '@' + node + ':' + self.myjson[expt]["dir"] + '/' + account + '/' + outfile
+        newproxy = self.myjson[expt]["dir"] + '/' + account + '/' + outfile + '.new'
+        oldproxy = self.myjson[expt]["dir"] + '/' + account + '/' + outfile
         scp_cmd = ['scp', '-o', 'ConnectTimeout=30', 'proxies/' + outfile, dest + '.new']
         chmod_cmd = ['ssh', '-ak', '-o', 'ConnectTimeout=30', account + '@' + node,
                      'chmod 400 {0} ; mv -f {1} {2}'.format(newproxy, newproxy, oldproxy)]
 
         try:
-            with open(devnull, 'w') as f:
-                self.check_output_mod(scp_cmd)
+            # with open(devnull, 'w') as f:
+            self.check_output_mod(scp_cmd)
                     # error_handler(err)
                     # return False
         except Exception as e:
             err = "Error copying ../proxies/{0} to {1}. " \
                   "Trying next node\n {2}".format(outfile, node, str(e))
             raise Exception(err)
-        else:
-            try:
-                self.check_output_mod(chmod_cmd)
-            except Exception as e:
-                err = "Error changing permission of {0} to mode 400 on {1}. " \
-                      "Trying next node\n {2}".format(outfile, node, str(e))
-                raise Exception(err)
-                # error_handler(err)
+
+        try:
+            self.check_output_mod(chmod_cmd)
+        except Exception as e:
+            err = "Error changing permission of {0} to mode 400 on {1}. " \
+                  "Trying next node\n {2}".format(outfile, node, str(e))
+            raise Exception(err)
+            # error_handler(err)
             # return False
         # return True
 
-    def process_experiment(self, expt, myjson):
+    def process_experiment(self, expt):
         """Function to process each experiment, including sending the proxy onto its nodes"""
         print 'Now processing ' + expt
 
         badnodes = []
         expt_success = True
 
-        if not self.check_keys(expt):
-            expt_success = False
-            return expt_success
+        # try:
+        #     self.check_keys(expt)
+        # except KeyError as e:
+        #     error_handler(e)
+        #     return False
+
+        if not self.check_keys(expt): return False
 
         nodes = self.myjson[expt]["nodes"]
 
@@ -315,13 +321,14 @@ class ManagedProxyPush:
                 badnodes.append(node)
                 continue
 
-        for roledict in myjson[expt]["roles"]:
+        for roledict in self.myjson[expt]["roles"]:
             (role, acct), = roledict.items()
             try:
                 outfile = self.get_proxy(expt, role, acct)
-            except:
+            except Exception as e:
                 # We couldn't get a proxy - so just move to the next role
                 expt_success = False
+                error_handler(e)
                 continue
 
             # if not outfile:
@@ -331,7 +338,7 @@ class ManagedProxyPush:
             # OK, we got a ticket and a proxy, so let's try to copy
             for node in nodes:
                 try:
-                    self.copy_proxy(node, acct, myjson, expt, outfile)
+                    self.copy_proxy(node, acct, expt, outfile)
                 except Exception as e:
                     error_handler(e)
                     expt_success = False
@@ -359,11 +366,18 @@ class ManagedProxyPush:
             self.logger.warning(err)
         # myjson = loadjson(inputfile)
 
-        successful_expts = []
-        for expt in self.myjson.iterkeys():
-            expt_success = self.process_experiment(expt, self.myjson)
-            if expt_success:
-                successful_expts.append(expt)
+        # successful_expts = []
+        # for expt in self.myjson.iterkeys():
+        #     expt_success = self.process_experiment(expt, self.myjson)
+        #     if expt_success:
+        #         successful_expts.append(expt)
+
+        # successful_expts = filter(lambda x: x, [self.process_experiment(expt)
+        #                     for expt in self.myjson.iterkeys()])
+
+        successful_expts = (expt for expt in self.myjson.iterkeys()
+                            if self.process_experiment(expt))
+
 
         self.logger.info("This run completed successfully for the following "
                       "experiments: {0}.".format(', '.join(successful_expts)))
@@ -389,6 +403,7 @@ def main():
         sys.exit(1)
     else:   # We instantiated the ManagedProxyPush class, with all its checks
         try:
+            # Now let's actually process the experiments
             m.process_all_experiments()
         except Exception as e:
             error_handler(e)
