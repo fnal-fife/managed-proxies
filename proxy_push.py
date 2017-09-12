@@ -155,6 +155,14 @@ class ManagedProxyPush:
             err = 'Could not load json file.  Error is {0}'.format(e)
             raise Exception(err)
 
+        try:
+            self.kerb_ticket_obtain()
+        except Exception as e:
+            err = 'WARNING: Error obtaining kerberos ticket; ' \
+                  'may be unable to push proxies.  Error was {0}\n'.format(e)
+            self.logger.warning(err)
+
+
     @staticmethod
     def check_user():
         """Exit if user running script is not the authorized user"""
@@ -307,13 +315,6 @@ class ManagedProxyPush:
 
     def process_all_experiments(self):
         """Main execution method to process all experiments"""
-        try:
-            self.kerb_ticket_obtain()
-        except Exception as e:
-            err = 'WARNING: Error obtaining kerberos ticket; ' \
-                  'may be unable to push proxies.  Error was {0}\n'.format(e)
-            self.logger.warning(err)
-
         successful_expts = (expt for expt in self.myjson.iterkeys()
                             if self.process_experiment(expt))
 
