@@ -432,13 +432,13 @@ def main():
             sys.exit(1)
     finally:
         for expt, f in expt_files.iteritems():
-            lc = sum(1 for _ in open(f, 'r')) 
+            lc = sum(1 for _ in open(f, 'r'))
             if lc != 0:
-		    try:
-			sendemail(expt)
-		    except Exception as e:
-			error_handler(e)    # Don't exit - just move to the next error file
-			del expt_files[expt]    # When we delete the log files after this loop, we want to keep this logfile around for troubleshooting
+                try:
+                    sendemail(expt)
+                except Exception as e:
+                    error_handler(e)    # Don't exit - just move to the next error file
+            del expt_files[expt]    # When we delete the log files after this loop, we want to keep this logfile around for troubleshooting
 
         remove_expt_logs()   # Uses expt_files to find what files to delete
 
