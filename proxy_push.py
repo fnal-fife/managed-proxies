@@ -11,6 +11,7 @@ from pwd import getpwuid
 import smtplib
 import email.utils
 from email.mime.text import MIMEText
+from contextlib import contextmanager
 
 
 # Global Variables
@@ -128,13 +129,11 @@ def setup_logger(name):
 
     # Console handler - info
     ch = logging.StreamHandler()
-    ch.set_name('Stream Handler')
     ch.setLevel(logging.INFO)
     handler_list.append(ch)
 
     # Logfile Handler
     lh = RotatingFileHandler(logfile, maxBytes=2097152, backupCount=3)
-    lh.set_name('Logfile Handler')
     lh.setLevel(logging.DEBUG)
     logfileformat = logging.Formatter(
         "%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -143,7 +142,6 @@ def setup_logger(name):
 
     # Error file
     eh = logging.FileHandler(errfile)
-    eh.set_name("Temporary Error File handler")
     eh.setLevel(logging.WARNING)
     errfileformat = logging.Formatter(
         "%(asctime)s - %(levelname)s - %(message)s")
@@ -153,11 +151,32 @@ def setup_logger(name):
     for handler in handler_list:
         logger.addHandler(handler)
 
-    # We will be adding and deleting experiment-specific loggers later, whose names will be None.  Make sure these won't get accidentally deleted later on
-    for handler in logger.handlers:
-        assert handler.get_name() is not None
+    print globals()
+    exit(0)
 
     return logger
+
+
+@contextmanager
+def expt_log_active(logger, expt, level=None, close=True):
+    """Context manager to temporarily add an experiment-specific log handler to the logger"""
+    global expt_files
+
+    # __init__ and __enter__ code
+    filename = expt_files[expt]
+    h = logging.FileHandler(filename)
+    if level is not None:
+        h.setLevel(level)
+    logger.addHandler(h)
+
+    yield
+
+    # __exit__ code
+    if h is not None:
+        logger.removeHandler(h)
+    if h is not None and close:
+        h.close()
+
 
 def remove_expt_logs():
     """Removes all the temporary experiment logfiles"""
@@ -214,28 +233,28 @@ class ManagedProxyPush:
         print "Running script as {0}.".format(runuser)
         return runuser == should_runuser
 
-    def add_expt_log_handler(self, expt):
-        """Adds an experiment-specific logging handler"""
-        global expt_files
-        expt_file = "log_{0}".format(expt)
-        expt_files[expt] = expt_file
-
-        h_expt = logging.FileHandler(expt_file)
-        h_expt.set_name(None)
-        h_expt.setLevel(logging.WARN)
-        errfileformat = logging.Formatter(
-            "%(asctime)s - %(levelname)s - %(message)s")
-        h_expt.setFormatter(errfileformat)
-        self.logger.addHandler(h_expt)
-
-    def remove_expt_log_handler(self, expt):
-        """Remove the experiment-specific logging handler"""
-        try:
-            for hd in self.logger.handlers:
-                if hd.get_name() is None:
-                    self.logger.removeHandler(hd)
-        except Exception as e:
-            self.logger.warn("Couldn't remove logging handler for {0}.  Error was {1}".format(expt, e))
+#    def add_expt_log_handler(self, expt):
+#        """Adds an experiment-specific logging handler"""
+#        global expt_files
+#        expt_file = "log_{0}".format(expt)
+#        expt_files[expt] = expt_file
+#
+#        h_expt = logging.FileHandler(expt_file)
+#        h_expt.set_name(None)
+#        h_expt.setLevel(logging.WARN)
+#        errfileformat = logging.Formatter(
+#            "%(asctime)s - %(levelname)s - %(message)s")
+#        h_expt.setFormatter(errfileformat)
+#        self.logger.addHandler(h_expt)
+#
+#    def remove_expt_log_handler(self, expt):
+#        """Remove the experiment-specific logging handler"""
+#        try:
+#            for hd in self.logger.handlers:
+#                if hd.get_name() is None:
+#                    self.logger.removeHandler(hd)
+#        except Exception as e:
+#            self.logger.warn("Couldn't remove logging handler for {0}.  Error was {1}".format(expt, e))
 
     def kerb_ticket_obtain(self):
         """Obtain a ticket based on the special use principal"""
@@ -331,48 +350,49 @@ class ManagedProxyPush:
     def process_experiment(self, expt):
         """Function to process each experiment, including sending the proxy onto its nodes"""
         print 'Now processing ' + expt
-        self.add_expt_log_handler(expt)
+        # self.add_expt_log_handler(expt)
 
-        badnodes = []
-        expt_success = True
+        with expt_log_active(self.logger, expt, level=logging.WARN):
+            badnodes = []
+            expt_success = True
 
-        if not self.check_keys(expt): return False
+            if not self.check_keys(expt): return False
 
-        nodes = self.myjson[expt]["nodes"]
+            nodes = self.myjson[expt]["nodes"]
 
-        # Ping nodes to see if they're up
-        for node in nodes:
-            if not self.check_node(node):
-                self.logger.warning(
-                    "The node {0} didn't return a response to ping after 5 "
-                    "seconds.  Moving to the next node".format(node))
-                expt_success = False
-                badnodes.append(node)
-                continue
-
-        for roledict in self.myjson[expt]["roles"]:
-            (role, acct), = roledict.items()
-            try:
-                outfile = self.get_proxy(expt, role, acct)
-            except Exception as e:
-                # We couldn't get a proxy - so just move to the next role
-                expt_success = False
-                error_handler(e)
-                continue
-
-            # OK, we got a ticket and a proxy, so let's try to copy
+            # Ping nodes to see if they're up
             for node in nodes:
-                try:
-                    self.copy_proxy(node, acct, expt, outfile)
-                except Exception as e:
-                    error_handler(e)
+                if not self.check_node(node):
+                    self.logger.warning(
+                        "The node {0} didn't return a response to ping after 5 "
+                        "seconds.  Moving to the next node".format(node))
                     expt_success = False
-                    if node in badnodes:
-                        string = "Node {0} didn't respond to pings earlier - " \
-                                 "so it's expected that copying there would fail.".format(node)
-                        self.logger.warn(string)
+                    badnodes.append(node)
+                    continue
 
-        self.remove_expt_log_handler(expt)
+            for roledict in self.myjson[expt]["roles"]:
+                (role, acct), = roledict.items()
+                try:
+                    outfile = self.get_proxy(expt, role, acct)
+                except Exception as e:
+                    # We couldn't get a proxy - so just move to the next role
+                    expt_success = False
+                    error_handler(e)
+                    continue
+
+                # OK, we got a ticket and a proxy, so let's try to copy
+                for node in nodes:
+                    try:
+                        self.copy_proxy(node, acct, expt, outfile)
+                    except Exception as e:
+                        error_handler(e)
+                        expt_success = False
+                        if node in badnodes:
+                            string = "Node {0} didn't respond to pings earlier - " \
+                                     "so it's expected that copying there would fail.".format(node)
+                            self.logger.warn(string)
+
+        # self.remove_expt_log_handler(expt)
 
         return expt_success
 
