@@ -24,8 +24,8 @@ logfile = 'proxy_push.log'
 errfile = 'proxy_push.err'      # Set the temporary output file for errors.  Times in errorfile are local time.
 logger = None
 
-SLACK_ALERTS_URL = 'https://hooks.slack.com/services/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'      # Slack url for #alerts channel in fife-group slack
-# SLACK_ALERTS_URL = 'https://hooks.slack.com/services/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'      # Slack url for #alerts-dev channel in fife-group slack.  Use for testing
+# SLACK_ALERTS_URL = 'https://hooks.slack.com/services/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'      # Slack url for #alerts channel in fife-group slack
+SLACK_ALERTS_URL = 'https://hooks.slack.com/services/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'      # Slack url for #alerts-dev channel in fife-group slack.  Use for testing
 
 # admin_email = 'fife-group@fnal.gov'
 admin_email = 'sbhat@fnal.gov'
@@ -346,10 +346,12 @@ class ManagedProxyPush:
 
     def process_experiment(self, expt):
         """Function to process each experiment, including sending the proxy onto its nodes"""
+        global expt_files
         print 'Now processing ' + expt
+        expt_file = "log_{0}".format(expt)
+        expt_files[expt] = expt_file
+
         # self.add_expt_log_handler(expt)
-<<<<<<< HEAD
-
         with expt_log_active(self.logger, expt, level=logging.WARN):
             badnodes = []
             expt_success = True
@@ -358,17 +360,6 @@ class ManagedProxyPush:
 
             nodes = self.myjson[expt]["nodes"]
 
-=======
-
-        with expt_log_active(self.logger, expt, level=logging.WARN):
-            badnodes = []
-            expt_success = True
-
-            if not self.check_keys(expt): return False
-
-            nodes = self.myjson[expt]["nodes"]
-
->>>>>>> 1082323a4f372cfb227e3666d4c8a9aedb9d5ea5
             # Ping nodes to see if they're up
             for node in nodes:
                 if not self.check_node(node):
