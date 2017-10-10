@@ -26,8 +26,8 @@ logger = None
 SLACK_ALERTS_URL = 'https://hooks.slack.com/services/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'      # Slack url for #alerts channel in fife-group slack
 # SLACK_ALERTS_URL = 'https://hooks.slack.com/services/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'      # Slack url for #alerts-dev channel in fife-group slack.  Use for testing
 
-admin_email = 'fife-group@fnal.gov'
-# admin_email = 'sbhat@fnal.gov'
+# admin_email = 'fife-group@fnal.gov'
+admin_email = 'sbhat@fnal.gov'
 # admin_email = 'kherner@fnal.gov'
 
 # Displays who is running this script.  Will not allow running as root
@@ -42,20 +42,43 @@ CERT_BASE_DIR = "/opt/gen_push_proxy/certs"
 # Experiments that have their own VOMS server
 expt_vos = ["des", "dune"]
 
+# Experiment log file dict
+expt_files = {}
+
+# Global configuration
+config = None
+
 # Functions
 
+def loadjson(infile):
+    """Load config from json file"""
+    with open(infile, 'r') as proxylist:
+        myjson = json.load(proxylist)
+    return myjson
 
-def sendemail():
+# Sending notification functions
+def sendemail(expt=None):
     """Function to send email after message string is populated."""
-    with open(errfile, 'r') as f:
+    global config, expt_files
+
+    error_file = errfile if expt is None else expt_files[expt]
+
+    with open(error_file, 'r') as f:
         message = f.read()
 
     sender = 'fife-group@fnal.gov'
-    to = admin_email
+    to = admin_email if expt is None else config[expt]['emails']
     msg = MIMEText(message)
-    msg['To'] = email.utils.formataddr(('FIFE GROUP', to))
-    msg['From'] = email.utils.formataddr(('FIFEUTILGPVM01', sender))
-    msg['Subject'] = "proxy_push.py errors"
+
+    if expt is None:
+        msg['To'] = email.utils.formataddr(('FIFE GROUP', to))
+    else:
+        msg['To'] = ', '.join(to)
+
+    msg['From'] = email.utils.formataddr(('FIFE GROUP', sender))
+
+    expt_subj_string = " for {0}".format(expt) if expt is not None else ""
+    msg['Subject'] = "Managed Proxy Push errors{0}".format(expt_subj_string)
 
     try:
         smtpObj = smtplib.SMTP('smtp.fnal.gov')
@@ -71,7 +94,6 @@ def sendemail():
             print err
         raise
 
-
 def sendslackmessage():
     """Function to send notification to fife-group #alerts slack channel"""
     with open(errfile, 'r') as f:
@@ -86,44 +108,68 @@ def sendslackmessage():
     if r.status_code != requests.codes.ok:
         errmsg = "Could not send slack message.  " \
                  "Status code {0}, response text {1}".format(
-                    r.status_code, r.text)
+                     r.status_code, r.text)
         if logger is not None:
             error_handler(errmsg)
         else:
             print errmsg
 
 
+# Handling logfiles
 def setup_logger(name):
     """Sets up the logger"""
-    global logger
+    global logger, expt_files
+
+    handler_list = []
+
     # Create Logger
     logger = logging.getLogger(name)
     logger.setLevel(logging.DEBUG)
 
     # Console handler - info
     ch = logging.StreamHandler()
+    ch.set_name('Stream Handler')
     ch.setLevel(logging.INFO)
+    handler_list.append(ch)
 
     # Logfile Handler
     lh = RotatingFileHandler(logfile, maxBytes=2097152, backupCount=3)
+    lh.set_name('Logfile Handler')
     lh.setLevel(logging.DEBUG)
     logfileformat = logging.Formatter(
         "%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     lh.setFormatter(logfileformat)
+    handler_list.append(lh)
 
-    # Errorfile Handler
+    # Error file
     eh = logging.FileHandler(errfile)
+    eh.set_name("Temporary Error File handler")
     eh.setLevel(logging.WARNING)
     errfileformat = logging.Formatter(
         "%(asctime)s - %(levelname)s - %(message)s")
     eh.setFormatter(errfileformat)
+    handler_list.append(eh)
 
-    for handler in [ch, lh, eh]:
+    for handler in handler_list:
         logger.addHandler(handler)
+
+    # We will be adding and deleting experiment-specific loggers later, whose names will be None.  Make sure these won't get accidentally deleted later on
+    for handler in logger.handlers:
+        assert handler.get_name() is not None
 
     return logger
 
+def remove_expt_logs():
+    """Removes all the temporary experiment logfiles"""
+    global logger, expt_files
+    for f in expt_files.itervalues():
+        try:
+            remove(f)
+        except OSError as e:
+            error_handler(e)
 
+
+# Error handling
 def error_handler(exception):
     """Splits out any error into the right error streams"""
     if logger is not None:
@@ -136,9 +182,7 @@ def error_handler(exception):
 class ManagedProxyPush:
     """Class that holds all of the procedures/methods to push proxies and do
     necessary checks"""
-    def __init__(self, logger=None):
-        self.logger = logger
-
+    def __init__(self, myjson, logger=None):
         try:
             assert self.check_user()
         except AssertionError:
@@ -146,14 +190,15 @@ class ManagedProxyPush:
                 should_runuser)
             raise AssertionError(err)
 
+        self.myjson = myjson
+
+        self.logger = logger
+        if self.logger is None:
+            # Set up a dummy logger if we don't explicitly give it one
+            self.logger = logging.getLogger(self.__class__.__name__)
+
         self.locenv = environ.copy()
         self.locenv['KRB5CCNAME'] = KRB5CCNAME
-
-        try:
-            self.myjson = self.loadjson(inputfile)
-        except Exception as e:
-            err = 'Could not load json file.  Error is {0}'.format(e)
-            raise Exception(err)
 
         try:
             self.kerb_ticket_obtain()
@@ -162,7 +207,6 @@ class ManagedProxyPush:
                   'may be unable to push proxies.  Error was {0}\n'.format(e)
             self.logger.warning(err)
 
-
     @staticmethod
     def check_user():
         """Exit if user running script is not the authorized user"""
@@ -170,12 +214,28 @@ class ManagedProxyPush:
         print "Running script as {0}.".format(runuser)
         return runuser == should_runuser
 
-    @staticmethod
-    def loadjson(infile):
-        """Load config from json file"""
-        with open(infile, 'r') as proxylist:
-            myjson = json.load(proxylist)
-        return myjson
+    def add_expt_log_handler(self, expt):
+        """Adds an experiment-specific logging handler"""
+        global expt_files
+        expt_file = "log_{0}".format(expt)
+        expt_files[expt] = expt_file
+
+        h_expt = logging.FileHandler(expt_file)
+        h_expt.set_name(None)
+        h_expt.setLevel(logging.WARN)
+        errfileformat = logging.Formatter(
+            "%(asctime)s - %(levelname)s - %(message)s")
+        h_expt.setFormatter(errfileformat)
+        self.logger.addHandler(h_expt)
+
+    def remove_expt_log_handler(self, expt):
+        """Remove the experiment-specific logging handler"""
+        try:
+            for hd in self.logger.handlers:
+                if hd.get_name() is None:
+                    self.logger.removeHandler(hd)
+        except Exception as e:
+            self.logger.warn("Couldn't remove logging handler for {0}.  Error was {1}".format(expt, e))
 
     def kerb_ticket_obtain(self):
         """Obtain a ticket based on the special use principal"""
@@ -271,6 +331,7 @@ class ManagedProxyPush:
     def process_experiment(self, expt):
         """Function to process each experiment, including sending the proxy onto its nodes"""
         print 'Now processing ' + expt
+        self.add_expt_log_handler(expt)
 
         badnodes = []
         expt_success = True
@@ -311,6 +372,8 @@ class ManagedProxyPush:
                                  "so it's expected that copying there would fail.".format(node)
                         self.logger.warn(string)
 
+        self.remove_expt_log_handler(expt)
+
         return expt_success
 
     def process_all_experiments(self):
@@ -324,11 +387,19 @@ class ManagedProxyPush:
 
 def main():
     """Main execution module"""
-    global logger
+    global logger, config, expt_files
+
     logger = setup_logger("Managed Proxy Push")
 
     try:
-        m = ManagedProxyPush(logger)
+        config = loadjson(inputfile)
+    except Exception as e:
+        err = 'Could not load json file.  Error is {0}'.format(e)
+        error_handler(err)
+        sys.exit(1)
+
+    try:
+        m = ManagedProxyPush(config, logger)
     except Exception as e:
         error_handler(e)
         sys.exit(1)
@@ -340,9 +411,18 @@ def main():
             error_handler(e)
             sys.exit(1)
     finally:
+        for expt in expt_files:
+            try:
+                sendemail(expt)
+            except Exception as e:
+                error_handler(e)    # Don't exit - just move to the next error file
+                del expt_files[expt]    # When we delete the log files after this loop, we want to keep this logfile around for troubleshooting
+
+        remove_expt_logs()   # Uses expt_files to find what files to delete
+
         try:
             # Get a line count for the tmp err file
-            lc = sum(1 for _ in open(errfile,'r'))
+            lc = sum(1 for _ in open(errfile, 'r'))
             if lc != 0:
                 sendslackmessage()
                 sendemail()
