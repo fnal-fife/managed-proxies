@@ -348,6 +348,7 @@ class ManagedProxyPush:
         """Function to process each experiment, including sending the proxy onto its nodes"""
         print 'Now processing ' + expt
         # self.add_expt_log_handler(expt)
+<<<<<<< HEAD
 
         with expt_log_active(self.logger, expt, level=logging.WARN):
             badnodes = []
@@ -357,6 +358,17 @@ class ManagedProxyPush:
 
             nodes = self.myjson[expt]["nodes"]
 
+=======
+
+        with expt_log_active(self.logger, expt, level=logging.WARN):
+            badnodes = []
+            expt_success = True
+
+            if not self.check_keys(expt): return False
+
+            nodes = self.myjson[expt]["nodes"]
+
+>>>>>>> 1082323a4f372cfb227e3666d4c8a9aedb9d5ea5
             # Ping nodes to see if they're up
             for node in nodes:
                 if not self.check_node(node):
