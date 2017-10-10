@@ -6,7 +6,7 @@
 "genie"    : { "roles" : [ { "Production"  : "geniepro" } ],    "nodes" : [ "geniegpvm01" ], "dir" : "/opt", "emails": ["fife-group@fnal.gov"] },
 "gm2"      : { "roles" : [ { "Production"  : "gm2pro" } ],      "nodes" : [ "gm2gpvm01", "gm2gpvm02", "gm2gpvm03", "gm2gpvm04", "gm2samgpvm01" ], "dir" : "/opt" , "emails": ["fife-group@fnal.gov"]},
 "lariat"   : { "roles" : [ { "Production"  : "lariatpro" } ],   "nodes" : [ "lariatsamgpvm01" ], "dir" : "/opt", "emails": ["fife-group@fnal.gov"] },
-"minerva"  : { "roles" : [ { "Calibration" : "minervacal" }, { "Production" : "minervapro" }, { "Data" : "minervadat" } ], "nodes" : [ "minervagpvm01", "minervagpvm02", "minervagpvm03", "minervagpvm04", "minervagpvm05" ], "dir" : "/opt", "emails": ["fife-group@fnal.gov"] },
+"minerva"  : { "roles" : [ { "Calibration" : "minervacal" }, { "Production" : "minervapro" }, { "Data" : "minervadat" } ], "nodes" : [ "minervagpvm01", "minervagpvm02", "minervagpvm03", "minervagpvm04", "minervagpvm05", "minervagpvm06", "minervagpvm07" ], "dir" : "/opt", "emails": ["fife-group@fnal.gov"] },
 "minos"    : { "roles" : [ { "Production"  : "minospro" } ],    "nodes" : [ "minosdatagpvm01", "minosgpvm05" ], "dir" : "/opt", "emails": ["fife-group@fnal.gov"] },
 "mu2e"     : { "roles" : [ { "Production"  : "mu2epro" } ],     "nodes" : [ "mu2egpvm01", "mu2egpvm02", "mu2egpvm03", "mu2egpvm04", "mu2egpvm05" ], "dir" : "/opt", "emails": ["fife-group@fnal.gov"] },
 "nova"     : { "roles" : [ { "Production"  : "novapro" } ],     "nodes" : [ "novagpvm01", "novagpvm02", "novagpvm03", "novagpvm04", "novagpvm05", "novagpvm06", "novagpvm07"
