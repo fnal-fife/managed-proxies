@@ -431,6 +431,7 @@ def main():
             error_handler(e)
             sys.exit(1)
     finally:
+        expt_files_to_keep = []
         for expt, f in expt_files.iteritems():
             lc = sum(1 for _ in open(f, 'r'))
             if lc != 0:
@@ -438,7 +439,9 @@ def main():
                     sendemail(expt)
                 except Exception as e:
                     error_handler(e)    # Don't exit - just move to the next error file
-            del expt_files[expt]    # When we delete the log files after this loop, we want to keep this logfile around for troubleshooting
+                    expt_files_to_keep.append(expt)
+            # del expt_files[expt]    # When we delete the log files after this loop, we want to keep this logfile around for troubleshooting
+        for e in expt_files_to_keep: del expt_files[e]
 
         remove_expt_logs()   # Uses expt_files to find what files to delete
 
