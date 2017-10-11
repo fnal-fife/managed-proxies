@@ -117,6 +117,40 @@ def sendslackmessage():
             print errmsg
 
 
+def send_all_notifications():
+    """Function to send all notifications"""
+    global expt_files, logger 
+    expt_files_to_keep = []
+
+    # Experiment-specific emails
+    for expt, f in expt_files.iteritems():
+        # Get line count for experiment-specific log file
+        lc = sum(1 for _ in open(f, 'r'))
+        if lc != 0:
+            try:
+                sendemail(expt)
+            except Exception as e:
+                error_handler(e)    # Don't exit - just move to the next error file
+                expt_files_to_keep.append(expt)
+
+    for e in expt_files_to_keep: del expt_files[e]
+
+    remove_expt_logs()   # Uses expt_files to find what files to delete
+
+    # General email and Slack
+    try:
+        # Get a line count for the tmp err file
+        lc = sum(1 for _ in open(errfile, 'r'))
+        if lc != 0:
+            sendslackmessage()
+            sendemail()
+        remove(errfile)
+    except IOError:     # File doesn't exist - so no errors
+        pass
+
+    logger.info("All notifications sent")
+
+
 # Handling logfiles
 def setup_logger(name):
     """Sets up the logger"""
@@ -329,7 +363,6 @@ class ManagedProxyPush:
         expt_file = "log_{0}".format(expt)
         expt_files[expt] = expt_file
 
-        # self.add_expt_log_handler(expt)
         with expt_log_active(self.logger, expt, level=logging.WARN):
             badnodes = []
             expt_success = True
@@ -373,8 +406,6 @@ class ManagedProxyPush:
                                      "so it's expected that copying there would fail.".format(node)
                             self.logger.warn(string)
 
-        # self.remove_expt_log_handler(expt)
-
         return expt_success
 
     def process_all_experiments(self):
@@ -412,29 +443,33 @@ def main():
             error_handler(e)
             sys.exit(1)
     finally:
-        expt_files_to_keep = []
-        for expt, f in expt_files.iteritems():
-            lc = sum(1 for _ in open(f, 'r'))
-            if lc != 0:
-                try:
-                    sendemail(expt)
-                except Exception as e:
-                    error_handler(e)    # Don't exit - just move to the next error file
-                    expt_files_to_keep.append(expt)
-
-        for e in expt_files_to_keep: del expt_files[e]
-
-        remove_expt_logs()   # Uses expt_files to find what files to delete
-
-        try:
-            # Get a line count for the tmp err file
-            lc = sum(1 for _ in open(errfile, 'r'))
-            if lc != 0:
-                sendslackmessage()
-                sendemail()
-            remove(errfile)
-        except IOError:     # File doesn't exist - so no errors
-            pass
+#        expt_files_to_keep = []
+#        for expt, f in expt_files.iteritems():
+#            # Get line count for experiment-specific log file
+#            lc = sum(1 for _ in open(f, 'r'))
+#            if lc != 0:
+#                try:
+#                    sendemail(expt)
+#                except Exception as e:
+#                    error_handler(e)    # Don't exit - just move to the next error file
+#                    expt_files_to_keep.append(expt)
+#
+#        for e in expt_files_to_keep: del expt_files[e]
+#
+#        remove_expt_logs()   # Uses expt_files to find what files to delete
+#
+#        try:
+#            # Get a line count for the tmp err file
+#            lc = sum(1 for _ in open(errfile, 'r'))
+#            if lc != 0:
+#                sendslackmessage()
+#                sendemail()
+#            remove(errfile)
+#        except IOError:     # File doesn't exist - so no errors
+#            pass
+#
+#        logger.info("All notifications sent")
+        send_all_notifications()
 
 
 if __name__ == '__main__':
