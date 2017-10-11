@@ -431,7 +431,7 @@ def main():
             error_handler(e)
             sys.exit(1)
     finally:
-        for expt, f in expt_files.iteritems():
+        for expt, f in expt_files.viewitems():
             lc = sum(1 for _ in open(f, 'r'))
             if lc != 0:
                 try:
