@@ -121,12 +121,14 @@ def send_all_notifications():
     """Function to send all notifications"""
     global expt_files, logger 
     expt_files_to_keep = []
+    exists_error = False
 
     # Experiment-specific emails
     for expt, f in expt_files.iteritems():
         # Get line count for experiment-specific log file
         lc = sum(1 for _ in open(f, 'r'))
         if lc != 0:
+            exist_error = True
             try:
                 sendemail(expt)
             except Exception as e:
@@ -142,13 +144,15 @@ def send_all_notifications():
         # Get a line count for the tmp err file
         lc = sum(1 for _ in open(errfile, 'r'))
         if lc != 0:
+            exists_error = True
             sendslackmessage()
             sendemail()
         remove(errfile)
     except IOError:     # File doesn't exist - so no errors
         pass
 
-    logger.info("All notifications sent")
+    msg = "All notifications sent" if exists_error else "No notifications to send"
+    logger.info(msg)
 
 
 # Handling logfiles
