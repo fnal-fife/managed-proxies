@@ -67,6 +67,12 @@ def sendemail(expt=None):
     with open(error_file, 'r') as f:
         message = f.read()
 
+    info_msg = '\n\nIf you have any questions about these emails, '\
+        'please open a Service Desk ticket to the Distributed Computing '\
+        'Support group.' if expt is not None else ''
+
+    message += info_msg
+
     sender = 'fife-group@fnal.gov'
     to = admin_email if expt is None else config[expt]['emails']
     msg = MIMEText(message)
@@ -119,7 +125,7 @@ def sendslackmessage():
 
 def send_all_notifications():
     """Function to send all notifications"""
-    global expt_files, logger 
+    global expt_files, logger
     expt_files_to_keep = []
     exists_error = False
 
@@ -128,7 +134,7 @@ def send_all_notifications():
         # Get line count for experiment-specific log file
         lc = sum(1 for _ in open(f, 'r'))
         if lc != 0:
-            exist_error = True
+            exists_error = True
             try:
                 sendemail(expt)
             except Exception as e:
