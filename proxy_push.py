@@ -423,7 +423,7 @@ class ManagedProxyPush:
 
 def main():
     """Main execution module"""
-    global logger, config, expt_files
+    global logger, config
 
     logger = setup_logger("Managed Proxy Push")
 
