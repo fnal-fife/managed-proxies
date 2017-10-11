@@ -95,6 +95,7 @@ def sendemail(expt=None):
             print err
         raise
 
+
 def sendslackmessage():
     """Function to send notification to fife-group #alerts slack channel"""
     with open(errfile, 'r') as f:
@@ -194,7 +195,7 @@ def error_handler(exception):
     else:
         print exception, format_exc()
 
-
+# Pushing proxy
 class ManagedProxyPush:
     """Class that holds all of the procedures/methods to push proxies and do
     necessary checks"""
@@ -230,29 +231,6 @@ class ManagedProxyPush:
         print "Running script as {0}.".format(runuser)
         return runuser == should_runuser
 
-#    def add_expt_log_handler(self, expt):
-#        """Adds an experiment-specific logging handler"""
-#        global expt_files
-#        expt_file = "log_{0}".format(expt)
-#        expt_files[expt] = expt_file
-#
-#        h_expt = logging.FileHandler(expt_file)
-#        h_expt.set_name(None)
-#        h_expt.setLevel(logging.WARN)
-#        errfileformat = logging.Formatter(
-#            "%(asctime)s - %(levelname)s - %(message)s")
-#        h_expt.setFormatter(errfileformat)
-#        self.logger.addHandler(h_expt)
-#
-#    def remove_expt_log_handler(self, expt):
-#        """Remove the experiment-specific logging handler"""
-#        try:
-#            for hd in self.logger.handlers:
-#                if hd.get_name() is None:
-#                    self.logger.removeHandler(hd)
-#        except Exception as e:
-#            self.logger.warn("Couldn't remove logging handler for {0}.  Error was {1}".format(expt, e))
-
     def kerb_ticket_obtain(self):
         """Obtain a ticket based on the special use principal"""
         kerbcmd = ['/usr/krb5/bin/kinit', '-k', '-t',
@@ -266,7 +244,7 @@ class ManagedProxyPush:
                 or "nodes" not in self.myjson[expt].keys():
             err = "Error: input file improperly formatted for {0}" \
                   " (roles or nodes don't exist for this experiment)." \
-                  " Please check ~rexbatch/gen_push_proxy/input_file.json" \
+                  " Please check the config file" \
                   " on fifeutilgpvm01. I will skip this experiment for now." \
                   "\n".format(expt)
             error_handler(err)
@@ -303,7 +281,7 @@ class ManagedProxyPush:
         try:
             self.check_output_mod(vpi_args)
         except Exception:
-            err = "Error obtaining {0}.  Please check the cert in {1} on " \
+            err = "Error obtaining {0}.  Please check the cert on " \
                   "fifeutilgpvm01. " \
                   "Continuing on to next role.".format(outfile, CERT_BASE_DIR)
             raise Exception(err)
@@ -365,7 +343,10 @@ class ManagedProxyPush:
                 if not self.check_node(node):
                     self.logger.warning(
                         "The node {0} didn't return a response to ping after 5 "
-                        "seconds.  Moving to the next node".format(node))
+                        "seconds.  Please investigate, and see if the node is up. "
+                        "It may be necessary for the experiment to request via a ServiceNow ticket "
+                        "that the Scientific Server Infrastructure group reboot "
+                        "the node. Moving to the next node".format(node))
                     expt_success = False
                     badnodes.append(node)
                     continue
@@ -440,7 +421,7 @@ def main():
                 except Exception as e:
                     error_handler(e)    # Don't exit - just move to the next error file
                     expt_files_to_keep.append(expt)
-            # del expt_files[expt]    # When we delete the log files after this loop, we want to keep this logfile around for troubleshooting
+
         for e in expt_files_to_keep: del expt_files[e]
 
         remove_expt_logs()   # Uses expt_files to find what files to delete
