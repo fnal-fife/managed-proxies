@@ -13,12 +13,15 @@ import smtplib
 import email.utils
 from email.mime.text import MIMEText
 from contextlib import contextmanager
+import argparse
 
 
 # Global Variables
 
-# JSON input file
-inputfile = 'input_file.json'
+# # JSON input file
+# inputfile = 'input_file.json'
+# Config file
+inputfile = 'proxy_push_config.yml'
 
 # Logging/Error handling variables.
 # logfile = 'proxy_push.log'
@@ -48,12 +51,28 @@ config = None               # Global configuration
 
 # Functions
 
-def load_config(infile):
+def load_config(infile, test=False):
     """Load config into dict from config file"""
     global config
     with open(infile, 'r') as f:
         config = yaml.load(f)
 
+    # If we're running test, use test parameters
+    if test:
+        config['notifications'] = config['notifications_test']
+
+    del config['notifications_test']
+
+
+def parse_arguments():
+    """Parse arguments to this script"""
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-e", "--experiment", type=str,
+            help="Push for a single experiment (NOT FUNCTIONAL YET)")
+    parser.add_argument("-c", "--config", type=str,
+            help="Alternate config file (not functional yet!)", default=inputfile)
+    parser.add_argument("-t", "--test", action="store_true", default=False)
+    return parser.parse_args()
 
 # def loadjson(infile):
 #    """Load config from json file"""
@@ -442,10 +461,12 @@ def main():
     """Main execution module"""
     global logger, config
 
+    args = parse_arguments()
+
     logger = setup_logger("Managed Proxy Push")
 
     try:
-        load_config(inputfile)
+        load_config(inputfile, args.test)
     except Exception as e:
         err = 'Could not load config file.  Error is {0}'.format(e)
         error_handler(err)
