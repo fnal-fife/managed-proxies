@@ -8,7 +8,7 @@
 "lariat"   : { "roles" : [ { "Production"  : "lariatpro" } ],   "nodes" : [ "lariatsamgpvm01" ], "dir" : "/opt", "emails": ["wenzel@fnal.gov", "sbhat@fnal.gov"] },
 "minerva"  : { "roles" : [ { "Calibration" : "minervacal" }, { "Production" : "minervapro" }, { "Data" : "minervadat" } ], "nodes" : [ "minervagpvm01", "minervagpvm02", "minervagpvm03", "minervagpvm04", "minervagpvm05", "minervagpvm06", "minervagpvm07" ], "dir" : "/opt", "emails": ["perdue@fnal.gov", "sbhat@fnal.gov"] },
 "minos"    : { "roles" : [ { "Production"  : "minospro" } ],    "nodes" : [ "minosdatagpvm01", "minosgpvm05" ], "dir" : "/opt", "emails": ["kreymer@fnal.gov", "sbhat@fnal.gov"] },
-"mu2e"     : { "roles" : [ { "Production"  : "mu2epro" } ],     "nodes" : [ "mu2egpvm01", "mu2egpvm02", "mu2egpvm03", "mu2egpvm04", "mu2egpvm05", "mu2egpvm06" ], "dir" : "/opt", "emails": ["kutschke@fnal.gov", "rlc@fnal.gov", "gandr@fnal.gov", "sbhat@fnal.gov"] },
+"mu2e"     : { "roles" : [ { "Production"  : "mu2epro" } ],     "nodes" : [ "mu2egpvm01", "mu2egpvm02", "mu2egpvm03", "mu2egpvm04", "mu2egpvm05", "mu2egpvm06", "mu2egpvmtest" ], "dir" : "/opt", "emails": ["kutschke@fnal.gov", "rlc@fnal.gov", "gandr@fnal.gov", "sbhat@fnal.gov"] },
 "nova"     : { "roles" : [ { "Production"  : "novapro" } ],     "nodes" : [ "novagpvm01", "novagpvm02", "novagpvm03", "novagpvm04", "novagpvm05", "novagpvm06", "novagpvm07"
 , "novagpvm08", "novagpvm09", "novagpvm10", "novagpvm11", "novagpvm12", "novagpvm13", "novagpvm14", "novagpvm15", "novadqgpvm01" ], "dir" : "/opt" , "emails": ["dingpf@fnal.gov", "sbhat@fnal.gov"]},
 "sbnd"     : { "roles" : [ { "Production"  : "sbndpro" } ],     "nodes" : [ "sbndgpvm01", "sbndgpvm02", "sbndgpvm03" ], "dir" : "/opt" , "emails": ["petrillo@fnal.gov", "sbhat@fnal.gov"]},
