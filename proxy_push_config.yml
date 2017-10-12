@@ -91,7 +91,7 @@ experiments:
   mu2e:
     dir: /opt
     emails: [kutschke@fnal.gov, rlc@fnal.gov, gandr@fnal.gov, sbhat@fnal.gov]
-    nodes: [mu2egpvm01, mu2egpvm02, mu2egpvm03, mu2egpvm04, mu2egpvm05, mu2egpvm06]
+    nodes: [mu2egpvm01, mu2egpvm02, mu2egpvm03, mu2egpvm04, mu2egpvm05, mu2egpvm06, mu2egpvmtest]
     roles:
       - Production: mu2epro
   nova:
