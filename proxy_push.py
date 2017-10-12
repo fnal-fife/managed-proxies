@@ -17,37 +17,10 @@ import argparse
 
 
 # Global Variables
-
-# # JSON input file
-# inputfile = 'input_file.json'
-# Config file
-inputfile = 'proxy_push_config.yml'
-
-# Logging/Error handling variables.
-# logfile = 'proxy_push.log'
-# errfile = 'proxy_push.err'      # Set the temporary output file for errors.  Times in errorfile are local time.
+inputfile = 'proxy_push_config.yml'     # Default Config file
 logger = None
 expt_files = {}             # Experiment log file dict
 config = None               # Global configuration
-
-# SLACK_ALERTS_URL = 'https://hooks.slack.com/services/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'      # Slack url for #alerts channel in fife-group slack
-# SLACK_ALERTS_URL = 'https://hooks.slack.com/services/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'      # Slack url for #alerts-dev channel in fife-group slack.  Use for testing
-
-# admin_email = 'fife-group@fnal.gov'
-# admin_email = 'sbhat@fnal.gov'
-# admin_email = 'kherner@fnal.gov'
-
-# Displays who is running this script.  Will not allow running as root
-# should_runuser = 'rexbatch'
-#
-# # What the env variable KRB5CCNAME should be set to
-# KRB5CCNAME = "FILE:/tmp/krb5cc_push_proxy"
-#
-# # base location for certs/keys
-# CERT_BASE_DIR = "/opt/gen_push_proxy/certs"
-#
-# # Experiments that have their own VOMS server
-# expt_vos = ["des", "dune"]
 
 # Functions
 
@@ -74,18 +47,11 @@ def parse_arguments():
     parser.add_argument("-t", "--test", action="store_true", default=False)
     return parser.parse_args()
 
-# def loadjson(infile):
-#    """Load config from json file"""
-#    with open(infile, 'r') as proxylist:
-#        myjson = json.load(proxylist)
-#    return myjson
-
 
 # Sending notification functions
 def sendemail(expt=None):
     """Function to send email after message string is populated."""
     global config, expt_files
-
     error_file = config['logs']['errfile'] if expt is None else expt_files[expt]
 
     with open(error_file, 'r') as f:
@@ -94,7 +60,6 @@ def sendemail(expt=None):
     info_msg = '\n\nIf you have any questions about these emails, '\
         'please open a Service Desk ticket to the Distributed Computing '\
         'Support group.' if expt is not None else ''
-
     message += info_msg
 
     sender = 'fife-group@fnal.gov'
