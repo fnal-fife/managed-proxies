@@ -316,8 +316,8 @@ class ManagedProxyPush:
 
     def check_keys(self, expt):
         """Make sure our JSON file has nodes and roles for the experiment"""
-        if "roles" not in self.config[expt].keys() \
-                or "nodes" not in self.config[expt].keys():
+        if "roles" not in self.config['experiments'][expt].keys() \
+                or "nodes" not in self.config['experiments'][expt].keys():
             err = "Error: input file improperly formatted for {0}" \
                   " (roles or nodes don't exist for this experiment)." \
                   " Please check the config file" \
