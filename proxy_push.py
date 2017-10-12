@@ -464,16 +464,15 @@ def main():
 
     args = parse_arguments()
 
-    logger = setup_logger("Managed Proxy Push")
-    configfile = args.config
-    logger.info("Using config file {0}".format(configfile))
-
     try:
-        load_config(configfile, args.test)
+        load_config(args.config, args.test)
     except Exception as e:
         err = 'Could not load config file.  Error is {0}'.format(e)
         error_handler(err)
         sys.exit(1)
+
+    logger = setup_logger("Managed Proxy Push")
+    logger.info("Using config file {0}".format(args.config))
 
     try:
         m = ManagedProxyPush(config, logger)
