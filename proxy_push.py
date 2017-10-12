@@ -41,7 +41,7 @@ def parse_arguments():
     """Parse arguments to this script"""
     parser = argparse.ArgumentParser()
     parser.add_argument("-e", "--experiment", type=str,
-            help="Push for a single experiment (NOT FUNCTIONAL YET)")
+            help="Push for a single experiment")
     parser.add_argument("-c", "--config", type=str,
             help="Alternate config file", default=inputfile)
     parser.add_argument("-t", "--test", action="store_true", default=False)
@@ -449,7 +449,11 @@ def main():
     else:   # We instantiated the ManagedProxyPush class, with all its checks
         try:
             # Now let's actually process the experiments
-            m.process_all_experiments()
+            if args.experiment:
+                # If we've specified one experiment
+                m.process_experiment(args.experiment)
+            else:
+                m.process_all_experiments()
         except Exception as e:
             error_handler(e)
             sys.exit(1)
