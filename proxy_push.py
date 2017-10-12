@@ -452,6 +452,7 @@ def main():
             if args.experiment:
                 # If we've specified one experiment
                 m.process_experiment(args.experiment)
+                logger.info("Successfully pushed proxy for {0}".format(args.experiment))
             else:
                 m.process_all_experiments()
         except Exception as e:
