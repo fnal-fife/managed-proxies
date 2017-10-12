@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import subprocess
 import json
+import yaml
 import sys
 import logging
 import requests
@@ -20,42 +21,45 @@ from contextlib import contextmanager
 inputfile = 'input_file.json'
 
 # Logging/Error handling variables.
-logfile = 'proxy_push.log'
-errfile = 'proxy_push.err'      # Set the temporary output file for errors.  Times in errorfile are local time.
+# logfile = 'proxy_push.log'
+# errfile = 'proxy_push.err'      # Set the temporary output file for errors.  Times in errorfile are local time.
 logger = None
+expt_files = {}             # Experiment log file dict
+config = None               # Global configuration
 
-SLACK_ALERTS_URL = 'https://hooks.slack.com/services/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'      # Slack url for #alerts channel in fife-group slack
+# SLACK_ALERTS_URL = 'https://hooks.slack.com/services/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'      # Slack url for #alerts channel in fife-group slack
 # SLACK_ALERTS_URL = 'https://hooks.slack.com/services/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'      # Slack url for #alerts-dev channel in fife-group slack.  Use for testing
 
-admin_email = 'fife-group@fnal.gov'
+# admin_email = 'fife-group@fnal.gov'
 # admin_email = 'sbhat@fnal.gov'
 # admin_email = 'kherner@fnal.gov'
 
 # Displays who is running this script.  Will not allow running as root
-should_runuser = 'rexbatch'
-
-# # grab the initial environment
-KRB5CCNAME = "FILE:/tmp/krb5cc_push_proxy"
-
-# base location for certs/keys
-CERT_BASE_DIR = "/opt/gen_push_proxy/certs"
-
-# Experiments that have their own VOMS server
-expt_vos = ["des", "dune"]
-
-# Experiment log file dict
-expt_files = {}
-
-# Global configuration
-config = None
+# should_runuser = 'rexbatch'
+#
+# # What the env variable KRB5CCNAME should be set to
+# KRB5CCNAME = "FILE:/tmp/krb5cc_push_proxy"
+#
+# # base location for certs/keys
+# CERT_BASE_DIR = "/opt/gen_push_proxy/certs"
+#
+# # Experiments that have their own VOMS server
+# expt_vos = ["des", "dune"]
 
 # Functions
 
-def loadjson(infile):
-    """Load config from json file"""
-    with open(infile, 'r') as proxylist:
-        myjson = json.load(proxylist)
-    return myjson
+def load_config(infile):
+    """Load config into dict from config file"""
+    global config
+    with open(infile, 'r') as f:
+        config = yaml.load(f)
+
+
+# def loadjson(infile):
+#    """Load config from json file"""
+#    with open(infile, 'r') as proxylist:
+#        myjson = json.load(proxylist)
+#    return myjson
 
 
 # Sending notification functions
@@ -63,7 +67,7 @@ def sendemail(expt=None):
     """Function to send email after message string is populated."""
     global config, expt_files
 
-    error_file = errfile if expt is None else expt_files[expt]
+    error_file = config['logs']['errfile'] if expt is None else expt_files[expt]
 
     with open(error_file, 'r') as f:
         message = f.read()
@@ -75,7 +79,7 @@ def sendemail(expt=None):
     message += info_msg
 
     sender = 'fife-group@fnal.gov'
-    to = admin_email if expt is None else config[expt]['emails']
+    to = config['notifications']['admin_email'] if expt is None else config['experiments'][expt]['emails']
     msg = MIMEText(message)
 
     if expt is None:
@@ -105,13 +109,13 @@ def sendemail(expt=None):
 
 def sendslackmessage():
     """Function to send notification to fife-group #alerts slack channel"""
-    with open(errfile, 'r') as f:
+    with open(config['logs']['errfile'], 'r') as f:
         payloadtext = f.read()
 
     payload = {"text": payloadtext}
     headers = {"Content-type": "application/json"}
 
-    r = requests.post(SLACK_ALERTS_URL, data=json.dumps(payload),
+    r = requests.post(config['notifications']['SLACK_ALERTS_URL'], data=json.dumps(payload),
                       headers=headers)
 
     if r.status_code != requests.codes.ok:
@@ -126,7 +130,7 @@ def sendslackmessage():
 
 def send_all_notifications():
     """Function to send all notifications"""
-    global expt_files, logger
+    global expt_files   # , logger
     expt_files_to_keep = []
     exists_error = False
 
@@ -149,6 +153,7 @@ def send_all_notifications():
     # General email and Slack
     try:
         # Get a line count for the tmp err file
+        errfile = config['logs']['errfile']
         lc = sum(1 for _ in open(errfile, 'r'))
         if lc != 0:
             exists_error = True
@@ -168,6 +173,8 @@ def setup_logger(name):
     global logger, expt_files
 
     handler_list = []
+    logfile = config['logs']['logfile']
+    errfile = config['logs']['errfile']
 
     # Create Logger
     logger = logging.getLogger(name)
@@ -245,23 +252,26 @@ def error_handler(exception):
 class ManagedProxyPush:
     """Class that holds all of the procedures/methods to push proxies and do
     necessary checks"""
-    def __init__(self, myjson, logger=None):
-        try:
-            assert self.check_user()
-        except AssertionError:
-            err = "This script must be run as {0}. Exiting.".format(
-                should_runuser)
-            raise AssertionError(err)
+    def __init__(self, config, logger=None):
+        self.config = config
 
-        self.myjson = myjson
+        for key, item in self.config['global'].iteritems():
+            setattr(self, key, item)
+
+        try:
+            assert self.check_user(self.should_runuser)
+        except AssertionError:
+            err = "This script must be run as {0}. Exiting.".format(self.should_runuser)
+            raise AssertionError(err)
 
         self.logger = logger
         if self.logger is None:
             # Set up a dummy logger if we don't explicitly give it one
             self.logger = logging.getLogger(self.__class__.__name__)
 
+        # grab the initial environment
         self.locenv = environ.copy()
-        self.locenv['KRB5CCNAME'] = KRB5CCNAME
+        self.locenv['KRB5CCNAME'] = self.KRB5CCNAME
 
         try:
             self.kerb_ticket_obtain()
@@ -271,11 +281,11 @@ class ManagedProxyPush:
             self.logger.warning(err)
 
     @staticmethod
-    def check_user():
+    def check_user(testuser):
         """Exit if user running script is not the authorized user"""
         runuser = getpwuid(geteuid())[0]
         print "Running script as {0}.".format(runuser)
-        return runuser == should_runuser
+        return runuser == testuser
 
     def kerb_ticket_obtain(self):
         """Obtain a ticket based on the special use principal"""
@@ -286,8 +296,8 @@ class ManagedProxyPush:
 
     def check_keys(self, expt):
         """Make sure our JSON file has nodes and roles for the experiment"""
-        if "roles" not in self.myjson[expt].keys() \
-                or "nodes" not in self.myjson[expt].keys():
+        if "roles" not in self.config[expt].keys() \
+                or "nodes" not in self.config[expt].keys():
             err = "Error: input file improperly formatted for {0}" \
                   " (roles or nodes don't exist for this experiment)." \
                   " Please check the config file" \
@@ -313,14 +323,13 @@ class ManagedProxyPush:
 
         Returns proxy path (outfile) if proxy was successfully generated
         """
-
-        voms_prefix = '{0}:/'.format(expt) if expt in expt_vos else 'fermilab:/fermilab/'
+        voms_prefix = '{0}:/'.format(expt) if expt in self.expt_vos else 'fermilab:/fermilab/'
         voms_string = '{0}{1}/Role={2}'.format(voms_prefix, expt, voms_role)
 
         outfile = account + '.' + voms_role + '.proxy'
         vpi_args = ["/usr/bin/voms-proxy-init", '-rfc', '-valid', '24:00', '-voms',
-                    voms_string, '-cert' , CERT_BASE_DIR + '/' + account + '.cert',
-                    '-key', CERT_BASE_DIR + '/' + account + '.key', '-out',
+                    voms_string, '-cert' , self.CERT_BASE_DIR + '/' + account + '.cert',
+                    '-key', self.CERT_BASE_DIR + '/' + account + '.key', '-out',
                     'proxies/' + outfile]
 
         # do voms-proxy-init now
@@ -329,7 +338,7 @@ class ManagedProxyPush:
         except Exception:
             err = "Error obtaining {0}.  Please check the cert on " \
                   "fifeutilgpvm01. " \
-                  "Continuing on to next role.".format(outfile, CERT_BASE_DIR)
+                  "Continuing on to next role.".format(outfile, self.CERT_BASE_DIR)
             raise Exception(err)
         return outfile
 
@@ -347,9 +356,9 @@ class ManagedProxyPush:
         k5login_check = 'ssh ' + account + '@' + node + ' cat .k5login'
         nNames = -1
         """
-        dest = account + '@' + node + ':' + self.myjson[expt]["dir"] + '/' + account + '/' + outfile
-        newproxy = self.myjson[expt]["dir"] + '/' + account + '/' + outfile + '.new'
-        oldproxy = self.myjson[expt]["dir"] + '/' + account + '/' + outfile
+        dest = account + '@' + node + ':' + self.config[expt]["dir"] + '/' + account + '/' + outfile
+        newproxy = self.config[expt]["dir"] + '/' + account + '/' + outfile + '.new'
+        oldproxy = self.config[expt]["dir"] + '/' + account + '/' + outfile
         scp_cmd = ['scp', '-o', 'ConnectTimeout=30', 'proxies/' + outfile, dest + '.new']
         chmod_cmd = ['ssh', '-ak', '-o', 'ConnectTimeout=30', account + '@' + node,
                      'chmod 400 {0} ; mv -f {1} {2}'.format(newproxy, newproxy, oldproxy)]
@@ -381,7 +390,7 @@ class ManagedProxyPush:
 
             if not self.check_keys(expt): return False
 
-            nodes = self.myjson[expt]["nodes"]
+            nodes = self.config['experiments'][expt]['nodes']
 
             # Ping nodes to see if they're up
             for node in nodes:
@@ -396,7 +405,7 @@ class ManagedProxyPush:
                     badnodes.append(node)
                     continue
 
-            for roledict in self.myjson[expt]["roles"]:
+            for roledict in self.config['experiments'][expt]['roles']:
                 (role, acct), = roledict.items()
                 try:
                     outfile = self.get_proxy(expt, role, acct)
@@ -422,7 +431,7 @@ class ManagedProxyPush:
 
     def process_all_experiments(self):
         """Main execution method to process all experiments"""
-        successful_expts = (expt for expt in self.myjson.iterkeys()
+        successful_expts = (expt for expt in self.config['experiments'].iterkeys()
                             if self.process_experiment(expt))
 
         self.logger.info("This run completed successfully for the following "
@@ -436,9 +445,9 @@ def main():
     logger = setup_logger("Managed Proxy Push")
 
     try:
-        config = loadjson(inputfile)
+        load_config(inputfile)
     except Exception as e:
-        err = 'Could not load json file.  Error is {0}'.format(e)
+        err = 'Could not load config file.  Error is {0}'.format(e)
         error_handler(err)
         sys.exit(1)
 
