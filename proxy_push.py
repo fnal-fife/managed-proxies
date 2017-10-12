@@ -70,7 +70,7 @@ def parse_arguments():
     parser.add_argument("-e", "--experiment", type=str,
             help="Push for a single experiment (NOT FUNCTIONAL YET)")
     parser.add_argument("-c", "--config", type=str,
-            help="Alternate config file (not functional yet!)", default=inputfile)
+            help="Alternate config file", default=inputfile)
     parser.add_argument("-t", "--test", action="store_true", default=False)
     return parser.parse_args()
 
@@ -147,25 +147,26 @@ def sendslackmessage():
             print errmsg
 
 
-def send_all_notifications():
+def send_all_notifications(test=False):
     """Function to send all notifications"""
     global expt_files   # , logger
     expt_files_to_keep = []
     exists_error = False
 
-    # Experiment-specific emails
-    for expt, f in expt_files.iteritems():
-        # Get line count for experiment-specific log file
-        lc = sum(1 for _ in open(f, 'r'))
-        if lc != 0:
-            exists_error = True
-            try:
-                sendemail(expt)
-            except Exception as e:
-                error_handler(e)    # Don't exit - just move to the next error file
-                expt_files_to_keep.append(expt)
+    if not test:
+        # Experiment-specific emails if it's not a test run
+        for expt, f in expt_files.iteritems():
+            # Get line count for experiment-specific log file
+            lc = sum(1 for _ in open(f, 'r'))
+            if lc != 0:
+                exists_error = True
+                try:
+                    sendemail(expt)
+                except Exception as e:
+                    error_handler(e)    # Don't exit - just move to the next error file
+                    expt_files_to_keep.append(expt)
 
-    for e in expt_files_to_keep: del expt_files[e]
+        for e in expt_files_to_keep: del expt_files[e]
 
     remove_expt_logs()   # Uses expt_files to find what files to delete
 
@@ -464,9 +465,11 @@ def main():
     args = parse_arguments()
 
     logger = setup_logger("Managed Proxy Push")
+    configfile = args.config
+    logger.info("Using config file {0}".format(configfile))
 
     try:
-        load_config(inputfile, args.test)
+        load_config(configfile, args.test)
     except Exception as e:
         err = 'Could not load config file.  Error is {0}'.format(e)
         error_handler(err)
@@ -485,7 +488,7 @@ def main():
             error_handler(e)
             sys.exit(1)
     finally:
-        send_all_notifications()
+        send_all_notifications(args.test)
 
 
 if __name__ == '__main__':
