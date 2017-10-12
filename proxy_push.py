@@ -472,6 +472,8 @@ def main():
         sys.exit(1)
 
     logger = setup_logger("Managed Proxy Push")
+    if args.test:
+        logger.info("Running in test mode")
     logger.info("Using config file {0}".format(args.config))
 
     try:
