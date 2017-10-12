@@ -376,9 +376,9 @@ class ManagedProxyPush:
         k5login_check = 'ssh ' + account + '@' + node + ' cat .k5login'
         nNames = -1
         """
-        dest = account + '@' + node + ':' + self.config[expt]["dir"] + '/' + account + '/' + outfile
-        newproxy = self.config[expt]["dir"] + '/' + account + '/' + outfile + '.new'
-        oldproxy = self.config[expt]["dir"] + '/' + account + '/' + outfile
+        dest = account + '@' + node + ':' + self.config['experiments'][expt]["dir"] + '/' + account + '/' + outfile
+        newproxy = self.config['experiments'][expt]["dir"] + '/' + account + '/' + outfile + '.new'
+        oldproxy = self.config['experiments'][expt]["dir"] + '/' + account + '/' + outfile
         scp_cmd = ['scp', '-o', 'ConnectTimeout=30', 'proxies/' + outfile, dest + '.new']
         chmod_cmd = ['ssh', '-ak', '-o', 'ConnectTimeout=30', account + '@' + node,
                      'chmod 400 {0} ; mv -f {1} {2}'.format(newproxy, newproxy, oldproxy)]
