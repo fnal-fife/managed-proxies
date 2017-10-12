@@ -1,0 +1,46 @@
+# Global config items
+
+# Logging/Error handling files.
+logs:
+  logfile:  proxy_push.log
+  errfile:  proxy_push.err      # Set the temporary output file for errors.  
+
+
+# Global email and slack notification parameters
+notifications:
+  SLACK_ALERTS_URL:  'https://hooks.slack.com/services/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'      # Slack url for #alerts channel in fife-group slack
+  admin_email: shreyb@gmail.com
+ 
+
+# Same as above, but used in test runs
+notifications_test:
+  SLACK_ALERTS_URL: 'https://hooks.slack.com/services/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'      # Slack url for #alerts-dev channel in fife-group slack.  Use for testing
+  admin_email: sbhat@fnal.gov
+  # admin_email: kherner@fnal.gov
+  
+
+# Other config variabless
+global:
+  should_runuser: rexbatch                                    # User that this script must run as 
+  KRB5CCNAME:  "FILE:/tmp/krb5cc_push_proxy"  # What the env variable KRB5CCNAME should be set to
+  CERT_BASE_DIR: "/opt/gen_push_proxy/certs"                      # base location for certs/keys
+  expt_vos: ["des", "dune"]                         # Experiments that have their own VOMS server
+
+
+# Experiments
+# Note: roles entries should be of the form "- Role_name: Role_account"
+experiments:
+  darkside:
+    dir: /opt
+    emails: [sbhat@fnal.gov]
+    nodes: [ds50samgpvm01]
+    roles:
+      - Production: darksidepro
+  uboone:
+    dir: /opt
+    emails: [sbhat@fnal.gov]
+    nodes: [uboonegpvm01, uboonegpvm02, uboonegpvm03, uboonegpvm04, uboonegpvm05, uboonegpvm06,
+      uboonegpvm07, uboonepubsgpvm01, uboonepubsgpvm02, uboonepubsgpvm03, uboonepubsgpvm04,
+      uboonepubsgpvm05, uboonepubsgpvm06]
+    roles:
+      - Production: uboonepro
