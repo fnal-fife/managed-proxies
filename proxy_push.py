@@ -44,7 +44,8 @@ def parse_arguments():
             help="Push for a single experiment")
     parser.add_argument("-c", "--config", type=str,
             help="Alternate config file", default=inputfile)
-    parser.add_argument("-t", "--test", action="store_true", default=False)
+    parser.add_argument("-t", "--test", action="store_true", 
+            help="Test mode", default=False)
     return parser.parse_args()
 
 
