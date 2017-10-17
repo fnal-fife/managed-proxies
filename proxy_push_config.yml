@@ -32,50 +32,50 @@ global:
 experiments:
   coupp:
     dir: /opt
-    emails: [hugh@fnal.gov, sbhat@fnal.gov]
+    emails: [hugh@fnal.gov]
     nodes: [couppgpvm01, couppgpvm02]
     roles:
       - Production: coupp
   darkside:
     dir: /opt
-    emails: [kherner@fnal.gov, sbhat@fnal.gov]
+    emails: [kherner@fnal.gov]
     nodes: [ds50samgpvm01]
     roles:
       - Production: darksidepro
   des:
     dir: /opt
-    emails: [buckley@fnal.gov, sbhat@fnal.gov]
+    emails: [buckley@fnal.gov]
     nodes: [des40, des41, des50, des51, des60, des61]
     roles:
       - DESGW: desgw
   dune:
     dir: /opt
-    emails: [trj@fnal.gov, sbhat@fnal.gov]
+    emails: [trj@fnal.gov]
     nodes: [dunegpvm01, dunegpvm02, dunegpvm03, dunegpvm04, dunegpvm05, dunegpvm06,
       dunegpvm07, dunegpvm08, dunegpvm09, dunegpvm10, dunesamgpvm02]
     roles:
       - Production: dunepro
   genie:
     dir: /opt
-    emails: [perdue@fnal.gov, sbhat@fnal.gov]
+    emails: [perdue@fnal.gov]
     nodes: [geniegpvm01]
     roles:
       - Production: geniepro
   gm2:
     dir: /opt
-    emails: [lyon@fnal.gov, sbhat@fnal.gov]
+    emails: [lyon@fnal.gov]
     nodes: [gm2gpvm01, gm2gpvm02, gm2gpvm03, gm2gpvm04, gm2samgpvm01]
     roles:
       - Production: gm2pro
   lariat:
     dir: /opt
-    emails: [wenzel@fnal.gov, sbhat@fnal.gov]
+    emails: [wenzel@fnal.gov]
     nodes: [lariatsamgpvm01]
     roles:
       - Production: lariatpro
   minerva:
     dir: /opt
-    emails: [perdue@fnal.gov, sbhat@fnal.gov]
+    emails: [perdue@fnal.gov]
     nodes: [minervagpvm01, minervagpvm02, minervagpvm03, minervagpvm04, minervagpvm05,
       minervagpvm06, minervagpvm07]
     roles:
@@ -84,19 +84,19 @@ experiments:
       - Data: minervadat
   minos:
     dir: /opt
-    emails: [kreymer@fnal.gov, sbhat@fnal.gov]
+    emails: [kreymer@fnal.gov]
     nodes: [minosdatagpvm01, minosgpvm05]
     roles:
       - Production: minospro
   mu2e:
     dir: /opt
-    emails: [kutschke@fnal.gov, rlc@fnal.gov, gandr@fnal.gov, sbhat@fnal.gov]
+    emails: [kutschke@fnal.gov, rlc@fnal.gov, gandr@fnal.gov]
     nodes: [mu2egpvm01, mu2egpvm02, mu2egpvm03, mu2egpvm04, mu2egpvm05, mu2egpvm06, mu2egpvmtest]
     roles:
       - Production: mu2epro
   nova:
     dir: /opt
-    emails: [dingpf@fnal.gov, sbhat@fnal.gov]
+    emails: [dingpf@fnal.gov]
     nodes: [novagpvm01, novagpvm02, novagpvm03, novagpvm04, novagpvm05, novagpvm06,
       novagpvm07, novagpvm08, novagpvm09, novagpvm10, novagpvm11, novagpvm12, novagpvm13,
       novagpvm14, novagpvm15, novadqgpvm01]
@@ -104,13 +104,13 @@ experiments:
       - Production: novapro
   sbnd:
     dir: /opt
-    emails: [petrillo@fnal.gov, sbhat@fnal.gov]
+    emails: [petrillo@fnal.gov]
     nodes: [sbndgpvm01, sbndgpvm02, sbndgpvm03]
     roles:
       - Production: sbndpro
   uboone:
     dir: /opt
-    emails: [kirby@fnal.gov, sbhat@fnal.gov]
+    emails: [kirby@fnal.gov]
     nodes: [uboonegpvm01, uboonegpvm02, uboonegpvm03, uboonegpvm04, uboonegpvm05, uboonegpvm06,
       uboonegpvm07, uboonepubsgpvm01, uboonepubsgpvm02, uboonepubsgpvm03, uboonepubsgpvm04,
       uboonepubsgpvm05, uboonepubsgpvm06]
