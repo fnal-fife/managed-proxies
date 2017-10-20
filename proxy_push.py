@@ -44,7 +44,7 @@ def parse_arguments():
             help="Push for a single experiment")
     parser.add_argument("-c", "--config", type=str,
             help="Alternate config file", default=inputfile)
-    parser.add_argument("-t", "--test", action="store_true", 
+    parser.add_argument("-t", "--test", action="store_true",
             help="Test mode", default=False)
     return parser.parse_args()
 
@@ -58,9 +58,11 @@ def sendemail(expt=None):
     with open(error_file, 'r') as f:
         message = f.read()
 
-    info_msg = '\n\nIf you have any questions about these emails, '\
-        'please open a Service Desk ticket to the Distributed Computing '\
-        'Support group.' if expt is not None else ''
+    info_msg = "We've compiled a list of common errors here: "\
+        "https://cdcvs.fnal.gov/redmine/projects/fife/wiki/Common_errors_with_Managed_Proxies_Service. "\
+        "\n\nIf you have any questions or comments about these emails, "\
+        "please open a Service Desk ticket to the Distributed Computing "\
+        "Support group." if expt is not None else ''
     message += info_msg
 
     sender = 'fife-group@fnal.gov'
