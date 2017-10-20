@@ -75,7 +75,7 @@ experiments:
       - Production: lariatpro
   minerva:
     dir: /opt
-    emails: [perdue@fnal.gov]
+    emails: [perdue@fnal.gov, jyhan@fnal.gov]
     nodes: [minervagpvm01, minervagpvm02, minervagpvm03, minervagpvm04, minervagpvm05,
       minervagpvm06, minervagpvm07]
     roles:
