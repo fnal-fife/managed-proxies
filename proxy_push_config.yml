@@ -110,7 +110,7 @@ experiments:
       - Production: sbndpro
   uboone:
     dir: /opt
-    emails: [kirby@fnal.gov]
+    emails: [kirby@fnal.gov, greenlee@fnal.gov, joelam@fnal.gov]
     nodes: [uboonegpvm01, uboonegpvm02, uboonegpvm03, uboonegpvm04, uboonegpvm05, uboonegpvm06,
       uboonegpvm07, uboonepubsgpvm01, uboonepubsgpvm02, uboonepubsgpvm03, uboonepubsgpvm04,
       uboonepubsgpvm05, uboonepubsgpvm06]
