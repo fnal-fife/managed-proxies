@@ -8,13 +8,13 @@ logs:
 
 # Global email and slack notification parameters
 notifications:
-  SLACK_ALERTS_URL:  'https://hooks.slack.com/services/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'      # Slack url for #alerts channel in fife-group slack
+  SLACK_ALERTS_URL:  "https://hooks.slack.com/services/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"      # Slack url for #alerts channel in fife-group slack
   admin_email: fife-group@fnal.gov
  
 
 # Same as above, but used in test runs
 notifications_test:
-  SLACK_ALERTS_URL: 'https://hooks.slack.com/services/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'      # Slack url for #alerts-dev channel in fife-group slack.  Use for testing
+  SLACK_ALERTS_URL: "https://hooks.slack.com/services/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"      # Slack url for #alerts-dev channel in fife-group slack.  Use for testing
   admin_email: sbhat@fnal.gov
   # admin_email: kherner@fnal.gov
   
@@ -124,7 +124,7 @@ experiments:
     nodes: [cdcvs, ]
     roles:
       - Analysis: p-larreco
-    vomsgroup: 'fermilab:/fermilab/uboone/'
+    vomsgroup: "fermilab:/fermilab/uboone/"
     certfile: "/opt/gen_push_proxy/certs/CI-service.cert" 
     keyfile:  "/opt/gen_push_proxy/certs/CI-service.key"
 
