@@ -8,6 +8,7 @@ import requests
 from logging.handlers import RotatingFileHandler
 from traceback import format_exc
 from os import environ, geteuid, remove
+import os.path
 from pwd import getpwuid
 import smtplib
 import email.utils
@@ -311,13 +312,31 @@ class ManagedProxyPush:
 
         Returns proxy path (outfile) if proxy was successfully generated
         """
-        voms_prefix = '{0}:/'.format(expt) if expt in self.expt_vos else 'fermilab:/fermilab/'
-        voms_string = '{0}{1}/Role={2}'.format(voms_prefix, expt, voms_role)
+        # voms_prefix = '{0}:/'.format(expt) if expt in self.expt_vos else 'fermilab:/fermilab/'
+        # voms_string = '{0}{1}/Role={2}'.format(voms_prefix, expt, voms_role)
 
-        outfile = account + '.' + voms_role + '.proxy'
+        voms_prefix = self.config['experiments'][expt]['vomsgroup'] \
+            if 'vomsgroup' in self.config['experiments'][expt] \
+            else 'fermilab:/fermilab/{0}/'.format(expt)
+        voms_string = '{0}Role={1}'.format(voms_prefix, voms_role)
+
+        certfile = self.config['experiments'][expt]['certfile'] \
+            if 'certfile' in self.config['experiments'][expt] \
+            else os.path.join(self.CERT_BASE_DIR, '{0}.cert'.format(account))
+        keyfile = self.config['experiments'][expt]['keyfile'] \
+            if 'keyfile' in self.config['experiments'][expt] \
+            else os.path.join(self.CERT_BASE_DIR, '{0}.key'.format(account))
+
+        # outfile = account + '.' + voms_role + '.proxy'
+        outfile = '{0}.{1}.proxy'.format(account, voms_role)
+        # vpi_args = ["/usr/bin/voms-proxy-init", '-rfc', '-valid', '24:00', '-voms',
+        #             voms_string, '-cert' , self.CERT_BASE_DIR + '/' + account + '.cert',
+        #             '-key', self.CERT_BASE_DIR + '/' + account + '.key', '-out',
+        #             'proxies/' + outfile]
+
         vpi_args = ["/usr/bin/voms-proxy-init", '-rfc', '-valid', '24:00', '-voms',
-                    voms_string, '-cert' , self.CERT_BASE_DIR + '/' + account + '.cert',
-                    '-key', self.CERT_BASE_DIR + '/' + account + '.key', '-out',
+                    voms_string, '-cert', certfile,
+                    '-key', keyfile, '-out',
                     'proxies/' + outfile]
 
         # do voms-proxy-init now

@@ -24,7 +24,7 @@ global:
   should_runuser: rexbatch                                    # User that this script must run as 
   KRB5CCNAME:  "FILE:/tmp/krb5cc_push_proxy"  # What the env variable KRB5CCNAME should be set to
   CERT_BASE_DIR: "/opt/gen_push_proxy/certs"                      # base location for certs/keys
-  expt_vos: ["des", "dune"]                         # Experiments that have their own VOMS server
+  # expt_vos: ["des", "dune"]                         # Experiments that have their own VOMS server
 
 
 # Experiments
@@ -48,6 +48,7 @@ experiments:
     nodes: [des40, des41, des50, des51, des60, des61]
     roles:
       - DESGW: desgw
+    vomsgroup: "des:/des/"
   dune:
     dir: /opt
     emails: [trj@fnal.gov, fuess@fnal.gov, berman@fnal.gov, anorman@fnal.gov]
@@ -55,6 +56,7 @@ experiments:
       dunegpvm07, dunegpvm08, dunegpvm09, dunegpvm10, dunesamgpvm02]
     roles:
       - Production: dunepro
+    vomsgroup: "dune:/dune/"
   genie:
     dir: /opt
     emails: [perdue@fnal.gov]
@@ -116,3 +118,13 @@ experiments:
       uboonepubsgpvm05, uboonepubsgpvm06, uboonetmp02]
     roles:
       - Production: uboonepro
+  p-larreco:
+    dir: /opt/ci_proxy/lar_ci
+    emails: [vito@fnal.gov, sbhat@fnal.gov]
+    nodes: [cdcvs, ]
+    roles:
+      - Analysis: p-larreco
+    vomsgroup: 'fermilab:/fermilab/uboone/'
+    certfile: "/opt/gen_push_proxy/certs/CI-service.cert" 
+    keyfile:  "/opt/gen_push_proxy/certs/CI-service.key"
+
