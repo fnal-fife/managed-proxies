@@ -127,4 +127,12 @@ experiments:
     vomsgroup: "fermilab:/fermilab/uboone/"
     certfile: "/opt/gen_push_proxy/certs/CI-service.cert" 
     keyfile:  "/opt/gen_push_proxy/certs/CI-service.key"
-
+  p-argoneutcode:
+    dir: /opt/ci_proxy/lar_ci
+    emails: [vito@fnal.gov, sbhat@fnal.gov]
+    nodes: [cdcvs, ]
+    roles:
+      - Analysis: p-argoneutcode
+    vomsgroup: "fermilab:/fermilab/argoneut/"
+    certfile: "/opt/gen_push_proxy/certs/CI-service.cert" 
+    keyfile:  "/opt/gen_push_proxy/certs/CI-service.key"
