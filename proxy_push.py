@@ -363,13 +363,26 @@ class ManagedProxyPush:
         k5login_check = 'ssh ' + account + '@' + node + ' cat .k5login'
         nNames = -1
         """
-        dest = account + '@' + node + ':' + self.config['experiments'][expt]["dir"] + '/' + account + '/' + outfile
-        newproxy = self.config['experiments'][expt]["dir"] + '/' + account + '/' + outfile + '.new'
-        oldproxy = self.config['experiments'][expt]["dir"] + '/' + account + '/' + outfile
-        scp_cmd = ['scp', '-o', 'ConnectTimeout=30', 'proxies/' + outfile, dest + '.new']
-        chmod_cmd = ['ssh', '-ak', '-o', 'ConnectTimeout=30', account + '@' + node,
-                     'chmod 400 {0} ; mv -f {1} {2}'.format(newproxy, newproxy, oldproxy)]
+        # use_node = "{0}.fnal.gov".format(node)
+        account_node = '{0}@{1}.fnal.gov'.format(account, node)
+        # dest = account + '@' + use_node + ':' + self.config['experiments'][expt]["dir"] + '/' + account + '/' + outfile
+        # newproxy = self.config['experiments'][expt]["dir"] + '/' + account + '/' + outfile + '.new'
+        # oldproxy = self.config['experiments'][expt]["dir"] + '/' + account + '/' + outfile
 
+        srcpath = os.path.join('proxies', outfile)
+        newproxypath = os.path.join(self.config['experiments'][expt]["dir"], account, '{0}.new'.format(outfile))
+        oldproxypath = os.path.join(self.config['experiments'][expt]["dir"], account, outfile)
+        # dest = account_node
+
+        # scp_cmd = ['scp', '-o', 'ConnectTimeout=30', 'proxies/' + outfile, dest + '.new']
+        # chmod_cmd = ['ssh', '-ak', '-o', 'ConnectTimeout=30', account + '@' + node,
+        #              'chmod 400 {0} ; mv -f {1} {2}'.format(newproxy, newproxy, oldproxy)]
+
+        scp_cmd = ['scp', '-o', 'ConnectTimeout=30', srcpath, '{0}:{1}'.format(account_node, newproxypath)]
+        chmod_cmd = ['ssh', '-ak', '-o', 'ConnectTimeout=30', account_node,
+                             'chmod 400 {0} ; mv -f {0} {1}'.format(newproxypath, oldproxypath)]
+
+        
         try:
             self.check_output_mod(scp_cmd)
         except Exception as e:
