@@ -379,7 +379,7 @@ class ManagedProxyPush:
         #              'chmod 400 {0} ; mv -f {1} {2}'.format(newproxy, newproxy, oldproxy)]
 
         scp_cmd = ['scp', '-o', 'ConnectTimeout=30', srcpath, '{0}:{1}'.format(account_node, newproxypath)]
-        chmod_cmd = ['ssh', '-ak', '-o', 'ConnectTimeout=30', account_node,
+        chmod_cmd = ['ssh', '-o', 'ConnectTimeout=30', account_node,
                              'chmod 400 {0} ; mv -f {0} {1}'.format(newproxypath, oldproxypath)]
 
         
