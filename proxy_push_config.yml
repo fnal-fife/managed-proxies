@@ -136,3 +136,12 @@ experiments:
     vomsgroup: "fermilab:/fermilab/argoneut/"
     certfile: "/opt/gen_push_proxy/certs/CI-service.cert" 
     keyfile:  "/opt/gen_push_proxy/certs/CI-service.key"
+  p-lardbt:
+    dir: /opt/ci_proxy/lar_ci
+    emails: [vito@fnal.gov, sbhat@fnal.gov]
+    nodes: [cdcvs, ]
+    roles:
+      - Analysis: p-lardbt
+    vomsgroup: "fermilab:/fermilab/lariat/"
+    certfile: "/opt/gen_push_proxy/certs/CI-service.cert" 
+    keyfile:  "/opt/gen_push_proxy/certs/CI-service.key"
