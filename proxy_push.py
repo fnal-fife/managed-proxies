@@ -556,7 +556,7 @@ class ManagedProxyPush:
         # do voms-proxy-init now
         try:
             self.logger.info(self.locenv['KRB5CCNAME'])
-            self.check_output_mod(vpi_args)
+            check_output_mod(vpi_args, self.locenv)
         except Exception:
             err = "Error obtaining {0}.  Please check the cert on " \
                   "fifeutilgpvm01. " \
@@ -588,14 +588,14 @@ class ManagedProxyPush:
                              'chmod 400 {0} ; mv -f {0} {1}'.format(newproxypath, oldproxypath)]
         
         try:
-            self.check_output_mod(scp_cmd)
+            check_output_mod(scp_cmd, self.locenv)
         except Exception as e:
             err = "Error copying ../proxies/{0} to {1}. " \
                   "Trying next node\n {2}".format(outfile, node, str(e))
             raise Exception(err)
 
         try:
-            self.check_output_mod(chmod_cmd)
+            check_output_mod(chmod_cmd, self.locenv)
         except Exception as e:
             err = "Error changing permission of {0} to mode 400 on {1}. " \
                   "Trying next node\n {2}".format(outfile, node, str(e))
