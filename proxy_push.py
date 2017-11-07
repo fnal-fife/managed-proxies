@@ -188,7 +188,7 @@ def main_logger(queue, config):
     for handler in mainlogger.handlers:
         handler.setFormatter(mainlogformatter)
 
-    mainlogger.info("\nStarting new run")
+    mainlogger.info("Starting new run")
     while True:
         try:
             q_msg = queue.get()
@@ -245,15 +245,18 @@ def cleanup_global(config, queue):
     except OSError:
         queue.put((None, logging.WARN, "{0} is not empty - not removing directory".format(temp_log_dir)))
 
+    errfile = config['logs']['errfile']
+    lc = sum(1 for _ in open(errfile, 'r'))
     # Send general notifications
-    sendemail(config, queue)
-    sendslackmessage(config, queue)
+    if lc > 0:
+        sendemail(config, queue)
+        sendslackmessage(config, queue)
 
     kill_main_logger(queue)
 
     # Remove the temporary error file
     try:
-        remove(config['logs']['errfile'])
+        remove(errfile)
     except Exception as e:
         print "Could not remove temporary error file. {0}".format(e)
 
@@ -544,11 +547,12 @@ class ManagedProxyPush:
             if 'keyfile' in self.config['experiments'][expt] \
             else os.path.join(self.CERT_BASE_DIR, '{0}.key'.format(account))
 
-        outfile = os.path.join('proxies', '{0}.{1}.proxy'.format(account, voms_role))
+        outfile = '{0}.{1}.proxy'.format(account, voms_role)
+        outfile_path = os.path.join('proxies', outfile)
 
         vpi_args = ["/usr/bin/voms-proxy-init", '-rfc', '-valid', '24:00', '-voms',
                     voms_string, '-cert', certfile,
-                    '-key', keyfile, '-out', outfile]
+                    '-key', keyfile, '-out', outfile_path]
 
         # do voms-proxy-init now
         try:
