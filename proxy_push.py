@@ -24,8 +24,8 @@ from QueueHandler import QueueHandler
 
 
 # Global Variables
-SOFT_TIMEOUT = 60
-HARD_TIMEOUT = 100      # Make it 300 in production
+SOFT_TIMEOUT = 10 
+HARD_TIMEOUT = 10      # Make it 300 in production
 inputfile = 'proxy_push_config_test.yml'     # Default Config file
 mainlogformatter = logging.Formatter(
     '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -127,13 +127,14 @@ def run_worker(expt, config, log_queue, environment):
         expt_push = ManagedProxyPush(config, expt, log_queue, environment)
     except Exception as e:
         log_queue.put((expt, logging.ERROR, e))
-        sys.exit(1)
+        return None
     else:   # We instantiated the ManagedProxyPush class, with all its checks
         try:
             # Now let's actually process the experiment
             expt_push.process_experiment()
         except Exception as e:
             log_queue.put((expt, logging.ERROR, e))
+            return None
         else:
             return expt
 
@@ -159,6 +160,7 @@ class ManagedProxyPush:
             assert self.check_keys()
         except AssertionError as e:
             self.logger.error(e)
+            raise
 
     def expt_logger(self):
         filename = self.expt_filename
@@ -180,7 +182,7 @@ class ManagedProxyPush:
 
     def check_keys(self):
         """Make sure our JSON file has nodes and roles for the experiment"""
-        if "roles" not in self.config['experiments'][self.expt].keys() or "nodes" not in self.config['experiments'][self.expt].keys():
+        if "roles" not in self.config['experiments'][self.expt].keys() or "nodes" not in self.config['experiments'][self.expt].keys(): 
             err = "Error: input file improperly formatted for {0}" \
                 " (roles or nodes don't exist for this experiment)." \
                 " Please check the config file" \
@@ -509,7 +511,7 @@ def main():
     except Exception as e:
         w = 'WARNING: Error obtaining kerberos ticket; ' \
                 'may be unable to push proxies.  Error was {0}\n'.format(e)
-        log_msg_queue.put(None, logging.WARN, w)
+        log_msg_queue.put((None, logging.WARN, w))
 
 
     numworkers = 1 if args.experiment else 5
@@ -521,7 +523,11 @@ def main():
     # Start workers, send jobs to the processes    
     results = {}
     for expt in expts:
-        results[expt] = pool.apply_async(run_worker, (expt, config, log_msg_queue, locenv))
+        try:
+            results[expt] = pool.apply_async(run_worker, (expt, config, log_msg_queue, locenv))
+        except Exception as e:
+            log_msg_queue.put((expt, logging.ERROR, e))
+            continue 
 
     # If we ever upgrade to python 2.7...
     # results = {expt: pool.apply_async(run_worker, (expt, config, log_msg_queue))}
@@ -530,7 +536,8 @@ def main():
 
     for expt, result in results.iteritems():
         try:
-            successful_experiments.append(result.get(timeout=SOFT_TIMEOUT))
+            try_expt = result.get(timeout=SOFT_TIMEOUT)
+            if try_expt: successful_experiments.append(try_expt)
             cleanup_expt(expt, log_msg_queue, config)
         except TimeoutError:
             second_try[expt] = result
@@ -541,9 +548,10 @@ def main():
     for expt, result in second_try.iteritems():
         try:
             # You have numsec seconds to get the result.  if not, it doesn't go to the  successful experiments
-            successful_experiments.append(result.get(timeout=HARD_TIMEOUT))
+            try_expt = result.get(timeout=HARD_TIMEOUT)
+            if try_expt: successful_experiments.append(try_expt)
         except TimeoutError:
-            msg = "{} hit the hard timeout.  Exiting process"
+            msg = "{0} hit the hard timeout.  Exiting process".format(expt)
             log_msg_queue.put((expt, logging.ERROR, msg))
             failed_experiments.append(expt)
         except Exception as e:
