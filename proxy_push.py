@@ -82,6 +82,7 @@ def kerb_ticket_obtain(krb5ccname):
                '/opt/gen_keytabs/config/gcso_monitor.keytab',
                'monitor/gcso/fermigrid.fnal.gov@FNAL.GOV']
     subprocess.check_call(kerbcmd, env=locenv)
+    return locenv
 
 
 # # Handling logfiles
@@ -212,9 +213,9 @@ def kill_main_logger(queue):
 
 # Set up and run worker job
 
-def run_worker(expt, config, log_queue):
+def run_worker(expt, config, log_queue, environment):
     try:
-        expt_push = ManagedProxyPush(config, expt, log_queue)
+        expt_push = ManagedProxyPush(config, expt, log_queue, environment)
     except Exception as e:
         log_queue.put((expt, logging.ERROR, e))
         # error_handler(e)
@@ -427,10 +428,10 @@ def check_output_mod(cmd, locenv):
 class ManagedProxyPush:
     """Class that holds all of the procedures/methods to push proxies and do
     necessary checks"""
-    def __init__(self, config, expt, msg_queue):
+    def __init__(self, config, expt, msg_queue, environment):
         self.config = config
         # self.expt_config = self.config['experiments'][self.expt]
-
+        self.locenv = environment
         self.queue = msg_queue
         self.expt = expt
 
@@ -554,7 +555,7 @@ class ManagedProxyPush:
 
         # do voms-proxy-init now
         try:
-            self.logger.info(environ['KRB5CCNAME'])
+            self.logger.info(self.locenv['KRB5CCNAME'])
             self.check_output_mod(vpi_args)
         except Exception:
             err = "Error obtaining {0}.  Please check the cert on " \
@@ -706,7 +707,7 @@ def main():
 
     # Get a kerb ticket
     try:
-        kerb_ticket_obtain(config['global']['KRB5CCNAME'])
+        locenv = kerb_ticket_obtain(config['global']['KRB5CCNAME'])
     except Exception as e:
         w = 'WARNING: Error obtaining kerberos ticket; ' \
                 'may be unable to push proxies.  Error was {0}\n'.format(e)
@@ -726,7 +727,7 @@ def main():
     
     results = {}
     for expt in expts:
-        results[expt] = pool.apply_async(run_worker, (expt, config, log_msg_queue))
+        results[expt] = pool.apply_async(run_worker, (expt, config, log_msg_queue, locenv))
 
     # If we ever upgrade to python 2.7...
     # results = {expt: pool.apply_async(run_worker, (expt, config, log_msg_queue))}
