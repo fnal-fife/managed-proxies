@@ -447,9 +447,6 @@ class ManagedProxyPush:
         except AssertionError as e:
             self.logger.error(e)
 
-        self.logger.info("testing to make sure this works")
-
-
         # try:
         #     assert self.check_user(self.should_runuser)
         # except AssertionError:
@@ -505,6 +502,7 @@ class ManagedProxyPush:
                 " on fifeutilgpvm01. I will skip this experiment for now." \
                 "\n".format(self.expt)
             raise AssertionError(err)
+        return True
             
 
         # if "roles" not in self.config['experiments'][expt].keys() \
@@ -546,16 +544,14 @@ class ManagedProxyPush:
             if 'keyfile' in self.config['experiments'][expt] \
             else os.path.join(self.CERT_BASE_DIR, '{0}.key'.format(account))
 
-        outfile = '{0}.{1}.proxy'.format(account, voms_role)
+        outfile = os.path.join('proxies', '{0}.{1}.proxy'.format(account, voms_role))
 
         vpi_args = ["/usr/bin/voms-proxy-init", '-rfc', '-valid', '24:00', '-voms',
                     voms_string, '-cert', certfile,
-                    '-key', keyfile, '-out',
-                    'proxies/' + outfile]
+                    '-key', keyfile, '-out', outfile]
 
         # do voms-proxy-init now
         try:
-            self.logger.info(self.locenv['KRB5CCNAME'])
             check_output_mod(vpi_args, self.locenv)
         except Exception:
             err = "Error obtaining {0}.  Please check the cert on " \
