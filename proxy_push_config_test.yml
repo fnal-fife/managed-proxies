@@ -2,8 +2,8 @@
 
 # Logging/Error handling files.
 logs:
-  logfile:  proxy_push.log
-  errfile:  proxy_push.err      # Set the temporary output file for errors.  
+  logfile:  proxy_push_test.log
+  errfile:  proxy_push_test.err      # Set the temporary output file for errors.  
 
 
 # Global email and slack notification parameters

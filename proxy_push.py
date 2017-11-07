@@ -26,7 +26,7 @@ from QueueHandler import QueueHandler
 # Global Variables
 SOFT_TIMEOUT = 60
 HARD_TIMEOUT = 100      # Make it 300 in production
-inputfile = 'proxy_push_config.yml'     # Default Config file
+inputfile = 'proxy_push_config_test.yml'     # Default Config file
 # logger = None
 mainlogformatter = logging.Formatter(
     '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -446,7 +446,7 @@ class ManagedProxyPush:
         except AssertionError as e:
             self.logger.error(e)
 
-
+        self.logger.info("testing to make sure this works")
 
 
         # try:
@@ -479,11 +479,12 @@ class ManagedProxyPush:
     def expt_logger(self):
         filename = self.expt_filename
         exptlogger = logging.getLogger(self.expt)
-        exptlogger.setLevel(logging.ERROR)
+        exptlogger.setLevel(logging.DEBUG)
         exptformatter = logging.Formatter(
             expt_format_string.format(expt=self.expt))
         
         h = logging.FileHandler(filename)
+        h.setLevel(logging.ERROR)
         h.setFormatter(exptformatter)
 
         qh = QueueHandler(self.queue)
@@ -553,6 +554,7 @@ class ManagedProxyPush:
 
         # do voms-proxy-init now
         try:
+            self.logger.info(environ['KRB5CCNAME'])
             self.check_output_mod(vpi_args)
         except Exception:
             err = "Error obtaining {0}.  Please check the cert on " \
@@ -687,7 +689,7 @@ def main():
     listener.start()
 
     # logger = setup_logger("Managed Proxy Push")
-    if args.test: log_msg_queue.put(None, logging.INFO, "Running in test mode")
+    if args.test: log_msg_queue.put((None, logging.INFO, "Running in test mode"))
     log_msg_queue.put((None, logging.INFO, "Using config file {0}".format(args.config)))
 
     # Are we running as the right user?
@@ -713,7 +715,7 @@ def main():
 
 
     numworkers = 1 if args.experiment else 5
-    expts = [expt, ] if args.experiment else config['experiments'].keys()
+    expts = [args.experiment, ] if args.experiment else config['experiments'].keys()
     # if args.experiment:
     #     numworkers = 1
 
