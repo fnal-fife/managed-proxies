@@ -469,15 +469,11 @@ def check_output_mod(cmd, locenv):
 
 
 
-def main(config, log_msg_queue):
+def run_push(args, config, log_msg_queue):
     """Main execution module"""
     successful_experiments = []
     failed_experiments = []
     second_try = {}
-
-    args = parse_arguments()
-
-
 
     if args.test: log_msg_queue.put((None, logging.INFO, "Running in test mode"))
     log_msg_queue.put((None, logging.INFO, "Using config file {0}".format(args.config)))
@@ -533,7 +529,6 @@ def main(config, log_msg_queue):
 	    log_msg_queue.put((expt, logging.DEBUG, msg))
 	    failed_experiments.append(expt)
 
-    # raise Exception("Can we create a broken pipe?")
 
     # First round
     for expt, result in results.iteritems():
@@ -580,7 +575,14 @@ def main(config, log_msg_queue):
     cleanup_global(config, log_msg_queue)
 
 
-if __name__ == '__main__':
+def main():
+    try:
+        args = parse_arguments()
+    except Exception as e:
+        err = 'Could not parse arguments. \n{0}'.format(e)
+        print err
+        sys.exit(1)
+
     try:
         config = load_config(args.config, args.test)
     except Exception as e:
@@ -592,19 +594,31 @@ if __name__ == '__main__':
         # Main Log queue and listener process
         m = Manager()
         listener_queue = m.Queue()
+    except Exception as e:
+        err = 'Could not initialize log queue. \n{0}'.format(e)
+        print err
+        sys.exit(1)
+    
+    try: 
         listener = Process(target=main_logger, args=(listener_queue, config))
         listener.start()
     except Exception as e:
+        err = 'Could not start log queue. \n{0}'.format(e)
+        print err
         sys.exit(1)
-    finally:
-        listener.join()
 
     try:
-        main(config, listener_queue)
-    except Exception:
-        print "Oh no!"
-        sys.exit(1)
-    finally:
+        run_push(args, config, listener_queue)
+    except Exception as e:
+        listener_queue.put((None, logging.ERROR, e))
+        kill_main_logger(listener_queue)
         listener.join()
+        sys.exit(1)
+    else:
+        kill_main_logger(listener_queue)
+        listener.join()
+        sys.exit(0)
 
-    sys.exit(0)
+
+if __name__ == '__main__':
+    main()
