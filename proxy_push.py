@@ -19,9 +19,12 @@ from contextlib import contextmanager
 import argparse
 from time import sleep
 from datetime import datetime
+# import signal
 
 from QueueHandler import QueueHandler
 
+
+# signal.signal(signal.SIGPIPE, signal.SIG_IGN)
 
 # Global Variables
 SOFT_TIMEOUT = 10 
@@ -218,7 +221,7 @@ class ManagedProxyPush:
             check_output_mod(vpi_args, self.locenv)
         except Exception as e:
             err = "Error obtaining {0}.  Please check the cert on " \
-                  "fifeutilgpvm01. Error was {1}. " \
+                  "fifeutilgpvm01. \n{1}" \
                   "Continuing on to next role.".format(outfile, e)
             raise Exception(err)
         return outfile
@@ -253,14 +256,14 @@ class ManagedProxyPush:
             check_output_mod(scp_cmd, self.locenv)
         except Exception as e:
             err = "Error copying ../proxies/{0} to {1}. " \
-                  "Trying next node\n {2}".format(outfile, node, str(e))
+                  "Trying next node\n{2}".format(outfile, node, str(e))
             raise Exception(err)
 
         try:
             check_output_mod(chmod_cmd, self.locenv)
         except Exception as e:
             err = "Error changing permission of {0} to mode 400 on {1}. " \
-                  "Trying next node\n {2}".format(outfile, node, str(e))
+                  "Trying next node \n{2}".format(outfile, node, str(e))
             raise Exception(err)
 
     def process_experiment(self):
@@ -497,7 +500,7 @@ def main():
     except AssertionError:
         log_msg_queue.put((None, logging.ERROR, "Script must be run as {0}. Exiting.".format(config['global']['should_runuser'])))
         kill_main_logger(log_msg_queue)
-        exit(1)
+        sys.exit(1)
 
     # Setup temp log dir
     try: listdir(temp_log_dir)
@@ -542,6 +545,8 @@ def main():
 	    log_msg_queue.put((expt, logging.DEBUG, msg))
 	    failed_experiments.append(expt)
 
+    # raise Exception("Can we create a broken pipe?")
+
     # First round
     for expt, result in results.iteritems():
         try:
@@ -549,8 +554,9 @@ def main():
             try_expt_process(expt, try_expt, 1)
             cleanup_expt(expt, log_msg_queue, config)
         except TimeoutError:
+            msg = "{0} hit the soft timeout.  Will try to get result in next round".format(expt)
             second_try[expt] = result
-            log_msg_queue.put((expt, logging.DEBUG, "{0} hit the soft timeout.  Will try to get result in next round".format(expt)))
+            log_msg_queue.put((expt, logging.DEBUG, msg))
         except Exception as e:
             log_msg_queue.put((expt, logging.ERROR, e))
             failed_experiments.append(expt)
@@ -574,19 +580,23 @@ def main():
             except Exception as e:
                 pool.terminate()
                 pool.join()
-                log_msg_queue.put(
-                    (None, logging.ERROR, "Could not cleanup {0}. Error was {1}".format(expt, e)))
+                msg = "Could not cleanup {0}. Error was {1}".format(expt, e)
+                log_msg_queue.put( (None, logging.ERROR, msg ))
 
     pool.terminate()
     pool.join()
 
     log_msg_queue.put((None, logging.INFO,"Successful Experiments: {0}".format(successful_experiments)))
-    log_msg_queue.put((None, logging.INFO, "Failed: {0}".format(failed_experiments)))
+    log_msg_queue.put((None, logging.INFO, "Failed Experiments: {0}".format(failed_experiments)))
     
     cleanup_global(config, log_msg_queue)
     listener.join()
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except Exception:
+        print "Oh no!"
+        sys.exit(1)
     sys.exit(0)
