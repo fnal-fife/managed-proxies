@@ -25,7 +25,7 @@ from QueueHandler import QueueHandler
 
 # Global Variables
 SOFT_TIMEOUT = 10 
-HARD_TIMEOUT = 10      # Make it 300 in production
+HARD_TIMEOUT = 300      # Make it 300 in production
 inputfile = 'proxy_push_config_test.yml'     # Default Config file
 mainlogformatter = logging.Formatter(
     '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -341,7 +341,7 @@ def cleanup_global(config, queue):
 def cleanup_expt(expt, queue, config): 
     # Various cleanup actions
     logargs = [expt, queue]
-    queue.put((expt, logging.INFO, "Cleaning up {0}".format(expt)))
+    queue.put((expt, logging.DEBUG, "Cleaning up {0}".format(expt)))
     filename = expt_filename.format(expt=expt)
 
     lc = sum(1 for _ in open(filename, 'r'))
@@ -358,8 +358,8 @@ def cleanup_expt(expt, queue, config):
     except OSError:
         # File doesn't exist
         msg = "Filename {0} doesn't exist.  There were probably no errors in that experiment's run".format(filename)
-        queue.put((expt, logging.INFO, msg))
-        queue.put((expt, logging.INFO, smsg))
+        queue.put((expt, logging.DEBUG, msg))
+        queue.put((expt, logging.DEBUG, smsg))
     except Exception as e:
         try:
             newfilename = '{0}{1}'.format(filename, file_timestamp)
@@ -372,7 +372,8 @@ def cleanup_expt(expt, queue, config):
                 should look into this.  Error was {0}".format(e)
             queue.put((expt, logging.ERROR, emsg))
     else:
-        queue.put((expt, logging.INFO, smsg))
+        queue.put((expt, logging.DEBUG, smsg))
+        queue.put((expt, logging.INFO, "Done with {0}".format(expt)))
 
 
 # Notification actions
