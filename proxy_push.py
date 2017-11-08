@@ -126,14 +126,12 @@ def run_worker(expt, config, log_queue, environment):
     try:
         expt_push = ManagedProxyPush(config, expt, log_queue, environment)
     except Exception as e:
-        # log_queue.put((expt, logging.ERROR, e))
         return None
     else:   # We instantiated the ManagedProxyPush class, with all its checks
         try:
             # Now let's actually process the experiment
-            expt_push.process_experiment()
+            assert expt_push.process_experiment()
         except Exception as e:
-            # log_queue.put((expt, logging.ERROR, e))
             return None
         else:
             return expt
@@ -218,11 +216,10 @@ class ManagedProxyPush:
         # do voms-proxy-init now
         try:
             check_output_mod(vpi_args, self.locenv)
-        except Exception:
+        except Exception as e:
             err = "Error obtaining {0}.  Please check the cert on " \
-                  "fifeutilgpvm01. " \
-                  "Continuing on to next role.".format(
-                      outfile, self.CERT_BASE_DIR)
+                  "fifeutilgpvm01. Error was {1}. " \
+                  "Continuing on to next role.".format(outfile, e)
             raise Exception(err)
         return outfile
 
