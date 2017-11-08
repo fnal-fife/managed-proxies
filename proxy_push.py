@@ -469,7 +469,7 @@ def check_output_mod(cmd, locenv):
 
 
 
-def main():
+def main(config, log_msg_queue):
     """Main execution module"""
     successful_experiments = []
     failed_experiments = []
@@ -477,19 +477,7 @@ def main():
 
     args = parse_arguments()
 
-    try:
-        config = load_config(args.config, args.test)
-    except Exception as e:
-        err = 'Could not load config file.  Error is {0}'.format(e)
-        print err
-        # DO SOMETHING HERE
-        sys.exit(1)
 
-    # Main Log queue and listener process
-    m = Manager()
-    log_msg_queue = m.Queue()
-    listener = Process(target=main_logger, args=(log_msg_queue, config))
-    listener.start()
 
     if args.test: log_msg_queue.put((None, logging.INFO, "Running in test mode"))
     log_msg_queue.put((None, logging.INFO, "Using config file {0}".format(args.config)))
@@ -590,13 +578,33 @@ def main():
     log_msg_queue.put((None, logging.INFO, "Failed Experiments: {0}".format(failed_experiments)))
     
     cleanup_global(config, log_msg_queue)
-    listener.join()
 
 
 if __name__ == '__main__':
     try:
-        main()
+        config = load_config(args.config, args.test)
+    except Exception as e:
+        err = 'Could not load config file. \n{0}'.format(e)
+        print err
+        sys.exit(1)
+
+    try:
+        # Main Log queue and listener process
+        m = Manager()
+        listener_queue = m.Queue()
+        listener = Process(target=main_logger, args=(listener_queue, config))
+        listener.start()
+    except Exception as e:
+        sys.exit(1)
+    finally:
+        listener.join()
+
+    try:
+        main(config, listener_queue)
     except Exception:
         print "Oh no!"
         sys.exit(1)
+    finally:
+        listener.join()
+
     sys.exit(0)
