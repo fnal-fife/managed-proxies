@@ -126,14 +126,14 @@ def run_worker(expt, config, log_queue, environment):
     try:
         expt_push = ManagedProxyPush(config, expt, log_queue, environment)
     except Exception as e:
-        log_queue.put((expt, logging.ERROR, e))
+        # log_queue.put((expt, logging.ERROR, e))
         return None
     else:   # We instantiated the ManagedProxyPush class, with all its checks
         try:
             # Now let's actually process the experiment
             expt_push.process_experiment()
         except Exception as e:
-            log_queue.put((expt, logging.ERROR, e))
+            # log_queue.put((expt, logging.ERROR, e))
             return None
         else:
             return expt
@@ -534,24 +534,37 @@ def main():
 
     pool.close()
 
+    def try_expt_process(expt, try_expt, round_no):
+        if try_expt: 
+	    msg = "{0} finished successfully in round {1}.".format(expt, round_no)
+	    log_msg_queue.put((expt, logging.DEBUG, msg))
+	    successful_experiments.append(try_expt)
+        else:
+	    msg = "{0} failed in round {1}.".format(expt, round_no)
+	    log_msg_queue.put((expt, logging.DEBUG, msg))
+	    failed_experiments.append(expt)
+
+    # First round
     for expt, result in results.iteritems():
         try:
             try_expt = result.get(timeout=SOFT_TIMEOUT)
-            if try_expt: successful_experiments.append(try_expt)
+            try_expt_process(expt, try_expt, 1)
             cleanup_expt(expt, log_msg_queue, config)
         except TimeoutError:
             second_try[expt] = result
             log_msg_queue.put((expt, logging.DEBUG, "{0} hit the soft timeout.  Will try to get result in next round".format(expt)))
         except Exception as e:
             log_msg_queue.put((expt, logging.ERROR, e))
+            failed_experiments.append(expt)
+            cleanup_expt(expt, log_msg_queue, config)
 
+    # Second round
     for expt, result in second_try.iteritems():
         try:
-            # You have numsec seconds to get the result.  if not, it doesn't go to the  successful experiments
             try_expt = result.get(timeout=HARD_TIMEOUT)
-            if try_expt: successful_experiments.append(try_expt)
+            try_expt_process(expt, try_expt, 2)
         except TimeoutError:
-            msg = "{0} hit the hard timeout.  Exiting process".format(expt)
+            msg = "{0} hit the hard timeout".format(expt)
             log_msg_queue.put((expt, logging.ERROR, msg))
             failed_experiments.append(expt)
         except Exception as e:
