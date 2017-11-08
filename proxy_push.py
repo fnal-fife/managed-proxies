@@ -168,7 +168,7 @@ class ManagedProxyPush:
             expt_format_string.format(expt=self.expt))
 
         h = logging.FileHandler(filename)
-        h.setLevel(logging.ERROR)
+        h.setLevel(logging.WARNING)
         h.setFormatter(exptformatter)
 
         qh = QueueHandler(self.queue)
@@ -382,7 +382,7 @@ def sendemail(config, log_queue, expt=None):
     with open(error_file, 'r') as f:
         message = f.read()
 
-    info_msg = "We've compiled a list of common errors here: "\
+    info_msg = "\n\nWe've compiled a list of common errors here: "\
         "https://cdcvs.fnal.gov/redmine/projects/fife/wiki/Common_errors_with_Managed_Proxies_Service. "\
         "\n\nIf you have any questions or comments about these emails, "\
         "please open a Service Desk ticket to the Distributed Computing "\
