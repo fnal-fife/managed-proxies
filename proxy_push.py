@@ -189,21 +189,21 @@ class ManagedProxyPush:
             raise AssertionError(err)
         return True
 
-    def get_proxy(self, expt, voms_role, account):
+    def get_proxy(self, voms_role, account):
         """Get the proxy for the role and experiment
 
         Returns proxy path (outfile) if proxy was successfully generated
         """
-        voms_prefix = self.config['experiments'][expt]['vomsgroup'] \
-            if 'vomsgroup' in self.config['experiments'][expt] \
-            else 'fermilab:/fermilab/{0}/'.format(expt)
+        voms_prefix = self.config['experiments'][self.expt]['vomsgroup'] \
+            if 'vomsgroup' in self.config['experiments'][self.expt] \
+            else 'fermilab:/fermilab/{0}/'.format(self.expt)
         voms_string = '{0}Role={1}'.format(voms_prefix, voms_role)
 
-        certfile = self.config['experiments'][expt]['certfile'] \
-            if 'certfile' in self.config['experiments'][expt] \
+        certfile = self.config['experiments'][self.expt]['certfile'] \
+            if 'certfile' in self.config['experiments'][self.expt] \
             else os.path.join(self.CERT_BASE_DIR, '{0}.cert'.format(account))
-        keyfile = self.config['experiments'][expt]['keyfile'] \
-            if 'keyfile' in self.config['experiments'][expt] \
+        keyfile = self.config['experiments'][self.expt]['keyfile'] \
+            if 'keyfile' in self.config['experiments'][self.expt] \
             else os.path.join(self.CERT_BASE_DIR, '{0}.key'.format(account))
 
         outfile = '{0}.{1}.proxy'.format(account, voms_role)
@@ -230,7 +230,7 @@ class ManagedProxyPush:
         retcode = subprocess.call(pingcmd)
         return True if retcode == 0 else False
 
-    def copy_proxy(self, node, account, expt, outfile):
+    def copy_proxy(self, node, account, outfile):
         """Copies the proxies to submit nodes"""
 
         """ first we check the .k5login file to see if we're even allowed to push the proxy
@@ -240,9 +240,9 @@ class ManagedProxyPush:
         account_node = '{0}@{1}.fnal.gov'.format(account, node)
         srcpath = os.path.join('proxies', outfile)
         newproxypath = os.path.join(
-            self.config['experiments'][expt]["dir"], account, '{0}.new'.format(outfile))
+            self.config['experiments'][self.expt]["dir"], account, '{0}.new'.format(outfile))
         oldproxypath = os.path.join(
-            self.config['experiments'][expt]["dir"], account, outfile)
+            self.config['experiments'][self.expt]["dir"], account, outfile)
 
         scp_cmd = ['scp', '-o', 'ConnectTimeout=30', srcpath,
                    '{0}:{1}'.format(account_node, newproxypath)]
@@ -287,7 +287,7 @@ class ManagedProxyPush:
         for roledict in self.config['experiments'][self.expt]['roles']:
             (role, acct), = roledict.items()
             try:
-                outfile = self.get_proxy(self.expt, role, acct)
+                outfile = self.get_proxy(role, acct)
             except Exception as e:
                 # We couldn't get a proxy - so just move to the next role
                 expt_success = False
@@ -297,15 +297,15 @@ class ManagedProxyPush:
             # OK, we got a ticket and a proxy, so let's try to copy
             for node in nodes:
                 try:
-                    self.copy_proxy(node, acct, self.expt, outfile)
+                    self.copy_proxy(node, acct, outfile)
                 except Exception as e:
                     self.logger.error(e)
                     expt_success = False
                     if node in badnodes:
-                        string = "Node {0} didn't respond to pings earlier - " \
+                        msg = "Node {0} didn't respond to pings earlier - " \
                             "so it's expected that copying there would fail.".format(
                                 node)
-                        self.logger.warn(string)
+                        self.logger.warn(msg)
 
         return expt_success
 
