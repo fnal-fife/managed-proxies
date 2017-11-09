@@ -690,17 +690,11 @@ def main():
     try:
         args = parse_arguments()
     except Exception as e:
-        # err = 'Could not parse arguments. \n{0}'.format(e)
-        # print err
-        # sys.exit(1)
         pre_queue_exception_action('Could not parse arguments', e)
 
     try:
         config = load_config(args.config, args.test)
     except Exception as e:
-        # err = 'Could not load config file. \n{0}'.format(e)
-        # print err
-        # sys.exit(1)
         pre_queue_exception_action('Could not load config file', e)
 
     try:
@@ -708,18 +702,12 @@ def main():
         m = Manager()
         listener_queue = m.Queue()
     except Exception as e:
-        # err = 'Could not initialize log queue. \n{0}'.format(e)
-        # print err
-        # sys.exit(1)
         pre_queue_exception_action('Could not initialize log queue', e)
     
     try: 
         listener = Process(target=main_logger, args=(listener_queue, config))
         listener.start()
     except Exception as e:
-        # err = 'Could not start log queue. \n{0}'.format(e)
-        # print err
-        # sys.exit(1)
         pre_queue_exception_action('Could not start log listener process', e)
 
     try:
