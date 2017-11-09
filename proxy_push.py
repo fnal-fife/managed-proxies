@@ -708,6 +708,8 @@ def main():
         listener = Process(target=main_logger, args=(listener_queue, config))
         listener.start()
     except Exception as e:
+        kill_main_logger(listener_queue)
+        listener.join()
         pre_queue_exception_action('Could not start log listener process', e)
 
     try:
