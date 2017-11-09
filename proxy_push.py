@@ -25,7 +25,7 @@ from QueueHandler import QueueHandler
 # Global Variables
 SOFT_TIMEOUT = 10
 HARD_TIMEOUT = 300
-INPUTFILE = 'proxy_push_config_test.yml'     # Default Config file
+INPUTFILE = 'proxy_push_config.yml'     # Default Config file
 mainlogformatter = logging.Formatter(
     '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 expt_format_string = '%(asctime)s - %(name)s - {expt} - %(levelname)s - %(message)s'
@@ -123,9 +123,6 @@ def main_logger(queue, config):
     for handler in (sh, fh, eh):
         mainlogger.addHandler(handler)        
         handler.setFormatter(mainlogformatter)
-
-    # for handler in mainlogger.handlers:
-        # handler.setFormatter(mainlogformatter)
 
     mainlogger.info("Starting new run")
     while True:
@@ -405,17 +402,13 @@ def cleanup_global(config, queue):
     if lc > 0:
         sendemail(config, queue)
         sendslackmessage(config, queue)
-        queue.put((None, logging.INFO, "Sent notifications successfully"))
     else:
         queue.put((None, logging.INFO, "No notifications to send"))
-
-    # kill_main_logger(queue)       IF THINGS FAIL COME BACK HERE
 
     # Remove the temporary error file
     try:
         remove(errfile)
     except Exception as e:
-        # print "Could not remove temporary error file. {0}".format(e)
         queue.put((None, logging.ERROR, "Could not remove temporary error file. \n{0}".format(e)))
 
 
@@ -453,12 +446,12 @@ def cleanup_expt(expt, queue, config):
         try:
             newfilename = '{0}{1}'.format(filename, file_timestamp)
             move(filename, newfilename)
-            msg = "Was not able to remove experiment {0} logfile.  Moved to \
-                archive for further troubleshooting by Distributed Computing Support.  Error was {1}".format(expt, e)
+            msg = "Was not able to remove experiment {0} logfile.  Moved to" \
+                " archive for further troubleshooting by Distributed Computing Support. \n{1}".format(expt, e)
             queue.put((expt, logging.WARN, msg))
         except Exception as e:
-            emsg = "Could not move logfile.  Someone from Distributed Computing Support \
-                should look into this.  Error was {0}".format(e)
+            emsg = "Could not move logfile.  Someone from Distributed Computing Support" \
+                " should look into this.  \n{0}".format(e)
             queue.put((expt, logging.ERROR, emsg))
     else:
         queue.put((expt, logging.DEBUG, smsg))
@@ -534,34 +527,11 @@ def sendslackmessage(config, log_queue):
                  "Status code {0}, response text {1}".format(
                      r.status_code, r.text)
         log_queue.put((None, logging.ERROR, errmsg))
-
-
-# I'm mostly sure this is redundant
-# def send_general_notifications(config, log_queue, test=False):
-#     """
-#     Function to send all general notifications
-    
-    
-#     """
-#     # General email and Slack
-#     try:
-#         # Get a line count for the tmp err file
-#         errfile = config['logs']['errfile']
-#         lc = sum(1 for _ in open(errfile, 'r'))
-#         if lc != 0:
-#             exists_error = True
-#             sendslackmessage(config, log_queue)
-#             sendemail(config, log_queue)
-#         # remove(errfile)       # I think this is redundant
-#     except IOError:     # File doesn't exist - so no errors
-#         pass
-
-#     msg = "All notifications sent" if exists_error else "No notifications to send"
-#     log_queue.put((None, logging.INFO, msg))
+    else:
+        log_queue.put((None, logging.INFO, "Sent Slack notification successfully"))
 
 
 # Miscellaneous
-
 def check_output_mod(cmd, locenv):
     """A stripped-down version of subprocess.check_output in
     python 2.7+. Returns the stdout and return code"""
@@ -601,8 +571,7 @@ def run_push(args, config, log_msg_queue):
         msg = "Script must be run as {0}. Exiting.".format(
             config['global']['should_runuser'])
         log_msg_queue.put((None, logging.ERROR, msg))
-        # kill_main_logger(log_msg_queue) # Shouldn't need this
-        sys.exit(1)
+        raise AssertionError(msg)
 
     # Setup temp log dir
     try: listdir(temp_log_dir)
@@ -613,7 +582,7 @@ def run_push(args, config, log_msg_queue):
         locenv = kerb_ticket_obtain(config['global']['KRB5CCNAME'])
     except Exception as e:
         w = 'WARNING: Error obtaining kerberos ticket; ' \
-                'may be unable to push proxies.  Error was {0}\n'.format(e)
+                'may be unable to push proxies.  \n{0}\n'.format(e)
         log_msg_queue.put((None, logging.WARN, w))
 
     # Set up the worker pool
