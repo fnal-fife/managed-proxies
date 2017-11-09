@@ -570,7 +570,6 @@ def run_push(args, config, log_msg_queue):
     except AssertionError:
         msg = "Script must be run as {0}. Exiting.".format(
             config['global']['should_runuser'])
-        log_msg_queue.put((None, logging.ERROR, msg))
         raise AssertionError(msg)
 
     # Setup temp log dir
