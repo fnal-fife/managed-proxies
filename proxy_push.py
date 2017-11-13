@@ -431,7 +431,7 @@ def cleanup_expt(expt, queue, config, test=False):
     lc = sum(1 for _ in open(filename, 'r'))
 
     try:
-        if lc != 0 and test:  sendemail(config, queue, expt)
+        if lc != 0 and not test:  sendemail(config, queue, expt)
     except Exception as e:
         msg = "Error sending email for experiment {0}.  {1}".format(expt, e)
         queue.put((expt, logging.ERROR, msg))
