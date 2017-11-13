@@ -30,7 +30,7 @@ mainlogformatter = logging.Formatter(
     '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 expt_format_string = '%(asctime)s - %(name)s - {expt} - %(levelname)s - %(message)s'
 temp_log_dir = os.path.join(getcwd(), 'temp_log_dir')
-expt_filename = os.path.join(temp_log_dir, 'log_test_{expt}.log')
+expt_filename = os.path.join(temp_log_dir, 'log_temp_{expt}.log')
 file_timestamp = datetime.strftime(datetime.now(), "%Y-%m-%d_%H:%M:%S")
 
 # Functions
@@ -201,10 +201,12 @@ class ManagedProxyPush(object):
             setattr(self, key, item)
 
         self.logger = self.expt_logger()
+        self.logger.info("Set up experiment logger for {0}".format(self.expt))
 
         # Make sure our config file has the necessary items to process the experiment
         try:
             assert self.check_keys()
+            self.logger.debug("Keys for {0} are valid".format(self.expt))
         except AssertionError as e:
             self.logger.error(e)
             raise
@@ -412,7 +414,7 @@ def cleanup_global(config, queue):
         queue.put((None, logging.ERROR, "Could not remove temporary error file. \n{0}".format(e)))
 
 
-def cleanup_expt(expt, queue, config):
+def cleanup_expt(expt, queue, config, test=False):
     """
     Cleanup for each experiment process.  Sends experiment-specific email, 
     and removes temporary file.  If that fails, we archive it for further
@@ -429,7 +431,7 @@ def cleanup_expt(expt, queue, config):
     lc = sum(1 for _ in open(filename, 'r'))
 
     try:
-        if lc != 0:  sendemail(config, queue, expt)
+        if lc != 0 and test:  sendemail(config, queue, expt)
     except Exception as e:
         msg = "Error sending email for experiment {0}.  {1}".format(expt, e)
         queue.put((expt, logging.ERROR, msg))
@@ -628,7 +630,7 @@ def run_push(args, config, log_msg_queue):
         try:
             try_expt = result.get(timeout=SOFT_TIMEOUT)
             try_expt_process(expt, try_expt, 1)
-            cleanup_expt(expt, log_msg_queue, config)
+            cleanup_expt(expt, log_msg_queue, config, args.test)
         except TimeoutError:
             msg = "{0} hit the soft timeout.  Will try to get result in next round".format(expt)
             second_try[expt] = result
@@ -637,7 +639,7 @@ def run_push(args, config, log_msg_queue):
             log_msg_queue.put((expt, logging.ERROR, e))
             failed_experiments.append(expt)
             try:
-                cleanup_expt(expt, log_msg_queue, config)
+                cleanup_expt(expt, log_msg_queue, config, args.test)
             except Exception as e:
                 msg = "Could not cleanup {0}. \n{1}".format(expt, e)
                 log_msg_queue.put( (None, logging.ERROR, msg))
@@ -656,7 +658,7 @@ def run_push(args, config, log_msg_queue):
             failed_experiments.append(expt)
         finally:
             try:
-                cleanup_expt(expt, log_msg_queue, config)
+                cleanup_expt(expt, log_msg_queue, config, args.test)
             except Exception as e:
                 pool.terminate()
                 pool.join()
