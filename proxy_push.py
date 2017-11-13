@@ -24,7 +24,7 @@ from QueueHandler import QueueHandler
 
 # Global Variables
 SOFT_TIMEOUT = 10
-HARD_TIMEOUT = 300
+HARD_TIMEOUT = 120
 INPUTFILE = 'proxy_push_config.yml'     # Default Config file
 mainlogformatter = logging.Formatter(
     '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
