@@ -1,13 +1,14 @@
 #!/usr/bin/env python
 import subprocess
+from multiprocessing import Pool, current_process, TimeoutError, Process, Manager
 import json
 import yaml
 import sys
 import logging
 import requests
-from logging.handlers import RotatingFileHandler
 from traceback import format_exc
-from os import environ, geteuid, remove
+from os import environ, geteuid, remove, listdir, mkdir, getcwd, rmdir
+from shutil import move
 import os.path
 from pwd import getpwuid
 import smtplib
@@ -15,51 +16,474 @@ import email.utils
 from email.mime.text import MIMEText
 from contextlib import contextmanager
 import argparse
+from time import sleep
+from datetime import datetime
+
+from QueueHandler import QueueHandler
 
 
 # Global Variables
-inputfile = 'proxy_push_config.yml'     # Default Config file
-logger = None
-expt_files = {}             # Experiment log file dict
-config = None               # Global configuration
+SOFT_TIMEOUT = 10
+HARD_TIMEOUT = 120
+INPUTFILE = 'proxy_push_config.yml'     # Default Config file
+mainlogformatter = logging.Formatter(
+    '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+expt_format_string = '%(asctime)s - %(name)s - {expt} - %(levelname)s - %(message)s'
+temp_log_dir = os.path.join(getcwd(), 'temp_log_dir')
+expt_filename = os.path.join(temp_log_dir, 'log_temp_{expt}.log')
+file_timestamp = datetime.strftime(datetime.now(), "%Y-%m-%d_%H:%M:%S")
 
 # Functions
-
-def load_config(infile, test=False):
-    """Load config into dict from config file"""
-    global config
-    with open(infile, 'r') as f:
-        config = yaml.load(f)
-
-    # If we're running test, use test parameters
-    if test:
-        config['notifications'] = config['notifications_test']
-
-    del config['notifications_test']
-
-
+# Set up
 def parse_arguments():
-    """Parse arguments to this script"""
+    """
+    Parse arguments to this script
+    
+    :return Namespace:  Namespace of assigned arguments
+    """
     parser = argparse.ArgumentParser()
     parser.add_argument("-e", "--experiment", type=str,
-            help="Push for a single experiment")
+                        help="Push for a single experiment")
     parser.add_argument("-c", "--config", type=str,
-            help="Alternate config file", default=inputfile)
+                        help="Alternate config file", default=INPUTFILE)
     parser.add_argument("-t", "--test", action="store_true",
-            help="Test mode", default=False)
+                        help="Test mode", default=False)
     return parser.parse_args()
 
 
-# Sending notification functions
-def sendemail(expt=None):
-    """Function to send email after message string is populated."""
-    global config, expt_files
-    error_file = config['logs']['errfile'] if expt is None else expt_files[expt]
+def load_config(infile, test=False):
+    """
+    Load config into dict from config file
+    
+    :param str infile:  Configuration file for Managed Proxies Service
+    :param bool test:  Test mode on (True) or off (False)
+    :return dict: Adjusted configuration dictionary for use by rest of module
+    """
+    with open(infile, 'r') as f: config = yaml.load(f)
 
-    with open(error_file, 'r') as f:
-        message = f.read()
+    # If we're running test, use test parameters
+    if test: config['notifications'] = config['notifications_test']
 
-    info_msg = "We've compiled a list of common errors here: "\
+    del config['notifications_test']
+    return config
+
+
+def check_user(testuser):
+    """Tests if user running script is not the authorized user
+    
+    :param str testuser: Username that the script must run as
+    :return bool: Whether or not the user running the script is the authorized user
+    """
+    runuser = getpwuid(geteuid())[0]
+    print "Running script as {0}.".format(runuser)
+    return runuser == testuser
+
+
+def kerb_ticket_obtain(krb5ccname):
+    """
+    Obtain a ticket based on the special use principal
+    
+    :param str krb5ccname: What the env variable KRB5CCNAME should be set to before running kinit
+    :return dict:  Environment of running process.  Can be passed to other processes
+    """
+    locenv = environ.copy()
+    locenv['KRB5CCNAME'] = krb5ccname
+
+    kerbcmd = ['/usr/krb5/bin/kinit', '-k', '-t',
+               '/opt/gen_keytabs/config/gcso_monitor.keytab',
+               'monitor/gcso/fermigrid.fnal.gov@FNAL.GOV']
+    subprocess.check_call(kerbcmd, env=locenv)
+    return locenv
+
+
+# Main Logger
+def main_logger(queue, config):
+    """
+    Set up the main logger, listen for messages in the queue, and log them
+
+    :param multiprocessing.Manager.Queue queue:  Multiprocessing queue that the 
+        main logger listens to
+    :param dict config: Configuration value dictionary from config file    
+    """
+    mainlogger = logging.getLogger('Main log')
+    mainlogger.setLevel(logging.DEBUG)
+
+    # Stream Handler to stdout
+    sh = logging.StreamHandler()
+    sh.setLevel(logging.INFO)
+
+    # File Handler to main logfile
+    fh = logging.FileHandler(config['logs']['logfile'])
+    fh.setLevel(logging.DEBUG)
+
+    # File Handler to temporary error file (used to email errors to FIFE group)
+    eh = logging.FileHandler(config['logs']['errfile'])
+    eh.setLevel(logging.WARNING)
+
+    for handler in (sh, fh, eh):
+        mainlogger.addHandler(handler)        
+        handler.setFormatter(mainlogformatter)
+
+    mainlogger.info("Starting new run")
+    while True:
+        try:
+            q_msg = queue.get()
+            if q_msg is None:     # Poison pill
+                mainlogger.info("Main Logger shutting down")
+                break
+            if isinstance(q_msg, tuple) and len(q_msg) == 3:
+                expt, level, msg = q_msg
+                
+                # Sanity check - are we actually passing in something that could be a logging level?
+                assert isinstance(level, int)       
+                
+                mainlogger.log(level, msg)
+            else:
+                mainlogger.handle(q_msg)
+        except Exception as e:
+            mainlogger.error(e)
+
+
+def kill_main_logger(queue):
+    """Kill the main logger process by putting the "poison pill" in the queue
+    :param multiprocessing.Manager.Queue queue: Queue to put the "poison pill" in
+    """
+    queue.put(None)
+    sleep(0.1)
+
+
+# Set up and run worker job
+def run_worker(expt, config, log_queue, environment):
+    """
+    Run a worker for an experiment.
+
+    :param str expt:  Experiment for which proxies are being pushed
+    :param dict config:  Configuration value dictionary from config file
+    :param multiprocessing.Manager.Queue log_queue: Queue to dump log messages into
+    :param dict environment: Environment of parent process to pass into workers
+    :return: Return expt if successful, None if not
+    """
+    try:
+        expt_push = ManagedProxyPush(config, expt, log_queue, environment)
+    except Exception:
+        return None
+    else:   # We instantiated the ManagedProxyPush class, with all its checks
+        try:
+            # Now let's actually process the experiment
+            assert expt_push.process_experiment()
+        except Exception:
+            return None
+        else:
+            return expt
+
+
+class ManagedProxyPush(object):
+    """
+    Class that holds all of the procedures/methods to push proxies and do
+    necessary checks.  Runs within a process.
+
+    :param dict config: Configuration value dictionary from config file
+    :param str expt: Experiment this instance will be pushing proxies for
+    :param multiprocessing.Manager.Queue msg_queue: Message queue to use when
+        setting up QueueHandler
+    :param dict environment:  Environment to use when running shell commands
+    """
+
+    def __init__(self, config, expt, msg_queue, environment):
+        self.config = config
+        self.locenv = environment
+        self.queue = msg_queue
+        self.expt = expt
+
+        self.expt_filename = expt_filename.format(expt=self.expt)
+
+        for key, item in self.config['global'].iteritems():
+            setattr(self, key, item)
+
+        self.logger = self.expt_logger()
+        self.logger.info("Set up experiment logger for {0}".format(self.expt))
+
+        # Make sure our config file has the necessary items to process the experiment
+        try:
+            assert self.check_keys()
+            self.logger.debug("Keys for {0} are valid".format(self.expt))
+        except AssertionError as e:
+            self.logger.error(e)
+            raise
+
+    def expt_logger(self):
+        """
+        Set up the logger for this class.  We add an experiment-specific
+        file handler so that experiment-specific error emails can be sent
+
+        :return logging.Logger: Logger for this instance
+        """
+        exptlogger = logging.getLogger(self.expt)
+        exptlogger.setLevel(logging.DEBUG)
+        exptformatter = logging.Formatter(expt_format_string.format(expt=self.expt))
+
+        # File handler for experiment-specific error file
+        h = logging.FileHandler(self.expt_filename)
+        h.setLevel(logging.WARNING)
+        h.setFormatter(exptformatter)
+
+        # Custom QueueHandler to put all log messages into our log queue
+        qh = QueueHandler(self.queue)
+        qh.setFormatter(exptformatter)
+
+        for handler in (h, qh):
+            exptlogger.addHandler(handler)
+
+        return exptlogger
+
+    def check_keys(self):
+        """Make sure our JSON file has nodes and roles for the experiment
+        
+        :raises AssertionError: If our test fails, this is raised
+        :return bool: Returns True if test is passed
+        """
+        if "roles" not in self.config['experiments'][self.expt].keys() or "nodes" not in self.config['experiments'][self.expt].keys(): 
+            err = "Error: input file improperly formatted for {0}" \
+                " (roles or nodes don't exist for this experiment)." \
+                " Please check the config file" \
+                " on fifeutilgpvm01. I will skip this experiment for now." \
+                "\n".format(self.expt)
+            raise AssertionError(err)
+        return True
+
+    @staticmethod
+    def check_node(node):
+        """Pings the node to see if it's up or at least pingable
+        
+        :param str node: Node to ping
+        :return bool:  True if ping returns 0, False otherwise
+        """
+        pingcmd = ['ping', '-W', '5', '-c', '1', node]
+        retcode = subprocess.call(pingcmd)
+        return True if retcode == 0 else False
+
+    def get_proxy(self, voms_role, account):
+        """Get the proxy for the role and experiment
+
+        :param str voms_role: VOMS role for desired proxy
+        :param str account: UNIX account for desired proxy
+        :return str: Proxy path (outfile) if proxy was successfully generated
+        """
+        voms_prefix = self.config['experiments'][self.expt]['vomsgroup'] \
+            if 'vomsgroup' in self.config['experiments'][self.expt] \
+            else 'fermilab:/fermilab/{0}/'.format(self.expt)
+        voms_string = '{0}Role={1}'.format(voms_prefix, voms_role)
+
+        certfile = self.config['experiments'][self.expt]['certfile'] \
+            if 'certfile' in self.config['experiments'][self.expt] \
+            else os.path.join(self.CERT_BASE_DIR, '{0}.cert'.format(account))
+        keyfile = self.config['experiments'][self.expt]['keyfile'] \
+            if 'keyfile' in self.config['experiments'][self.expt] \
+            else os.path.join(self.CERT_BASE_DIR, '{0}.key'.format(account))
+
+        outfile = '{0}.{1}.proxy'.format(account, voms_role)
+        outfile_path = os.path.join('proxies', outfile)
+
+        vpi_args = ["/usr/bin/voms-proxy-init", '-rfc', '-valid', '24:00', '-voms',
+                    voms_string, '-cert', certfile,
+                    '-key', keyfile, '-out', outfile_path]
+
+        # Do voms-proxy-init now
+        try:
+            check_output_mod(vpi_args, self.locenv)
+        except Exception as e:
+            err = "Error obtaining {0}.  Please check the cert on " \
+                  "fifeutilgpvm01. \n{1}" \
+                  "Continuing on to next role.".format(outfile, e)
+            raise Exception(err)
+        return outfile
+
+    def copy_proxy(self, node, account, srcfile):
+        """Copies the proxies to submit nodes
+        
+        :param str node: Destination node to copy proxy to
+        :param str account: UNIX account to log into node as
+        :param str srcfile: Filename of proxy to copy out
+        """
+        account_node = '{0}@{1}.fnal.gov'.format(account, node)
+        srcpath = os.path.join('proxies', srcfile)
+        newproxypath = os.path.join(
+            self.config['experiments'][self.expt]["dir"], account, '{0}.new'.format(srcfile))
+        finalproxypath = os.path.join(
+            self.config['experiments'][self.expt]["dir"], account, srcfile)
+
+        ssh_opts = ['-o', 'ConnectTimeout=30', 
+            '-o', 'ServerAliveInterval=30', 
+            '-o', 'ServerAliveCountMax=1']
+
+        scp_cmd = ['scp',]
+        chmod_cmd = ['ssh', ]
+
+        for command in (scp_cmd, chmod_cmd): command.extend(ssh_opts)   # Add ssh opts to each command
+
+        scp_cmd.extend([srcpath, '{0}:{1}'.format(account_node, newproxypath)])
+        chmod_cmd.extend([account_node,
+                          'chmod 400 {0} ; mv -f {0} {1}'.format(newproxypath, finalproxypath)])
+
+        try:
+            check_output_mod(scp_cmd, self.locenv)
+        except Exception as e:
+            err = "Error copying ../proxies/{0} to {1}. " \
+                  "Trying next node\n{2}".format(srcfile, node, str(e))
+            raise Exception(err)
+
+        try:
+            check_output_mod(chmod_cmd, self.locenv)
+        except Exception as e:
+            err = "Error changing permission of {0} to mode 400 on {1}. " \
+                  "Trying next node \n{2}".format(srcfile, node, str(e))
+            raise Exception(err)
+
+    def process_experiment(self):
+        """
+        Function to process each experiment.  Checks an experiment's nodes, generates the proxies, and 
+        sends them to the nodes
+
+        :return bool: Whether or not processing the experiment succeeded with no errors
+        """
+        self.logger.info('Now processing {0}'.format(self.expt))
+        badnodes = []
+        expt_success = True     # Flag that we'll change if there are any errors
+
+        nodes = self.config['experiments'][self.expt]['nodes']
+
+        # Ping nodes to see if they're up
+        for node in nodes:
+            if not self.check_node(node):
+                self.logger.warning(
+                    "The node {0} didn't return a response to ping after 5 "
+                    "seconds.  Please investigate, and see if the node is up. "
+                    "It may be necessary for the experiment to request via a ServiceNow ticket "
+                    "that the Scientific Server Infrastructure group reboot "
+                    "the node. Moving to the next node".format(node))
+                expt_success = False
+                badnodes.append(node)
+                continue
+
+        for roledict in self.config['experiments'][self.expt]['roles']:
+            (role, acct), = roledict.items()
+            try:
+                outfile = self.get_proxy(role, acct)
+            except Exception as e:
+                # We couldn't get a proxy - so just move to the next role
+                expt_success = False
+                self.logger.error(e)
+                continue
+
+            # OK, we got a ticket and a proxy, so let's try to copy
+            for node in nodes:
+                try:
+                    self.copy_proxy(node, acct, outfile)
+                except Exception as e:
+                    self.logger.error(e)
+                    expt_success = False
+                    if node in badnodes:
+                        msg = "Node {0} didn't respond to pings earlier - " \
+                            "so it's expected that copying there would fail.".format(
+                                node)
+                        self.logger.warn(msg)
+
+        return expt_success
+
+
+# Cleanup actions
+def cleanup_global(config, queue):
+    """
+    Clean up for the main process.  Removes/archives temporary files, sends 
+    general emails and Slack messages.
+    
+    :param dict config: Configuration value dictionary from config file    
+    :param multiprocessing.Manager.Queue queue: queue to put any messages in
+    """
+    # Remove the temp log dir
+    try:
+        rmdir(temp_log_dir)
+    except OSError:
+        queue.put((None, logging.WARN, "{0} is not empty - not removing directory".format(temp_log_dir)))
+
+    # Send general notifications
+    errfile = config['logs']['errfile']
+    lc = sum(1 for _ in open(errfile, 'r'))
+    if lc > 0:
+        sendemail(config, queue)
+        sendslackmessage(config, queue)
+    else:
+        queue.put((None, logging.INFO, "No notifications to send"))
+
+    # Remove the temporary error file
+    try:
+        remove(errfile)
+    except Exception as e:
+        queue.put((None, logging.ERROR, "Could not remove temporary error file. \n{0}".format(e)))
+
+
+def cleanup_expt(expt, queue, config, test=False):
+    """
+    Cleanup for each experiment process.  Sends experiment-specific email, 
+    and removes temporary file.  If that fails, we archive it for further
+    troubleshooting. 
+
+    :param str expt:  Experiment's process to clean up
+    :param multiprocessing.Manager.Queue queue: queue to put any messages in
+    :param dict config: Configuration value dictionary from config file
+    """
+    logargs = [expt, queue]
+    queue.put((expt, logging.DEBUG, "Cleaning up {0}".format(expt)))
+    filename = expt_filename.format(expt=expt)
+
+    lc = sum(1 for _ in open(filename, 'r'))
+
+    try:
+        if lc != 0 and not test:  sendemail(config, queue, expt)
+    except Exception as e:
+        msg = "Error sending email for experiment {0}.  {1}".format(expt, e)
+        queue.put((expt, logging.ERROR, msg))
+        
+    smsg = "Cleaned up {0} with no issues".format(expt)
+    try:
+        remove(filename)
+    except OSError:
+        # File doesn't exist
+        msg = "Filename {0} doesn't exist.  There were probably no errors in that experiment's run".format(filename)
+        queue.put((expt, logging.DEBUG, msg))
+        queue.put((expt, logging.DEBUG, smsg))
+    except Exception as e:
+        try:
+            newfilename = '{0}{1}'.format(filename, file_timestamp)
+            move(filename, newfilename)
+            msg = "Was not able to remove experiment {0} logfile.  Moved to" \
+                " archive for further troubleshooting by Distributed Computing Support. \n{1}".format(expt, e)
+            queue.put((expt, logging.WARN, msg))
+        except Exception as e:
+            emsg = "Could not move logfile.  Someone from Distributed Computing Support" \
+                " should look into this.  \n{0}".format(e)
+            queue.put((expt, logging.ERROR, emsg))
+    else:
+        queue.put((expt, logging.DEBUG, smsg))
+        queue.put((expt, logging.INFO, "Done with {0}".format(expt)))
+
+
+# Notification actions
+def sendemail(config, log_queue, expt=None):
+    """
+    Function to send email after error file is populated.
+    
+    :param dict config: Configuration value dictionary from config file
+    :param multiprocessing.Manager.Queue log_queue: queue to put any messages in
+    :param str expt:  Experiment we're sending email for.  If this is None, we send the 
+        general emails to the FIFE group
+    """
+    error_file = config['logs']['errfile'] if expt is None else expt_filename.format(
+        expt=expt)
+
+    with open(error_file, 'r') as f: message = f.read()
+
+    info_msg = "\n\nWe've compiled a list of common errors here: "\
         "https://cdcvs.fnal.gov/redmine/projects/fife/wiki/Common_errors_with_Managed_Proxies_Service. "\
         "\n\nIf you have any questions or comments about these emails, "\
         "please open a Service Desk ticket to the Distributed Computing "\
@@ -83,401 +507,233 @@ def sendemail(expt=None):
     try:
         smtpObj = smtplib.SMTP('smtp.fnal.gov')
         smtpObj.sendmail(sender, to, msg.as_string())
-        smsg = "Successfully sent error email"
-        if logger is not None:
-            logger.info(smsg)
+        smsg = "Successfully sent notification email to {0}".format(to)
+        log_queue.put((expt, logging.INFO, smsg))
     except Exception as e:
-        err = "Error:  unable to send email.\n%s\n" % e
-        if logger is not None:
-            error_handler(err)
-        else:
-            print err
-        raise
+        err = "Error:  unable to send email.\n{0}\n".format(e)
+        log_queue.put((expt, logging.ERROR, err))
 
 
-def sendslackmessage():
-    """Function to send notification to fife-group #alerts slack channel"""
+def sendslackmessage(config, log_queue):
+    """
+    Function to send notifications to fife-group #alerts slack channel
+    from temporary error file
+    
+    :param dict config: Configuration value dictionary from config file
+    :param multiprocessing.Manager.Queue log_queue: queue to put any messages in
+    """
     with open(config['logs']['errfile'], 'r') as f:
         payloadtext = f.read()
 
     payload = {"text": payloadtext}
     headers = {"Content-type": "application/json"}
 
-    r = requests.post(config['notifications']['SLACK_ALERTS_URL'], data=json.dumps(payload),
-                      headers=headers)
-
-    if r.status_code != requests.codes.ok:
+    try:
+        r = requests.post(config['notifications']['SLACK_ALERTS_URL'], data=json.dumps(payload),
+                          headers=headers)
+        r.raise_for_status()
+    except Exception as e:
         errmsg = "Could not send slack message.  " \
                  "Status code {0}, response text {1}".format(
                      r.status_code, r.text)
-        if logger is not None:
-            error_handler(errmsg)
-        else:
-            print errmsg
-
-
-def send_all_notifications(test=False):
-    """Function to send all notifications"""
-    global expt_files   # , logger
-    expt_files_to_keep = []
-    exists_error = False
-
-    if not test:
-        # Experiment-specific emails if it's not a test run
-        for expt, f in expt_files.iteritems():
-            # Get line count for experiment-specific log file
-            lc = sum(1 for _ in open(f, 'r'))
-            if lc != 0:
-                exists_error = True
-                try:
-                    sendemail(expt)
-                except Exception as e:
-                    error_handler(e)    # Don't exit - just move to the next error file
-                    expt_files_to_keep.append(expt)
-
-        for e in expt_files_to_keep: del expt_files[e]
-
-    remove_expt_logs()   # Uses expt_files to find what files to delete
-
-    # General email and Slack
-    try:
-        # Get a line count for the tmp err file
-        errfile = config['logs']['errfile']
-        lc = sum(1 for _ in open(errfile, 'r'))
-        if lc != 0:
-            exists_error = True
-            sendslackmessage()
-            sendemail()
-        remove(errfile)
-    except IOError:     # File doesn't exist - so no errors
-        pass
-
-    msg = "All notifications sent" if exists_error else "No notifications to send"
-    logger.info(msg)
-
-
-# Handling logfiles
-def setup_logger(name):
-    """Sets up the logger"""
-    global logger, expt_files
-
-    handler_list = []
-    logfile = config['logs']['logfile']
-    errfile = config['logs']['errfile']
-
-    # Create Logger
-    logger = logging.getLogger(name)
-    logger.setLevel(logging.DEBUG)
-
-    # Console handler - info
-    ch = logging.StreamHandler()
-    ch.setLevel(logging.INFO)
-    handler_list.append(ch)
-
-    # Logfile Handler
-    lh = RotatingFileHandler(logfile, maxBytes=2097152, backupCount=3)
-    lh.setLevel(logging.DEBUG)
-    logfileformat = logging.Formatter(
-        "%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-    lh.setFormatter(logfileformat)
-    handler_list.append(lh)
-
-    # Error file
-    eh = logging.FileHandler(errfile)
-    eh.setLevel(logging.WARNING)
-    errfileformat = logging.Formatter(
-        "%(asctime)s - %(levelname)s - %(message)s")
-    eh.setFormatter(errfileformat)
-    handler_list.append(eh)
-
-    for handler in handler_list:
-        logger.addHandler(handler)
-
-    return logger
-
-
-@contextmanager
-def expt_log_active(logger, expt, level=None, close=True):
-    """Context manager to temporarily add an experiment-specific log handler to the logger"""
-    global expt_files
-
-    # __init__ and __enter__ code
-    filename = expt_files[expt]
-    h = logging.FileHandler(filename)
-    if level is not None:
-        h.setLevel(level)
-    logger.addHandler(h)
-
-    yield
-
-    # __exit__ code
-    if h is not None:
-        logger.removeHandler(h)
-    if h is not None and close:
-        h.close()
-
-
-def remove_expt_logs():
-    """Removes all the temporary experiment logfiles"""
-    global logger, expt_files
-    for f in expt_files.itervalues():
-        try:
-            remove(f)
-        except OSError as e:
-            error_handler(e)
-
-
-# Error handling
-def error_handler(exception):
-    """Splits out any error into the right error streams"""
-    if logger is not None:
-        logger.error(exception)
-        logger.debug(format_exc())
+        log_queue.put((None, logging.ERROR, errmsg))
     else:
-        print exception, format_exc()
+        log_queue.put((None, logging.INFO, "Sent Slack notification successfully"))
 
 
-# Pushing proxy
-class ManagedProxyPush:
-    """Class that holds all of the procedures/methods to push proxies and do
-    necessary checks"""
-    def __init__(self, config, logger=None):
-        self.config = config
+# Miscellaneous
+def check_output_mod(cmd, locenv):
+    """A stripped-down version of subprocess.check_output in
+    python 2.7+. Returns the stdout and return code"""
+    process = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, env=locenv)
+    output, _ = process.communicate()
+    retcode = process.poll()
+    if retcode:
+        raise Exception(output)
+    return output, retcode
 
-        for key, item in self.config['global'].iteritems():
-            setattr(self, key, item)
 
+# The function that runs everything
+def run_push(args, config, log_msg_queue):
+    """Main execution module.  Starts up the process pool, assigns tasks to
+        it (one per experiment), and handles timeouts and other errors for 
+        processes.  The only reason this isn't "main" is because I needed to 
+        pass arguments into it so I can handle exceptions outside of this 
+        function.  Otherwise, exceptions here would lead to "Broken Pipe" getting 
+        dumped in an infinite loop into stdout and the logfile.
+    
+    :param Namespace args:  Namespace of arguments passed to script
+    :param dict config: Configuration value dictionary from config file
+    :param multiprocessing.Manager.Queue log_msg_queue: queue to put any messages in
+    """
+    successful_experiments = []
+    failed_experiments = []
+    second_try = {}
+
+    if args.test: log_msg_queue.put((None, logging.INFO, "Running in test mode"))
+    log_msg_queue.put((None, logging.INFO, "Using config file {0}".format(args.config)))
+
+    # Are we running as the right user?
+    try:
+        assert check_user(config['global']['should_runuser'])
+    except AssertionError:
+        msg = "Script must be run as {0}. Exiting.".format(
+            config['global']['should_runuser'])
+        raise AssertionError(msg)
+
+    # Setup temp log dir
+    try: listdir(temp_log_dir)
+    except OSError: mkdir(temp_log_dir)
+
+    # Get a kerb ticket
+    try:
+        locenv = kerb_ticket_obtain(config['global']['KRB5CCNAME'])
+    except Exception as e:
+        w = 'WARNING: Error obtaining kerberos ticket; ' \
+                'may be unable to push proxies.  \n{0}\n'.format(e)
+        log_msg_queue.put((None, logging.WARN, w))
+
+    # Set up the worker pool
+    numworkers = 1 if args.experiment else 5
+    expts = [args.experiment,] if args.experiment \
+        else config['experiments'].keys()
+
+    pool = Pool(processes=numworkers)
+
+    # Start workers, send jobs to the processes    
+    results = {}
+    for expt in expts:
         try:
-            assert self.check_user(self.should_runuser)
-        except AssertionError:
-            err = "This script must be run as {0}. Exiting.".format(self.should_runuser)
-            raise AssertionError(err)
-
-        self.logger = logger
-        if self.logger is None:
-            # Set up a dummy logger if we don't explicitly give it one
-            self.logger = logging.getLogger(self.__class__.__name__)
-
-        # grab the initial environment
-        self.locenv = environ.copy()
-        self.locenv['KRB5CCNAME'] = self.KRB5CCNAME
-
-        try:
-            self.kerb_ticket_obtain()
+            results[expt] = pool.apply_async(run_worker, (expt, config, log_msg_queue, locenv))
         except Exception as e:
-            err = 'WARNING: Error obtaining kerberos ticket; ' \
-                  'may be unable to push proxies.  Error was {0}\n'.format(e)
-            self.logger.warning(err)
+            log_msg_queue.put((expt, logging.ERROR, e))
+            continue 
 
-    @staticmethod
-    def check_user(testuser):
-        """Exit if user running script is not the authorized user"""
-        runuser = getpwuid(geteuid())[0]
-        print "Running script as {0}.".format(runuser)
-        return runuser == testuser
+    # If we ever upgrade to python 2.7...
+    #   results = {expt: pool.apply_async(run_worker, (expt, config, log_msg_queue))}
+    
+    pool.close()
 
-    def kerb_ticket_obtain(self):
-        """Obtain a ticket based on the special use principal"""
-        kerbcmd = ['/usr/krb5/bin/kinit', '-k', '-t',
-                   '/opt/gen_keytabs/config/gcso_monitor.keytab',
-                   'monitor/gcso/fermigrid.fnal.gov@FNAL.GOV']
-        subprocess.check_call(kerbcmd, env=self.locenv)
-
-    def check_keys(self, expt):
-        """Make sure our JSON file has nodes and roles for the experiment"""
-        if "roles" not in self.config['experiments'][expt].keys() \
-                or "nodes" not in self.config['experiments'][expt].keys():
-            err = "Error: input file improperly formatted for {0}" \
-                  " (roles or nodes don't exist for this experiment)." \
-                  " Please check the config file" \
-                  " on fifeutilgpvm01. I will skip this experiment for now." \
-                  "\n".format(expt)
-            error_handler(err)
-            return False
-        return True
-
-    def check_output_mod(self, cmd):
-        """A stripped-down version of subprocess.check_output in
-        python 2.7+. Returns the stdout and return code"""
-        process = subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                                   stderr=subprocess.STDOUT, env=self.locenv)
-        output, _ = process.communicate()
-        retcode = process.poll()
-        if retcode:
-            raise Exception(output)
-        return output, retcode
-
-    def get_proxy(self, expt, voms_role, account):
-        """Get the proxy for the role and experiment
-
-        Returns proxy path (outfile) if proxy was successfully generated
+    def try_expt_process(expt, try_expt, round_no):
         """
-        voms_prefix = self.config['experiments'][expt]['vomsgroup'] \
-            if 'vomsgroup' in self.config['experiments'][expt] \
-            else 'fermilab:/fermilab/{0}/'.format(expt)
-        voms_string = '{0}Role={1}'.format(voms_prefix, voms_role)
+        Helper function that sorts experiment results into successes and failures, 
+        and handles each
 
-        certfile = self.config['experiments'][expt]['certfile'] \
-            if 'certfile' in self.config['experiments'][expt] \
-            else os.path.join(self.CERT_BASE_DIR, '{0}.cert'.format(account))
-        keyfile = self.config['experiments'][expt]['keyfile'] \
-            if 'keyfile' in self.config['experiments'][expt] \
-            else os.path.join(self.CERT_BASE_DIR, '{0}.key'.format(account))
-
-        outfile = '{0}.{1}.proxy'.format(account, voms_role)
-
-        vpi_args = ["/usr/bin/voms-proxy-init", '-rfc', '-valid', '24:00', '-voms',
-                    voms_string, '-cert', certfile,
-                    '-key', keyfile, '-out',
-                    'proxies/' + outfile]
-
-        # do voms-proxy-init now
-        try:
-            self.check_output_mod(vpi_args)
-        except Exception:
-            err = "Error obtaining {0}.  Please check the cert on " \
-                  "fifeutilgpvm01. " \
-                  "Continuing on to next role.".format(outfile, self.CERT_BASE_DIR)
-            raise Exception(err)
-        return outfile
-
-    @staticmethod
-    def check_node(node):
-        """Pings the node to see if it's up or at least pingable"""
-        pingcmd = ['ping', '-W', '5', '-c', '1', node]
-        retcode = subprocess.call(pingcmd)
-        return True if retcode == 0 else False
-
-    def copy_proxy(self, node, account, expt, outfile):
-        """Copies the proxies to submit nodes"""
-
-        """ first we check the .k5login file to see if we're even allowed to push the proxy
-        k5login_check = 'ssh ' + account + '@' + node + ' cat .k5login'
-        nNames = -1
+        :param str expt:  Experiment we're examining
+        :param str try_expt:  If the process succeeded try_expt = expt.  Otherwise, it's None
+        :param round_no:  Which round we're in
         """
-        account_node = '{0}@{1}.fnal.gov'.format(account, node)
-        srcpath = os.path.join('proxies', outfile)
-        newproxypath = os.path.join(self.config['experiments'][expt]["dir"], account, '{0}.new'.format(outfile))
-        oldproxypath = os.path.join(self.config['experiments'][expt]["dir"], account, outfile)
+        if try_expt: 
+            msg = "{0} finished successfully in round {1}.".format(expt, round_no)
+            log_msg_queue.put((expt, logging.DEBUG, msg))
+            successful_experiments.append(try_expt)
+        else:
+            msg = "{0} failed in round {1}.".format(expt, round_no)
+            log_msg_queue.put((expt, logging.DEBUG, msg))
+            failed_experiments.append(expt)
 
-        scp_cmd = ['scp', '-o', 'ConnectTimeout=30', srcpath, '{0}:{1}'.format(account_node, newproxypath)]
-        chmod_cmd = ['ssh', '-o', 'ConnectTimeout=30', account_node,
-                             'chmod 400 {0} ; mv -f {0} {1}'.format(newproxypath, oldproxypath)]
-        
+    # First round
+    for expt, result in results.iteritems():
         try:
-            self.check_output_mod(scp_cmd)
+            try_expt = result.get(timeout=SOFT_TIMEOUT)
+            try_expt_process(expt, try_expt, 1)
+            cleanup_expt(expt, log_msg_queue, config, args.test)
+        except TimeoutError:
+            msg = "{0} hit the soft timeout.  Will try to get result in next round".format(expt)
+            second_try[expt] = result
+            log_msg_queue.put((expt, logging.DEBUG, msg))
         except Exception as e:
-            err = "Error copying ../proxies/{0} to {1}. " \
-                  "Trying next node\n {2}".format(outfile, node, str(e))
-            raise Exception(err)
+            log_msg_queue.put((expt, logging.ERROR, e))
+            failed_experiments.append(expt)
+            try:
+                cleanup_expt(expt, log_msg_queue, config, args.test)
+            except Exception as e:
+                msg = "Could not cleanup {0}. \n{1}".format(expt, e)
+                log_msg_queue.put( (None, logging.ERROR, msg))
 
+    # Second round
+    for expt, result in second_try.iteritems():
         try:
-            self.check_output_mod(chmod_cmd)
+            try_expt = result.get(timeout=HARD_TIMEOUT)
+            try_expt_process(expt, try_expt, 2)
+        except TimeoutError:
+            msg = "{0} hit the hard timeout".format(expt)
+            log_msg_queue.put((expt, logging.ERROR, msg))
+            failed_experiments.append(expt)
         except Exception as e:
-            err = "Error changing permission of {0} to mode 400 on {1}. " \
-                  "Trying next node\n {2}".format(outfile, node, str(e))
-            raise Exception(err)
+            log_msg_queue.put((expt, logging.ERROR, e))
+            failed_experiments.append(expt)
+        finally:
+            try:
+                cleanup_expt(expt, log_msg_queue, config, args.test)
+            except Exception as e:
+                pool.terminate()
+                pool.join()
+                msg = "Could not cleanup {0}. \n{1}".format(expt, e)
+                log_msg_queue.put( (None, logging.ERROR, msg))
 
-    def process_experiment(self, expt):
-        """Function to process each experiment, including sending the proxy onto its nodes"""
-        global expt_files
-        print 'Now processing ' + expt
-        expt_file = "log_{0}".format(expt)
-        expt_files[expt] = expt_file
+    pool.terminate()
+    pool.join()
 
-        with expt_log_active(self.logger, expt, level=logging.WARN):
-            badnodes = []
-            expt_success = True
-
-            if not self.check_keys(expt): return False
-
-            nodes = self.config['experiments'][expt]['nodes']
-
-            # Ping nodes to see if they're up
-            for node in nodes:
-                if not self.check_node(node):
-                    self.logger.warning(
-                        "The node {0} didn't return a response to ping after 5 "
-                        "seconds.  Please investigate, and see if the node is up. "
-                        "It may be necessary for the experiment to request via a ServiceNow ticket "
-                        "that the Scientific Server Infrastructure group reboot "
-                        "the node. Moving to the next node".format(node))
-                    expt_success = False
-                    badnodes.append(node)
-                    continue
-
-            for roledict in self.config['experiments'][expt]['roles']:
-                (role, acct), = roledict.items()
-                try:
-                    outfile = self.get_proxy(expt, role, acct)
-                except Exception as e:
-                    # We couldn't get a proxy - so just move to the next role
-                    expt_success = False
-                    error_handler(e)
-                    continue
-
-                # OK, we got a ticket and a proxy, so let's try to copy
-                for node in nodes:
-                    try:
-                        self.copy_proxy(node, acct, expt, outfile)
-                    except Exception as e:
-                        error_handler(e)
-                        expt_success = False
-                        if node in badnodes:
-                            string = "Node {0} didn't respond to pings earlier - " \
-                                     "so it's expected that copying there would fail.".format(node)
-                            self.logger.warn(string)
-
-        return expt_success
-
-    def process_all_experiments(self):
-        """Main execution method to process all experiments"""
-        successful_expts = (expt for expt in self.config['experiments'].iterkeys()
-                            if self.process_experiment(expt))
-
-        self.logger.info("This run completed successfully for the following "
-                      "experiments: {0}.".format(', '.join(successful_expts)))
+    log_msg_queue.put((None, logging.INFO,"Successful Experiments: {0}".format(successful_experiments)))
+    log_msg_queue.put((None, logging.INFO, "Failed Experiments: {0}".format(failed_experiments)))
+    
+    cleanup_global(config, log_msg_queue)
 
 
 def main():
-    """Main execution module"""
-    global logger, config
+    """Set up the entire module, and handle any error so that we don't get the Broken Pipe madness mentioned 
+    in the docstring for run_push.
+    """
+    def pre_queue_exception_action(err, e):
+        """
+        Handle error messages before we've started up our main log.
 
-    args = parse_arguments()
-
-    try:
-        load_config(args.config, args.test)
-    except Exception as e:
-        err = 'Could not load config file.  Error is {0}'.format(e)
-        error_handler(err)
+        :param str err:  Custom Error message
+        :param str e:  Actual error thrown by code
+        """
+        er = "{0}.\n{1}".format(err, e)
+        print er
         sys.exit(1)
 
-    logger = setup_logger("Managed Proxy Push")
-    if args.test:
-        logger.info("Running in test mode")
-    logger.info("Using config file {0}".format(args.config))
+    try:
+        args = parse_arguments()
+    except Exception as e:
+        pre_queue_exception_action('Could not parse arguments', e)
 
     try:
-        m = ManagedProxyPush(config, logger)
+        config = load_config(args.config, args.test)
     except Exception as e:
-        error_handler(e)
+        pre_queue_exception_action('Could not load config file', e)
+
+    try:
+        # Main Log queue and listener process
+        m = Manager()
+        listener_queue = m.Queue()
+    except Exception as e:
+        pre_queue_exception_action('Could not initialize log queue', e)
+    
+    try: 
+        listener = Process(target=main_logger, args=(listener_queue, config))
+        listener.start()
+    except Exception as e:
+        kill_main_logger(listener_queue)
+        listener.join()
+        pre_queue_exception_action('Could not start log listener process', e)
+
+    try:
+        run_push(args, config, listener_queue)
+    except Exception as e:
+        listener_queue.put((None, logging.ERROR, e))
+        kill_main_logger(listener_queue)
+        listener.join()
         sys.exit(1)
-    else:   # We instantiated the ManagedProxyPush class, with all its checks
-        try:
-            # Now let's actually process the experiments
-            if args.experiment:
-                # If we've specified one experiment
-                m.process_experiment(args.experiment)
-                logger.info("Successfully pushed proxy for {0}".format(args.experiment))
-            else:
-                m.process_all_experiments()
-        except Exception as e:
-            error_handler(e)
-            sys.exit(1)
-    finally:
-        send_all_notifications(args.test)
+    else:
+        kill_main_logger(listener_queue)
+        listener.join()
+        sys.exit(0)
 
 
 if __name__ == '__main__':
     main()
-    sys.exit(0)
