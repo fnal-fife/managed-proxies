@@ -324,6 +324,15 @@ class ManagedProxyPush(object):
         scp_cmd.extend([srcpath, '{0}:{1}'.format(account_node, newproxypath)])
         chmod_cmd.extend([account_node,
                           'chmod 400 {0} ; mv -f {0} {1}'.format(newproxypath, finalproxypath)])
+<<<<<<< HEAD
+=======
+
+
+        # scp_cmd = ['scp', '-o', 'ConnectTimeout=30', '-o', 'ServerAliveInterval=30', srcpath,
+        #            '{0}:{1}'.format(account_node, newproxypath)]
+        # chmod_cmd = ['ssh', '-o', 'ConnectTimeout=30', account_node,
+        #              'chmod 400 {0} ; mv -f {0} {1}'.format(newproxypath, finalproxypath)]
+>>>>>>> d468d907e008ac2e2eea38c2876497b873ad948a
 
         try:
             check_output_mod(scp_cmd, self.locenv)
