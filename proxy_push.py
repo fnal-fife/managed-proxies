@@ -312,10 +312,24 @@ class ManagedProxyPush(object):
         finalproxypath = os.path.join(
             self.config['experiments'][self.expt]["dir"], account, srcfile)
 
-        scp_cmd = ['scp', '-o', 'ConnectTimeout=30', srcpath,
-                   '{0}:{1}'.format(account_node, newproxypath)]
-        chmod_cmd = ['ssh', '-o', 'ConnectTimeout=30', account_node,
-                     'chmod 400 {0} ; mv -f {0} {1}'.format(newproxypath, finalproxypath)]
+        ssh_opts = ['-o', 'ConnectTimeout=30', 
+            '-o', 'ServerAliveInterval=30', 
+            '-o', 'ServerAliveCountMax=1']
+
+        scp_cmd = ['scp',]
+        chmod_cmd = ['ssh', ]
+
+        for command in (scp_cmd, chmod_cmd): command.extend(ssh_opts)   # Add ssh opts to each command
+
+        scp_cmd.extend([srcpath, '{0}:{1}'.format(account_node, newproxypath)])
+        chmod_cmd.extend([account_node,
+                          'chmod 400 {0} ; mv -f {0} {1}'.format(newproxypath, finalproxypath)])
+
+
+        # scp_cmd = ['scp', '-o', 'ConnectTimeout=30', '-o', 'ServerAliveInterval=30', srcpath,
+        #            '{0}:{1}'.format(account_node, newproxypath)]
+        # chmod_cmd = ['ssh', '-o', 'ConnectTimeout=30', account_node,
+        #              'chmod 400 {0} ; mv -f {0} {1}'.format(newproxypath, finalproxypath)]
 
         try:
             check_output_mod(scp_cmd, self.locenv)
