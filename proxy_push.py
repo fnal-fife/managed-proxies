@@ -224,7 +224,7 @@ class ManagedProxyPush(object):
 
         # File handler for experiment-specific error file
         h = logging.FileHandler(self.expt_filename)
-        h.setLevel(logging.WARNING)
+        h.setLevel(logging.ERROR)
         h.setFormatter(exptformatter)
 
         # Custom QueueHandler to put all log messages into our log queue
@@ -356,11 +356,9 @@ class ManagedProxyPush(object):
         for node in nodes:
             if not self.check_node(node):
                 self.logger.warning(
-                    "The node {0} didn't return a response to ping after 5 "
-                    "seconds.  Please investigate, and see if the node is up. "
-                    "It may be necessary for the experiment to request via a ServiceNow ticket "
-                    "that the Scientific Server Infrastructure group reboot "
-                    "the node. Moving to the next node".format(node))
+                    "The node {0} didn't return a response to ping after 5 " \
+                    "seconds.  Please investigate, and see if the node is up. " \
+                    "Moving to the next node".format(node))
                 expt_success = False
                 badnodes.append(node)
                 continue
@@ -384,9 +382,11 @@ class ManagedProxyPush(object):
                     expt_success = False
                     if node in badnodes:
                         msg = "Node {0} didn't respond to pings earlier - " \
-                            "so it's expected that copying there would fail.".format(
-                                node)
-                        self.logger.warn(msg)
+                            "so it's expected that copying there would fail. " \
+                            "It may be necessary for {1} to request via a ServiceNow ticket " \
+                            "that the Scientific Server Infrastructure group reboot " \
+                            "the node. ".format(node, self.expt)
+                        self.logger.error(msg)
 
         return expt_success
 
