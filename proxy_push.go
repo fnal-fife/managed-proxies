@@ -61,8 +61,21 @@ func getKerbTicket(krb5ccname string) {
 	return
 }
 
-func testSSH() {
+func testSSH(acct, node string) {
+	var b bytes.Buffer
+	b.WriteString(acct)
+	b.WriteString("@")
+	b.WriteString(node)
+	acctHost := b.String()
 
+	sshargs := []string{"-o", "StrictHostKeyChecking=no", acctHost, "hostname"}
+	cmd := exec.Command("ssh", sshargs...)
+	cmdOut, cmdErr := cmd.CombinedOutput()
+	if cmdErr != nil {
+		fmt.Println("OOPS!")
+		fmt.Println(cmdErr)
+	}
+	fmt.Printf("%s\n", cmdOut)
 }
 
 func experimentWorker(e string, globalConfig map[string]string, exptConfig ConfigExperiment) <-chan experiment {
@@ -82,27 +95,11 @@ func experimentWorker(e string, globalConfig map[string]string, exptConfig Confi
 		getKerbTicket(krb5ccnameCfg)
 
 		m.Lock()
-
 		for _, node := range exptConfig.Nodes {
 			for _, acct := range exptConfig.Roles { // Note that eventually, we want to include the key, which is the role
-
-				var b bytes.Buffer
-				b.WriteString(acct)
-				b.WriteString("@")
-				b.WriteString(node)
-				acctHost := b.String()
-
-				sshargs := []string{"-o", "StrictHostKeyChecking=no", acctHost, "hostname"}
-				cmd := exec.Command("ssh", sshargs...)
-				cmdOut, cmdErr := cmd.CombinedOutput()
-				if cmdErr != nil {
-					fmt.Println("OOPS!")
-					fmt.Println(cmdErr)
-				}
-				fmt.Printf("%s\n", cmdOut)
+				go testSSH(acct, node)
 			}
 		}
-
 		// fmt.Printf("%v\n", exptConfig.Nodes)
 		m.Unlock()
 		expt.success = true
