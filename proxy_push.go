@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -35,7 +36,7 @@ type ConfigExperiment struct {
 	Dir       string
 	Emails    []string
 	Nodes     []string
-	Roles     []map[string]string
+	Roles     map[string]string
 	Vomsgroup string
 	Certfile  string
 	Keyfile   string
@@ -83,14 +84,23 @@ func experimentWorker(e string, globalConfig map[string]string, exptConfig Confi
 		m.Lock()
 
 		for _, node := range exptConfig.Nodes {
-			sshargs := []string{"-o", "StrictHostKeyChecking=no", node, "hostname"}
-			cmd := exec.Command("ssh", sshargs...)
-			cmdOut, cmdErr := cmd.CombinedOutput()
-			if cmdErr != nil {
-				fmt.Println("OOPS!")
-				fmt.Println(cmdErr)
+			for _, acct := range exptConfig.Roles { // Note that eventually, we want to include the key, which is the role
+
+				var b bytes.Buffer
+				b.WriteString(acct)
+				b.WriteString("@")
+				b.WriteString(node)
+				acctHost := b.String()
+
+				sshargs := []string{"-o", "StrictHostKeyChecking=no", acctHost, "hostname"}
+				cmd := exec.Command("ssh", sshargs...)
+				cmdOut, cmdErr := cmd.CombinedOutput()
+				if cmdErr != nil {
+					fmt.Println("OOPS!")
+					fmt.Println(cmdErr)
+				}
+				fmt.Println(cmdOut)
 			}
-			fmt.Println(cmdOut)
 		}
 
 		// fmt.Printf("%v\n", exptConfig.Nodes)
