@@ -99,7 +99,7 @@ func experimentWorker(e string, globalConfig map[string]string, exptConfig Confi
 					fmt.Println("OOPS!")
 					fmt.Println(cmdErr)
 				}
-				fmt.Println(cmdOut)
+				fmt.Printf("%s\n", cmdOut)
 			}
 		}
 
@@ -158,16 +158,6 @@ func cleanup(success map[string]bool) {
 func main() {
 	var cfg config
 	experimentSuccess := make(map[string]bool)
-
-	//  Test
-	// cmd := exec.Command("ls", "-l")
-	// cmdOut, cmdErr := cmd.CombinedOutput()
-	// // err1 := cmd.Run()
-	// if cmdErr != nil {
-	// 	fmt.Println("uh oh")
-	// 	fmt.Println(cmdErr)
-	// }
-	// fmt.Printf("%s\n", cmdOut)
 
 	// Read the config file
 	fmt.Printf("Using config file %s\n", configFile)
