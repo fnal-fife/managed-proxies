@@ -172,9 +172,9 @@ func getProxy(e string, exptConfig ConfigExperiment, globalConfig map[string]str
 				fmt.Println("Generated voms proxy: ", outfilePath)
 				vpi.success = true
 			}
-			if e == "darkside" {
-				time.Sleep(time.Duration(10) * time.Second)
-			}
+			// if e == "darkside" {
+			// 	time.Sleep(time.Duration(10) * time.Second)
+			// }
 
 			c <- vpi
 		}(role, account)
@@ -259,7 +259,7 @@ func experimentWorker(e string, globalConfig map[string]string, exptConfig Confi
 					expt.success = false
 				}
 			case <-time.After(time.Duration(5) * time.Second):
-				fmt.Printf("Error obtaining proxy for %s:  timeout.  Check log for details Continuing to next proxy.\n", expt.name)
+				fmt.Printf("Error obtaining proxy for %s:  timeout.  Check log for details. Continuing to next proxy.\n", expt.name)
 				expt.success = false
 			}
 		}
