@@ -258,7 +258,7 @@ func experimentWorker(e string, globalConfig map[string]string, exptConfig Confi
 					fmt.Printf("Error obtaining %s.  Please check the cert on fifeutilgpvm01.  Continuing to next proxy.\n", vpi.filename)
 					expt.success = false
 				}
-			case <-time.After(time.Duration(2) * time.Second):
+			case <-time.After(time.Duration(1) * time.Second):
 				fmt.Printf("Error obtaining proxy for %s:  timeout.  Check log for details Continuing to next proxy.\n", expt.name)
 				expt.success = false
 			}
