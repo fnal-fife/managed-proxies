@@ -241,7 +241,7 @@ func parseFlags() flagHolder {
 	// const e, c string
 	// const t bool
 	var e = flag.String("e", "", "Name of single experiment to push proxies")
-	var c = flag.String("c", "proxy_push_config.yml", "Specify alternate config file")
+	var c = flag.String("c", configFile, "Specify alternate config file")
 	var t = flag.Bool("t", false, "Test mode")
 
 	flag.Parse()
@@ -259,11 +259,11 @@ func main() {
 	if flags.test {
 		fmt.Println("This is in test mode")
 	}
-	fmt.Println(flags)
+	//	fmt.Println(flags)
 
 	// Read the config file
-	fmt.Printf("Using config file %s\n", configFile)
-	source, err := ioutil.ReadFile(configFile)
+	fmt.Printf("Using config file %s\n", flags.config)
+	source, err := ioutil.ReadFile(flags.config)
 	if err != nil {
 		panic(err)
 	}
