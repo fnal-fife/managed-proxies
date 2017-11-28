@@ -17,6 +17,10 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+//Mutex locks all over the place
+//Logging
+// Error handling
+
 const (
 	globalTimeout uint   = 15                           // Global timeout in seconds
 	exptTimeout   uint   = 10                           // Experiment timeout in seconds
@@ -68,6 +72,14 @@ type sshNodeStatus struct {
 	account string
 	role    string
 	success bool
+}
+
+type copyProxiesStatus struct {
+	node    string
+	account string
+	role    string
+	success bool
+	err     error
 }
 
 func parseFlags() flagHolder {
@@ -129,7 +141,7 @@ func pingAllNodes(nodes []string) <-chan pingNodeStatus {
 	return c
 }
 
-func getProxy(e string, exptConfig ConfigExperiment, globalConfig map[string]string) <-chan vomsProxyStatus {
+func getProxies(e string, exptConfig ConfigExperiment, globalConfig map[string]string) <-chan vomsProxyStatus {
 	c := make(chan vomsProxyStatus)
 	var vomsprefix, certfile, keyfile string
 
@@ -159,7 +171,7 @@ func getProxy(e string, exptConfig ConfigExperiment, globalConfig map[string]str
 			outfile := account + "." + role + ".proxy"
 			outfilePath := path.Join("proxies", outfile)
 
-			vpi := vomsProxyStatus{outfilePath, false}
+			vpi := vomsProxyStatus{outfile, false}
 			vpiargs := []string{"-rfc", "-valid", "24:00", "-voms",
 				vomsstring, "-cert", certfile,
 				"-key", keyfile, "-out", outfilePath}
@@ -213,6 +225,52 @@ func testSSHallNodes(nodes []string, roles map[string]string) <-chan sshNodeStat
 	return c
 }
 
+func copyProxies(e string, exptConfig ConfigExperiment) <-chan copyProxiesStatus {
+	c := make(chan copyProxiesStatus)
+	// One copy per node and role
+	for role, acct := range exptConfig.Roles {
+		go func(role, acct string) {
+			proxyFile := acct + "." + role + ".proxy"
+			proxyFilePath := path.Join("proxies", proxyFile)
+
+			for _, node := range exptConfig.Nodes {
+				go func(role, acct, node string) {
+					cps := copyProxiesStatus{node, acct, role, false, nil}
+					accountNode := acct + "@" + node + ".fnal.gov"
+					newProxyPath := path.Join(exptConfig.Dir, acct, proxyFile+".new")
+					finalProxyPath := path.Join(exptConfig.Dir, acct, proxyFile)
+
+					sshopts := []string{"-o", "ConnectTimeout=30",
+						"-o", "ServerAliveInterval=30",
+						"-o", "ServerAliveCountMax=1"}
+
+					scpargs := append(sshopts, proxyFilePath, accountNode+":"+newProxyPath)
+					sshargs := append(sshopts, accountNode, "chmod 400 "+newProxyPath+" ; mv -f "+newProxyPath+" "+finalProxyPath)
+					scpCmd := exec.Command("scp", scpargs...)
+					sshCmd := exec.Command("ssh", sshargs...)
+
+					_, cmdErr := scpCmd.CombinedOutput()
+					if cmdErr != nil {
+						msg := fmt.Errorf("Copying proxy %s to node %s failed.  The error was %s\n", proxyFile, node, cmdErr)
+						cps.err = msg
+						c <- cps
+						return
+					}
+
+					_, cmdErr = sshCmd.CombinedOutput()
+					if cmdErr != nil {
+						msg := fmt.Errorf("Error changing permission of proxy %s to mode 400 on %s.  The error was %s\n", proxyFile, node, cmdErr)
+						cps.err = msg
+						c <- cps
+						return
+					}
+				}(role, acct, node)
+			}
+		}(role, acct)
+	}
+	return c
+}
+
 func experimentWorker(e string, globalConfig map[string]string, exptConfig ConfigExperiment) <-chan experiment {
 	c := make(chan experiment)
 	expt := experiment{e, true}
@@ -259,7 +317,7 @@ func experimentWorker(e string, globalConfig map[string]string, exptConfig Confi
 		}
 
 		m.Lock()
-		vpiChan := getProxy(e, exptConfig, globalConfig)
+		vpiChan := getProxies(e, exptConfig, globalConfig)
 		for _ = range exptConfig.Roles {
 			select {
 			case vpi := <-vpiChan:
@@ -275,18 +333,19 @@ func experimentWorker(e string, globalConfig map[string]string, exptConfig Confi
 		m.Unlock()
 
 		m.Lock()
-		testChan := testSSHallNodes(exptConfig.Nodes, exptConfig.Roles)
+		copyChan := copyProxies(e, exptConfig)
 		exptTimeoutChan := time.After(time.Duration(exptTimeout) * time.Second)
-		for _, node := range exptConfig.Nodes {
-			for _, acct := range exptConfig.Roles { // Note that eventually, we want to include the key, which is the role
+		for _ = range exptConfig.Nodes {
+			for _ = range exptConfig.Roles { // Note that eventually, we want to include the key, which is the role
 				select {
-				case sshTest := <-testChan:
-					if !sshTest.success {
-						fmt.Printf("This node %s didn't pass with account name %s!\n", node, acct)
+				case pushproxy := <-copyChan:
+					if !pushproxy.success {
+						fmt.Printf("Error pushing proxy for %s.  The error was %s\n", e, pushproxy.err)
 						expt.success = false
 					}
 				case <-exptTimeoutChan:
-					fmt.Printf("Experiment %s hit the timeout when waiting to push proxy.  Bad node was %s\n", expt.name, node)
+					fmt.Printf("Experiment %s hit the timeout when waiting to push proxy.\n", expt.name)
+					expt.success = false
 				}
 				// testSSH(acct, node) // Placeholder for other operations
 			}
