@@ -277,7 +277,7 @@ func experimentWorker(e string, globalConfig map[string]string, exptConfig Confi
 						expt.success = false
 					}
 				case <-exptTimeoutChan:
-					fmt.Printf("Experiment %s hit the timeout when waiting to push proxy.  Bad node was %s", expt.name, node)
+					fmt.Printf("Experiment %s hit the timeout when waiting to push proxy.  Bad node was %s\n", expt.name, node)
 				}
 				// testSSH(acct, node) // Placeholder for other operations
 			}
