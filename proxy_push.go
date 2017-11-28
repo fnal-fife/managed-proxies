@@ -134,11 +134,7 @@ func getProxy(e string, exptConfig ConfigExperiment, globalConfig map[string]str
 	var vomsprefix, certfile, keyfile string
 
 	if e == "darkside" {
-<<<<<<< HEAD
 		time.Sleep(time.Duration(10) * time.Second)
-=======
-		time.Sleep(time.Duration(20) * time.Second)
->>>>>>> c99e4825cf3329c7c4577c3f845d844823d018bb
 	}
 
 	if exptConfig.Vomsgroup != "" {
@@ -262,7 +258,7 @@ func experimentWorker(e string, globalConfig map[string]string, exptConfig Confi
 					fmt.Printf("Error obtaining %s.  Please check the cert on fifeutilgpvm01.  Continuing to next proxy.\n", vpi.filename)
 					expt.success = false
 				}
-			case <-time.After(time.Duration(5) * time.Second):
+			case <-time.After(time.Duration(2) * time.Second):
 				fmt.Printf("Error obtaining proxy for %s:  timeout.  Check log for details Continuing to next proxy.\n", expt.name)
 				expt.success = false
 			}
