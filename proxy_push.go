@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"os/user"
+	"path"
 	"strings"
 	"sync"
 	"time"
@@ -52,12 +53,17 @@ type ConfigExperiment struct {
 	Keyfile   string
 }
 
-type pingNode struct {
+type pingNodeStatus struct {
 	node    string
 	success bool
 }
 
-type sshNode struct {
+type vomsProxyStatus struct {
+	filename string
+	success  bool
+}
+
+type sshNodeStatus struct {
 	node    string
 	account string
 	role    string
@@ -104,13 +110,80 @@ func getKerbTicket(krb5ccname string) {
 	return
 }
 
-func testSSHallNodes(nodes []string, roles map[string]string) <-chan sshNode {
+func pingAllNodes(nodes []string) <-chan pingNodeStatus {
+	c := make(chan pingNodeStatus, len(nodes))
+	for _, node := range nodes {
+		go func(node string) {
+			p := pingNodeStatus{node, false}
+			pingargs := []string{"-W", "5", "-c", "1", node}
+			cmd := exec.Command("ping", pingargs...)
+			cmdErr := cmd.Run()
+			if cmdErr != nil {
+				fmt.Println(cmdErr)
+			} else {
+				p.success = true
+			}
+			c <- p
+		}(node)
+	}
+	return c
+}
+
+func getProxy(e string, exptConfig ConfigExperiment, globalConfig map[string]string) <-chan vomsProxyStatus {
+	c := make(chan vomsProxyStatus)
+	var vomsprefix, certfile, keyfile string
+
+	if exptConfig.Vomsgroup != "" {
+		vomsprefix = exptConfig.Vomsgroup
+	} else {
+		vomsprefix = "fermilab:/fermilab/" + e + "/"
+	}
+
+	for role, account := range exptConfig.Roles {
+		go func(role, account string) {
+			vomsstring := vomsprefix + "Role=" + role
+
+			if exptConfig.Certfile != "" {
+				certfile = exptConfig.Certfile
+			} else {
+				certfile = path.Join(globalConfig["CERT_BASE_DIR"], account+".cert")
+			}
+
+			if exptConfig.Keyfile != "" {
+				keyfile = exptConfig.Keyfile
+			} else {
+				keyfile = path.Join(globalConfig["CERT_BASE_DIR"], account+".key")
+			}
+
+			outfile := account + "." + role + ".proxy"
+			outfilePath := path.Join("proxies", outfile)
+
+			vpi := vomsProxyStatus{outfilePath, false}
+			vpiargs := []string{"-rfc", "-valid", "24:00", "-voms",
+				vomsstring, "-cert", certfile,
+				"-key", keyfile, "-out", outfilePath}
+
+			cmd := exec.Command("/usr/bin/voms-proxy-init", vpiargs...)
+			cmdErr := cmd.Run()
+			if cmdErr != nil {
+				fmt.Println(cmdErr)
+			} else {
+				fmt.Println("Generated voms proxy: ", outfilePath)
+				vpi.success = true
+			}
+			c <- vpi
+		}(role, account)
+	}
+	return c
+}
+
+func testSSHallNodes(nodes []string, roles map[string]string) <-chan sshNodeStatus {
 	numreceives := len(nodes) * len(roles)
-	c := make(chan sshNode, numreceives)
+	c := make(chan sshNodeStatus, numreceives)
 	for _, node := range nodes {
 		for _, acct := range roles { // Note that eventually, we want to include the key, which is the role
 			go func(node, acct string) {
-				s := sshNode{node, acct, "Default Role - CHANGE", false}
+				s := sshNodeStatus{node, acct, "Default Role - CHANGE", false}
 
 				var b bytes.Buffer
 				b.WriteString(acct)
@@ -131,25 +204,6 @@ func testSSHallNodes(nodes []string, roles map[string]string) <-chan sshNode {
 				c <- s
 			}(node, acct)
 		}
-	}
-	return c
-}
-
-func pingAllNodes(nodes []string) <-chan pingNode {
-	c := make(chan pingNode, len(nodes))
-	for _, node := range nodes {
-		go func(node string) {
-			p := pingNode{node, false}
-			pingargs := []string{"-W", "5", "-c", "1", node}
-			cmd := exec.Command("ping", pingargs...)
-			cmdErr := cmd.Run()
-			if cmdErr != nil {
-				fmt.Println(cmdErr)
-			} else {
-				p.success = true
-			}
-			c <- p
-		}(node)
 	}
 	return c
 }
@@ -189,6 +243,22 @@ func experimentWorker(e string, globalConfig map[string]string, exptConfig Confi
 		if len(badnodes) > 0 {
 			fmt.Println("Bad nodes are: ", badnodes)
 		}
+
+		m.Lock()
+		vpiChan := getProxy(e, exptConfig, globalConfig)
+		for _ = range exptConfig.Roles {
+			select {
+			case vpi := <-vpiChan:
+				if !vpi.success {
+					fmt.Printf("Error obtaining %s.  Please check the cert on fifeutilgpvm01.  Continuing to next proxy.", vpi.filename)
+					expt.success = false
+				}
+			case <-time.After(time.Duration(5) * time.Second):
+				fmt.Printf("Error obtaining proxy for %s:  timeout.  Check log for details Continuing to next proxy.", expt.name)
+				expt.success = false
+			}
+		}
+		m.Unlock()
 
 		m.Lock()
 		testChan := testSSHallNodes(exptConfig.Nodes, exptConfig.Roles)
