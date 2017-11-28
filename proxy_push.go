@@ -134,9 +134,9 @@ func experimentWorker(e string, globalConfig map[string]string, exptConfig Confi
 		m := &sync.Mutex{}
 		badnodes := make([]string, 0, len(exptConfig.Nodes))
 		time.Sleep(2 * time.Second)
-		if e == "darkside" {
-			time.Sleep(20 * time.Second)
-		}
+		// if e == "darkside" {
+		// 	time.Sleep(20 * time.Second)
+		// }
 
 		m.Lock()
 		krb5ccnameCfg := globalConfig["KRB5CCNAME"]
@@ -159,7 +159,9 @@ func experimentWorker(e string, globalConfig map[string]string, exptConfig Confi
 		}
 		m.Unlock()
 
-		fmt.Println("Bad nodes are: ", badnodes)
+		if len(badnodes) > 0 {
+			fmt.Println("Bad nodes are: ", badnodes)
+		}
 
 		m.Lock()
 		testChan := testSSHallNodes(exptConfig.Nodes, exptConfig.Roles)
