@@ -16,7 +16,7 @@ import (
 const (
 	globalTimeout int    = 15 // Global timeout in seconds
 	exptTimeout   int    = 10
-	configFile    string = "proxy_push_config.yml"
+	configFile    string = "proxy_push_config_test.yml" // CHANGE ME
 )
 
 type experiment struct {
@@ -94,12 +94,9 @@ func testSSHallNodes(nodes []string, roles map[string]string) <-chan sshNode {
 				if cmdErr != nil {
 					fmt.Println("OOPS!")
 					fmt.Println(cmdErr)
-					// s.success = false
-					// c <- false
 				} else {
 					fmt.Printf("%s\n", cmdOut)
 					s.success = true
-					// c <- true
 				}
 				c <- s
 			}(node, acct)
