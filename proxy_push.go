@@ -84,10 +84,10 @@ func parseFlags() flagHolder {
 func checkUser(authuser string) error {
 	cuser, err := user.Current()
 	if err != nil {
-		return errors.New("Could not lookup current user.  Exiting.")
+		return errors.New("Could not lookup current user.  Exiting")
 	}
 	if cuser.Username != authuser {
-		return errors.New(fmt.Sprintf("This must be run as %s.  Trying to run as %s", authuser, cuser.Username))
+		return fmt.Errorf("This must be run as %s.  Trying to run as %s", authuser, cuser.Username)
 	}
 	return nil
 }
@@ -218,7 +218,12 @@ func experimentWorker(e string, globalConfig map[string]string, exptConfig Confi
 	expt := experiment{e, true}
 	go func() {
 		m := &sync.Mutex{}
-		badnodes := make([]string, 0, len(exptConfig.Nodes))
+		badnodes := make(map[string]struct{})
+
+		for _, node := range exptConfig.Nodes {
+			badnodes[node] = struct{}{}
+		}
+
 		time.Sleep(2 * time.Second)
 		// if e == "darkside" {
 		// 	time.Sleep(20 * time.Second)
@@ -232,21 +237,25 @@ func experimentWorker(e string, globalConfig map[string]string, exptConfig Confi
 
 		m.Lock()
 		pingChannel := pingAllNodes(exptConfig.Nodes)
-		for _, node := range exptConfig.Nodes { // Note that we're iterating over the range of nodes so we make sure
-			// that we test the channel the right number of times
+		for _ = range exptConfig.Nodes { // Note that we're iterating over the range of nodes so we make sure
+			// that we listen on the channel the right number of times
 			select {
 			case testnode := <-pingChannel:
-				if !testnode.success {
-					badnodes = append(badnodes, testnode.node)
+				if testnode.success {
+					delete(badnodes, testnode.node)
 				}
 			case <-time.After(time.Duration(5) * time.Second):
-				badnodes = append(badnodes, node)
 			}
 		}
 		m.Unlock()
 
-		if len(badnodes) > 0 {
-			fmt.Println("Bad nodes are: ", badnodes)
+		badNodesSlice := make([]string, 0, len(badnodes))
+		for node := range badnodes {
+			badNodesSlice = append(badNodesSlice, node)
+		}
+
+		if len(badNodesSlice) > 0 {
+			fmt.Println("Bad nodes are: ", badNodesSlice)
 		}
 
 		m.Lock()
