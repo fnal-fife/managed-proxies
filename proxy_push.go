@@ -264,6 +264,9 @@ func copyProxies(e string, exptConfig ConfigExperiment) <-chan copyProxiesStatus
 						c <- cps
 						return
 					}
+
+					cps.success = true
+					c <- cps
 				}(role, acct, node)
 			}
 		}(role, acct)
