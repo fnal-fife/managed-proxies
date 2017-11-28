@@ -22,8 +22,8 @@ import (
 // Error handling
 
 const (
-	globalTimeout uint   = 15                           // Global timeout in seconds
-	exptTimeout   uint   = 10                           // Experiment timeout in seconds
+	globalTimeout uint   = 30                           // Global timeout in seconds
+	exptTimeout   uint   = 20                           // Experiment timeout in seconds
 	configFile    string = "proxy_push_config_test.yml" // CHANGE ME BEFORE PRODUCTION
 )
 
