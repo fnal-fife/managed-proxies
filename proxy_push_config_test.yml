@@ -39,7 +39,8 @@ experiments:
   darkside:
     dir: /opt
     emails: [kherner@fnal.gov]
-    nodes: [ds50samgpvm01]
+    # nodes: [ds50samgpvm01]
+    nodes: [ds50samgpvm012345]
     roles:
       Production: darksidepro
   des:
