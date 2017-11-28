@@ -134,7 +134,11 @@ func getProxy(e string, exptConfig ConfigExperiment, globalConfig map[string]str
 	var vomsprefix, certfile, keyfile string
 
 	if e == "darkside" {
+<<<<<<< HEAD
 		time.Sleep(time.Duration(10) * time.Second)
+=======
+		time.Sleep(time.Duration(20) * time.Second)
+>>>>>>> c99e4825cf3329c7c4577c3f845d844823d018bb
 	}
 
 	if exptConfig.Vomsgroup != "" {
