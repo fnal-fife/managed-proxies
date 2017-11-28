@@ -2,11 +2,13 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"flag"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"os/user"
 	"strings"
 	"sync"
 	"time"
@@ -15,9 +17,9 @@ import (
 )
 
 const (
-	globalTimeout int    = 15 // Global timeout in seconds
-	exptTimeout   int    = 10
-	configFile    string = "proxy_push_config_test.yml" // CHANGE ME
+	globalTimeout uint   = 15                           // Global timeout in seconds
+	exptTimeout   uint   = 10                           // Experiment timeout in seconds
+	configFile    string = "proxy_push_config_test.yml" // CHANGE ME BEFORE PRODUCTION
 )
 
 type flagHolder struct {
@@ -62,6 +64,28 @@ type sshNode struct {
 	success bool
 }
 
+func parseFlags() flagHolder {
+	var e = flag.String("e", "", "Name of single experiment to push proxies")
+	var c = flag.String("c", configFile, "Specify alternate config file")
+	var t = flag.Bool("t", false, "Test mode")
+
+	flag.Parse()
+
+	fh := flagHolder{*e, *c, *t}
+	return fh
+}
+
+func checkUser(authuser string) error {
+	cuser, err := user.Current()
+	if err != nil {
+		return errors.New("Could not lookup current user.  Exiting.")
+	}
+	if cuser.Username != authuser {
+		return errors.New(fmt.Sprintf("This must be run as %s.  Trying to run as %s", authuser, cuser.Username))
+	}
+	return nil
+}
+
 func getKerbTicket(krb5ccname string) {
 	os.Setenv("KRB5CCNAME", krb5ccname)
 	// fmt.Println(os.Environ())
@@ -73,11 +97,10 @@ func getKerbTicket(krb5ccname string) {
 	cmd := exec.Command("/usr/krb5/bin/kinit", kerbcmdargs...)
 	_, cmdErr := cmd.CombinedOutput()
 	if cmdErr != nil {
-		msg := "Initializing a kerb ticket failed.  The error was BLAH"
+		msg := fmt.Sprintf("Initializing a kerb ticket failed.  The error was %s\n", cmdErr)
 		fmt.Println(msg)
-		fmt.Println(cmdErr)
 	}
-	fmt.Println(os.Getenv("KRB5CCNAME"))
+	// fmt.Println(os.Getenv("KRB5CCNAME"))
 	return
 }
 
@@ -237,19 +260,6 @@ func cleanup(success map[string]bool) {
 	return
 }
 
-func parseFlags() flagHolder {
-	// const e, c string
-	// const t bool
-	var e = flag.String("e", "", "Name of single experiment to push proxies")
-	var c = flag.String("c", configFile, "Specify alternate config file")
-	var t = flag.Bool("t", false, "Test mode")
-
-	flag.Parse()
-
-	fh := flagHolder{*e, *c, *t}
-	return fh
-}
-
 func main() {
 	var cfg config
 	experimentSuccess := make(map[string]bool)
@@ -276,7 +286,9 @@ func main() {
 	// fmt.Printf("%v\n", cfg.Experiments["mu2e"].Emails)
 
 	// Check that we're running as the right user
-	//CODE
+	if err = checkUser(cfg.Global["should_runuser"]); err != nil {
+		panic(err)
+	}
 
 	// Get our list of experiments from the config file
 	expts := make([]string, len(cfg.Experiments))
