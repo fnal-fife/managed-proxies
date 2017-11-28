@@ -275,19 +275,22 @@ func main() {
 	fmt.Printf("Using config file %s\n", flags.config)
 	source, err := ioutil.ReadFile(flags.config)
 	if err != nil {
-		panic(err)
+		fmt.Println(err)
+		os.Exit(2)
 	}
 	//fmt.Printf("File contents: %s", source)
 	err = yaml.Unmarshal(source, &cfg)
 	if err != nil {
-		panic(err)
+		fmt.Println(err)
+		os.Exit(2)
 	}
 	//	fmt.Printf("foo Value: %#v\n, Value: %#v\n", cfg.Logs, cfg.Notifications)
 	// fmt.Printf("%v\n", cfg.Experiments["mu2e"].Emails)
 
 	// Check that we're running as the right user
 	if err = checkUser(cfg.Global["should_runuser"]); err != nil {
-		panic(err)
+		fmt.Println(err)
+		os.Exit(3)
 	}
 
 	// Get our list of experiments from the config file
