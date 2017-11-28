@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -18,6 +19,12 @@ const (
 	exptTimeout   int    = 10
 	configFile    string = "proxy_push_config_test.yml" // CHANGE ME
 )
+
+type flagHolder struct {
+	experiment string
+	config     string
+	test       bool
+}
 
 type experiment struct {
 	name string
@@ -230,9 +237,29 @@ func cleanup(success map[string]bool) {
 	return
 }
 
+func parseFlags() flagHolder {
+	// const e, c string
+	// const t bool
+	var e = flag.String("e", "", "Name of single experiment to push proxies")
+	var c = flag.String("c", "proxy_push_config.yml", "Specify alternate config file")
+	var t = flag.Bool("t", false, "Test mode")
+
+	flag.Parse()
+
+	fh := flagHolder{*e, *c, *t}
+	return fh
+}
+
 func main() {
 	var cfg config
 	experimentSuccess := make(map[string]bool)
+
+	// Parse flags
+	flags := parseFlags()
+	if flags.test {
+		fmt.Println("This is in test mode")
+	}
+	fmt.Println(flags)
 
 	// Read the config file
 	fmt.Printf("Using config file %s\n", configFile)
