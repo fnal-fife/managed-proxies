@@ -141,6 +141,10 @@ func getProxy(e string, exptConfig ConfigExperiment, globalConfig map[string]str
 
 	for role, account := range exptConfig.Roles {
 		go func(role, account string) {
+
+			if e == "darkside" {
+				time.Sleep(time.Duration(20))
+			}
 			vomsstring := vomsprefix + "Role=" + role
 
 			if exptConfig.Certfile != "" {
@@ -250,11 +254,11 @@ func experimentWorker(e string, globalConfig map[string]string, exptConfig Confi
 			select {
 			case vpi := <-vpiChan:
 				if !vpi.success {
-					fmt.Printf("Error obtaining %s.  Please check the cert on fifeutilgpvm01.  Continuing to next proxy.", vpi.filename)
+					fmt.Printf("Error obtaining %s.  Please check the cert on fifeutilgpvm01.  Continuing to next proxy.\n", vpi.filename)
 					expt.success = false
 				}
 			case <-time.After(time.Duration(5) * time.Second):
-				fmt.Printf("Error obtaining proxy for %s:  timeout.  Check log for details Continuing to next proxy.", expt.name)
+				fmt.Printf("Error obtaining proxy for %s:  timeout.  Check log for details Continuing to next proxy.\n", expt.name)
 				expt.success = false
 			}
 		}
