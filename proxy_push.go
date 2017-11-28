@@ -274,7 +274,9 @@ func main() {
 	for i := 0; i < len(expts); i++ {
 		select {
 		case expt := <-c:
-			experimentSuccess[expt.name] = true
+			if expt.success {
+				experimentSuccess[expt.name] = true
+			}
 			// fmt.Println(expt.name, expt.success)
 		case <-timeout:
 			fmt.Println("hit the global timeout!")
