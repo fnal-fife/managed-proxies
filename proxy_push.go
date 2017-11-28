@@ -14,7 +14,8 @@ import (
 )
 
 const (
-	globalTimeout int    = 10 // Global timeout in seconds
+	globalTimeout int    = 15 // Global timeout in seconds
+	exptTimeout   int    = 10
 	configFile    string = "proxy_push_config.yml"
 )
 
@@ -42,6 +43,18 @@ type ConfigExperiment struct {
 	Keyfile   string
 }
 
+type pingNode struct {
+	node    string
+	success bool
+}
+
+type sshNode struct {
+	node    string
+	account string
+	role    string
+	success bool
+}
+
 func getKerbTicket(krb5ccname string) {
 	os.Setenv("KRB5CCNAME", krb5ccname)
 	// fmt.Println(os.Environ())
@@ -61,32 +74,69 @@ func getKerbTicket(krb5ccname string) {
 	return
 }
 
-func testSSH(acct, node string) {
-	var b bytes.Buffer
-	b.WriteString(acct)
-	b.WriteString("@")
-	b.WriteString(node)
-	acctHost := b.String()
+func testSSHallNodes(nodes []string, roles map[string]string) <-chan sshNode {
+	numreceives := len(nodes) * len(roles)
+	c := make(chan sshNode, numreceives)
+	for _, node := range nodes {
+		for _, acct := range roles { // Note that eventually, we want to include the key, which is the role
+			go func(node, acct string) {
+				s := sshNode{node, acct, "Default Role - CHANGE", false}
 
-	sshargs := []string{"-o", "StrictHostKeyChecking=no", acctHost, "hostname"}
-	cmd := exec.Command("ssh", sshargs...)
-	cmdOut, cmdErr := cmd.CombinedOutput()
-	if cmdErr != nil {
-		fmt.Println("OOPS!")
-		fmt.Println(cmdErr)
+				var b bytes.Buffer
+				b.WriteString(acct)
+				b.WriteString("@")
+				b.WriteString(node)
+				acctHost := b.String()
+
+				sshargs := []string{"-o", "StrictHostKeyChecking=no", acctHost, "hostname"}
+				cmd := exec.Command("ssh", sshargs...)
+				cmdOut, cmdErr := cmd.CombinedOutput()
+				if cmdErr != nil {
+					fmt.Println("OOPS!")
+					fmt.Println(cmdErr)
+					// s.success = false
+					// c <- false
+				} else {
+					fmt.Printf("%s\n", cmdOut)
+					s.success = true
+					// c <- true
+				}
+				c <- s
+			}(node, acct)
+		}
 	}
-	fmt.Printf("%s\n", cmdOut)
+	return c
+}
+
+func pingAllNodes(nodes []string) <-chan pingNode {
+	c := make(chan pingNode, len(nodes))
+	for _, node := range nodes {
+		go func(node string) {
+			p := pingNode{node, false}
+			pingargs := []string{"-W", "5", "-c", "1", node}
+			cmd := exec.Command("ping", pingargs...)
+			cmdErr := cmd.Run()
+			if cmdErr != nil {
+				fmt.Println(cmdErr)
+			} else {
+				p.success = true
+			}
+			c <- p
+		}(node)
+	}
+	return c
 }
 
 func experimentWorker(e string, globalConfig map[string]string, exptConfig ConfigExperiment) <-chan experiment {
 	c := make(chan experiment)
-	expt := experiment{e, false}
+	expt := experiment{e, true}
 	go func() {
 		m := &sync.Mutex{}
+		badnodes := make([]string, 0, len(exptConfig.Nodes))
 		time.Sleep(2 * time.Second)
-		// if e == "darkside" {
-		// 	time.Sleep(20 * time.Second)
-		// }
+		if e == "darkside" {
+			time.Sleep(20 * time.Second)
+		}
 
 		m.Lock()
 		krb5ccnameCfg := globalConfig["KRB5CCNAME"]
@@ -95,14 +145,43 @@ func experimentWorker(e string, globalConfig map[string]string, exptConfig Confi
 		getKerbTicket(krb5ccnameCfg)
 
 		m.Lock()
+		pingChannel := pingAllNodes(exptConfig.Nodes)
+		for _, node := range exptConfig.Nodes { // Note that we're iterating over the range of nodes so we make sure
+			// that we test the channel the right number of times
+			select {
+			case testnode := <-pingChannel:
+				if !testnode.success {
+					badnodes = append(badnodes, testnode.node)
+				}
+			case <-time.After(time.Duration(5) * time.Second):
+				badnodes = append(badnodes, node)
+			}
+		}
+		m.Unlock()
+
+		fmt.Println("Bad nodes are: ", badnodes)
+
+		m.Lock()
+		testChan := testSSHallNodes(exptConfig.Nodes, exptConfig.Roles)
+		exptTimeoutChan := time.After(time.Duration(exptTimeout) * time.Second)
 		for _, node := range exptConfig.Nodes {
 			for _, acct := range exptConfig.Roles { // Note that eventually, we want to include the key, which is the role
-				go testSSH(acct, node)
+				select {
+				case sshTest := <-testChan:
+					if !sshTest.success {
+						fmt.Printf("This node %s didn't pass with account name %s!\n", node, acct)
+						expt.success = false
+					}
+				case <-exptTimeoutChan:
+					fmt.Printf("Experiment %s hit the timeout when waiting to push proxy.  Bad node was %s", expt.name, node)
+				}
+				// testSSH(acct, node) // Placeholder for other operations
 			}
 		}
 		// fmt.Printf("%v\n", exptConfig.Nodes)
 		m.Unlock()
-		expt.success = true
+
+		//		expt.success = true
 		c <- expt
 		close(c)
 	}()
