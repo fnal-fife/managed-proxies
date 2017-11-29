@@ -15,8 +15,6 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-//Mutex locks all over the place
-// single experiment
 // test mode
 //Logging
 // Error handling - break everything!
@@ -373,6 +371,7 @@ func (e *ConfigExperiment) setConfigExptName(name string) {
 
 func main() {
 	var cfg config
+	expts := make([]string, 0, len(cfg.Experiments))
 	exptSuccess := make(map[string]bool)
 
 	// Parse flags
@@ -405,12 +404,16 @@ func main() {
 	}
 
 	// Get our list of experiments from the config file.  Also set expt config Name attribute
-	expts := make([]string, len(cfg.Experiments))
-	i := 0
-	for k, v := range cfg.Experiments {
-		expts[i] = k
-		(&v).setConfigExptName(k)
-		i++
+
+	if flags.experiment != "" {
+		expts = append(expts, flags.experiment)
+		v := cfg.Experiments[flags.experiment]
+		(&v).setConfigExptName(flags.experiment)
+	} else {
+		for k, v := range cfg.Experiments {
+			expts = append(expts, k)
+			(&v).setConfigExptName(k)
+		}
 	}
 
 	// Initialize our successful experiments slice
