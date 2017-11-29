@@ -10,6 +10,7 @@ import (
 	"os/user"
 	"path"
 	"strings"
+	"sync"
 	"time"
 
 	"gopkg.in/yaml.v2"
@@ -143,7 +144,7 @@ func getProxies(exptConfig ConfigExperiment, globalConfig map[string]string) <-c
 	c := make(chan vomsProxyStatus)
 	var vomsprefix, certfile, keyfile string
 
-	fmt.Println(os.Getenv("KRB5CCNAME"))
+	// fmt.Println(os.Getenv("KRB5CCNAME"))
 
 	if exptConfig.Vomsgroup != "" {
 		vomsprefix = exptConfig.Vomsgroup
@@ -246,6 +247,7 @@ func copyProxies(exptConfig ConfigExperiment) <-chan copyProxiesStatus {
 func experimentWorker(globalConfig map[string]string, exptConfig ConfigExperiment) <-chan experimentSuccess {
 	c := make(chan experimentSuccess)
 	expt := experimentSuccess{exptConfig.Name, true}
+	m := &sync.Mutex{}
 	go func() {
 		badnodes := make(map[string]struct{})
 
@@ -283,6 +285,7 @@ func experimentWorker(globalConfig map[string]string, exptConfig ConfigExperimen
 			fmt.Println("Bad nodes are: ", badNodesSlice)
 		}
 
+		m.Lock()
 		vpiChan := getProxies(exptConfig, globalConfig)
 		for _ = range exptConfig.Roles {
 			select {
@@ -296,6 +299,7 @@ func experimentWorker(globalConfig map[string]string, exptConfig ConfigExperimen
 				expt.success = false
 			}
 		}
+		m.Unlock()
 
 		copyChan := copyProxies(exptConfig)
 		exptTimeoutChan := time.After(time.Duration(exptTimeout) * time.Second)
