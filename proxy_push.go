@@ -12,11 +12,15 @@ import (
 	"strings"
 	"time"
 
+	log "github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v2"
+	//	gomail "gopkg.in/gomail.v2"
 )
 
+// config viper?
 // test mode
 //Logging
+//notifications	// gomail https://godoc.org/gopkg.in/gomail.v2#Message.SetBody  net/http, notifications change!
 // Error handling - break everything!
 
 const (
@@ -345,6 +349,11 @@ func manageExperimentChannels(exptList []string, cfg config) <-chan experimentSu
 	return agg
 }
 
+func init() {
+
+	log.SetLevel(log.DebugLevel)
+}
+
 func cleanup(success map[string]bool) {
 	s := make([]string, 0, len(success))
 	f := make([]string, 0, len(success))
@@ -371,7 +380,7 @@ func main() {
 	// Parse flags
 	flags := parseFlags()
 	if flags.test {
-		fmt.Println("This is in test mode")
+		log.Info("This is in test mode")
 	}
 	//	fmt.Println(flags)
 
@@ -397,12 +406,11 @@ func main() {
 		os.Exit(3)
 	}
 
-	// Test flag sets which notifications section from config we want to use
+	// Test flag sets which notifications section from config we want to use.
+	// After this, cfg.Notifications map is the map we want to use later on.
 	if flags.test {
 		cfg.Notifications = cfg.Notifications_test
 	}
-
-	fmt.Println(cfg.Notifications, cfg.Notifications_test)
 
 	// Get our list of experiments from the config file, set exptConfig Name variable
 	if flags.experiment != "" {
