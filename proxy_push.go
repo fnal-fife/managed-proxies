@@ -10,7 +10,6 @@ import (
 	"os/user"
 	"path"
 	"strings"
-	"sync"
 	"time"
 
 	"gopkg.in/yaml.v2"
@@ -250,7 +249,7 @@ func experimentWorker(globalConfig map[string]string, exptConfig *ConfigExperime
 	c := make(chan experimentSuccess)
 	expt := experimentSuccess{exptConfig.Name, true}
 	go func() {
-		m := &sync.Mutex{}
+		// m := &sync.Mutex{}
 		badnodes := make(map[string]struct{})
 
 		for _, node := range exptConfig.Nodes {
@@ -287,7 +286,7 @@ func experimentWorker(globalConfig map[string]string, exptConfig *ConfigExperime
 			fmt.Println("Bad nodes are: ", badNodesSlice)
 		}
 
-		m.Lock()
+		// m.Lock()
 		vpiChan := getProxies(exptConfig, globalConfig)
 		for _ = range exptConfig.Roles {
 			select {
@@ -301,7 +300,7 @@ func experimentWorker(globalConfig map[string]string, exptConfig *ConfigExperime
 				expt.success = false
 			}
 		}
-		m.Unlock()
+		// m.Unlock()
 
 		copyChan := copyProxies(exptConfig)
 		exptTimeoutChan := time.After(time.Duration(exptTimeout) * time.Second)
