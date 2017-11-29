@@ -117,8 +117,8 @@ func getKerbTicket(krb5ccname string) {
 	cmd := exec.Command("/usr/krb5/bin/kinit", kerbcmdargs...)
 	_, cmdErr := cmd.CombinedOutput()
 	if cmdErr != nil {
-		msg := fmt.Sprintf("Initializing a kerb ticket failed.  The error was %s\n", cmdErr)
-		fmt.Println(msg)
+		// msg := fmt.Sprintf(
+		log.Errorf("Initializing a kerb ticket failed.  The error was %s\n", cmdErr)
 	}
 	// fmt.Println(os.Getenv("KRB5CCNAME"))
 	return
@@ -133,7 +133,8 @@ func pingAllNodes(nodes []string) <-chan pingNodeStatus {
 			cmd := exec.Command("ping", pingargs...)
 			cmdErr := cmd.Run()
 			if cmdErr != nil {
-				fmt.Println(cmdErr)
+				log.Error(cmdErr)
+				// fmt.Println(cmdErr)
 			} else {
 				p.success = true
 			}
@@ -185,9 +186,11 @@ func getProxies(exptConfig *ConfigExperiment, globalConfig map[string]string) <-
 			cmd := exec.Command("/usr/bin/voms-proxy-init", vpiargs...)
 			cmdErr := cmd.Run()
 			if cmdErr != nil {
-				fmt.Println(cmdErr)
+				log.Error(cmdErr)
+				// fmt.Println(cmdErr)
 			} else {
-				fmt.Println("Generated voms proxy: ", outfilePath)
+				log.Infoln("Generated voms proxy: ", outfilePath)
+				// fmt.Println("Generated voms proxy: ", outfilePath)
 				vpi.success = true
 			}
 			// if e == "darkside" {
@@ -285,7 +288,8 @@ func experimentWorker(globalConfig map[string]string, exptConfig *ConfigExperime
 		}
 
 		if len(badNodesSlice) > 0 {
-			fmt.Println("Bad nodes are: ", badNodesSlice)
+			log.Infoln("Bad nodes are: ", badNodesSlice)
+			// fmt.Println("Bad nodes are: ", badNodesSlice)
 		}
 
 		vpiChan := getProxies(exptConfig, globalConfig)
@@ -293,11 +297,13 @@ func experimentWorker(globalConfig map[string]string, exptConfig *ConfigExperime
 			select {
 			case vpi := <-vpiChan:
 				if !vpi.success {
-					fmt.Printf("Error obtaining %s.  Please check the cert on fifeutilgpvm01.  Continuing to next proxy.\n", vpi.filename)
+					log.Errorf("Error obtaining %s.  Please check the cert on fifeutilgpvm01.  Continuing to next proxy.\n", vpi.filename)
+					// fmt.Printf("Error obtaining %s.  Please check the cert on fifeutilgpvm01.  Continuing to next proxy.\n", vpi.filename)
 					expt.success = false
 				}
 			case <-time.After(time.Duration(5) * time.Second):
-				fmt.Printf("Error obtaining proxy for %s:  timeout.  Check log for details. Continuing to next proxy.\n", expt.name)
+				log.Errorf("Error obtaining proxy for %s:  timeout.  Check log for details. Continuing to next proxy.\n", expt.name)
+				// fmt.Printf("Error obtaining proxy for %s:  timeout.  Check log for details. Continuing to next proxy.\n", expt.name)
 				expt.success = false
 			}
 		}
@@ -309,11 +315,13 @@ func experimentWorker(globalConfig map[string]string, exptConfig *ConfigExperime
 				select {
 				case pushproxy := <-copyChan:
 					if !pushproxy.success {
-						fmt.Printf("Error pushing proxy for %s.  The error was %s\n", expt.name, pushproxy.err)
+						log.Errorf("Error pushing proxy for %s.  The error was %s\n", expt.name, pushproxy.err)
+						// fmt.Printf("Error pushing proxy for %s.  The error was %s\n", expt.name, pushproxy.err)
 						expt.success = false
 					}
 				case <-exptTimeoutChan:
-					fmt.Printf("Experiment %s hit the timeout when waiting to push proxy.\n", expt.name)
+					log.Errorf("Experiment %s hit the timeout when waiting to push proxy.\n", expt.name)
+					// fmt.Printf("Experiment %s hit the timeout when waiting to push proxy.\n", expt.name)
 					expt.success = false
 				}
 			}
@@ -367,8 +375,9 @@ func cleanup(success map[string]bool) {
 		}
 	}
 
-	fmt.Printf("Successes: %v\n", strings.Join(s, ", "))
-	fmt.Printf("Failures: %v\n", strings.Join(f, ", "))
+	log.Infof("Successes: %v\nFailures: %v\n", strings.Join(s, ", "), strings.Join(f, ", "))
+	// fmt.Printf("Successes: %v\n", strings.Join(s, ", "))
+	// fmt.Printf("Failures: %v\n", strings.Join(f, ", "))
 
 	return
 }
@@ -386,16 +395,19 @@ func main() {
 	//	fmt.Println(flags)
 
 	// Read the config file
-	fmt.Printf("Using config file %s\n", flags.config)
+	log.Debugf("Using config file %s\n", flags.config)
+	// fmt.Printf("Using config file %s\n", flags.config)
 	source, err := ioutil.ReadFile(flags.config)
 	if err != nil {
-		fmt.Println(err)
+		log.Error(err)
+		// fmt.Println(err)
 		os.Exit(2)
 	}
 	//fmt.Printf("File contents: %s", source)
 	err = yaml.Unmarshal(source, &cfg)
 	if err != nil {
-		fmt.Println(err)
+		log.Error(err)
+		// fmt.Println(err)
 		os.Exit(2)
 	}
 	//	fmt.Printf("foo Value: %#v\n, Value: %#v\n", cfg.Logs, cfg.Notifications)
@@ -403,7 +415,8 @@ func main() {
 
 	// Check that we're running as the right user
 	if err = checkUser(cfg.Global["should_runuser"]); err != nil {
-		fmt.Println(err)
+		log.Error(err)
+		// fmt.Println(err)
 		os.Exit(3)
 	}
 
@@ -443,7 +456,8 @@ func main() {
 			}
 			// fmt.Println(expt.name, expt.success)
 		case <-timeout:
-			fmt.Println("hit the global timeout!")
+			log.Error("Hit the global timeout!")
+			// fmt.Println("hit the global timeout!")
 			cleanup(exptSuccess)
 			return
 		}
