@@ -397,6 +397,13 @@ func main() {
 		os.Exit(3)
 	}
 
+	// Test flag sets which notifications section from config we want to use
+	if flags.test {
+		cfg.Notifications = cfg.Notifications_test
+	}
+
+	fmt.Println(cfg.Notifications, cfg.Notifications_test)
+
 	// Get our list of experiments from the config file, set exptConfig Name variable
 	if flags.experiment != "" {
 		expts = append(expts, flags.experiment)
