@@ -411,16 +411,17 @@ func main() {
 		os.Exit(3)
 	}
 
-	// Get our list of experiments from the config file.  Also set expt config Name attribute
+	// Get our list of experiments from the config file
 
 	if flags.experiment != "" {
 		expts = append(expts, flags.experiment)
 		v := cfg.Experiments[flags.experiment]
 		(&v).setConfigExptName(flags.experiment)
 	} else {
-		for k, v := range cfg.Experiments {
+		for k := range cfg.Experiments {
 			expts = append(expts, k)
-			(&v).setConfigExptName(k)
+			ptr := cfg.Experiments[k]
+			(&ptr).setConfigExptName(k)
 			fmt.Println(k, cfg.Experiments[k].Name)
 		}
 	}
