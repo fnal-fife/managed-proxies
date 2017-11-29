@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"errors"
 	"flag"
 	"fmt"
@@ -18,8 +17,10 @@ import (
 )
 
 //Mutex locks all over the place
+// single experiment
+// test mode
 //Logging
-// Error handling
+// Error handling - break everything!
 
 const (
 	globalTimeout uint   = 30                           // Global timeout in seconds
@@ -33,9 +34,8 @@ type flagHolder struct {
 	test       bool
 }
 
-type experiment struct {
-	name string
-	//	nodes []string
+type experimentSuccess struct {
+	name    string
 	success bool
 }
 
@@ -48,6 +48,7 @@ type config struct {
 }
 
 type ConfigExperiment struct {
+	Name      string
 	Dir       string
 	Emails    []string
 	Nodes     []string
@@ -141,14 +142,14 @@ func pingAllNodes(nodes []string) <-chan pingNodeStatus {
 	return c
 }
 
-func getProxies(e string, exptConfig ConfigExperiment, globalConfig map[string]string) <-chan vomsProxyStatus {
+func getProxies(exptConfig ConfigExperiment, globalConfig map[string]string) <-chan vomsProxyStatus {
 	c := make(chan vomsProxyStatus)
 	var vomsprefix, certfile, keyfile string
 
 	if exptConfig.Vomsgroup != "" {
 		vomsprefix = exptConfig.Vomsgroup
 	} else {
-		vomsprefix = "fermilab:/fermilab/" + e + "/"
+		vomsprefix = "fermilab:/fermilab/" + exptConfig.Name + "/"
 	}
 
 	for role, account := range exptConfig.Roles {
@@ -194,38 +195,7 @@ func getProxies(e string, exptConfig ConfigExperiment, globalConfig map[string]s
 	return c
 }
 
-func testSSHallNodes(nodes []string, roles map[string]string) <-chan sshNodeStatus {
-	numreceives := len(nodes) * len(roles)
-	c := make(chan sshNodeStatus, numreceives)
-	for _, node := range nodes {
-		for _, acct := range roles { // Note that eventually, we want to include the key, which is the role
-			go func(node, acct string) {
-				s := sshNodeStatus{node, acct, "Default Role - CHANGE", false}
-
-				var b bytes.Buffer
-				b.WriteString(acct)
-				b.WriteString("@")
-				b.WriteString(node)
-				acctHost := b.String()
-
-				sshargs := []string{"-o", "StrictHostKeyChecking=no", acctHost, "hostname"}
-				cmd := exec.Command("ssh", sshargs...)
-				cmdOut, cmdErr := cmd.CombinedOutput()
-				if cmdErr != nil {
-					fmt.Println("OOPS!")
-					fmt.Println(cmdErr)
-				} else {
-					fmt.Printf("%s\n", cmdOut)
-					s.success = true
-				}
-				c <- s
-			}(node, acct)
-		}
-	}
-	return c
-}
-
-func copyProxies(e string, exptConfig ConfigExperiment) <-chan copyProxiesStatus {
+func copyProxies(exptConfig ConfigExperiment) <-chan copyProxiesStatus {
 	c := make(chan copyProxiesStatus)
 	// One copy per node and role
 	for role, acct := range exptConfig.Roles {
@@ -251,7 +221,7 @@ func copyProxies(e string, exptConfig ConfigExperiment) <-chan copyProxiesStatus
 
 					_, cmdErr := scpCmd.CombinedOutput()
 					if cmdErr != nil {
-						msg := fmt.Errorf("Copying proxy %s to node %s failed.  The error was %s\n", proxyFile, node, cmdErr)
+						msg := fmt.Errorf("Copying proxy %s to node %s failed.  The error was %s", proxyFile, node, cmdErr)
 						cps.err = msg
 						c <- cps
 						return
@@ -259,7 +229,7 @@ func copyProxies(e string, exptConfig ConfigExperiment) <-chan copyProxiesStatus
 
 					_, cmdErr = sshCmd.CombinedOutput()
 					if cmdErr != nil {
-						msg := fmt.Errorf("Error changing permission of proxy %s to mode 400 on %s.  The error was %s\n", proxyFile, node, cmdErr)
+						msg := fmt.Errorf("Error changing permission of proxy %s to mode 400 on %s.  The error was %s", proxyFile, node, cmdErr)
 						cps.err = msg
 						c <- cps
 						return
@@ -274,9 +244,9 @@ func copyProxies(e string, exptConfig ConfigExperiment) <-chan copyProxiesStatus
 	return c
 }
 
-func experimentWorker(e string, globalConfig map[string]string, exptConfig ConfigExperiment) <-chan experiment {
-	c := make(chan experiment)
-	expt := experiment{e, true}
+func experimentWorker(globalConfig map[string]string, exptConfig ConfigExperiment) <-chan experimentSuccess {
+	c := make(chan experimentSuccess)
+	expt := experimentSuccess{exptConfig.Name, true}
 	go func() {
 		m := &sync.Mutex{}
 		badnodes := make(map[string]struct{})
@@ -320,7 +290,7 @@ func experimentWorker(e string, globalConfig map[string]string, exptConfig Confi
 		}
 
 		m.Lock()
-		vpiChan := getProxies(e, exptConfig, globalConfig)
+		vpiChan := getProxies(exptConfig, globalConfig)
 		for _ = range exptConfig.Roles {
 			select {
 			case vpi := <-vpiChan:
@@ -336,14 +306,14 @@ func experimentWorker(e string, globalConfig map[string]string, exptConfig Confi
 		m.Unlock()
 
 		m.Lock()
-		copyChan := copyProxies(e, exptConfig)
+		copyChan := copyProxies(exptConfig)
 		exptTimeoutChan := time.After(time.Duration(exptTimeout) * time.Second)
 		for _ = range exptConfig.Nodes {
 			for _ = range exptConfig.Roles { // Note that eventually, we want to include the key, which is the role
 				select {
 				case pushproxy := <-copyChan:
 					if !pushproxy.success {
-						fmt.Printf("Error pushing proxy for %s.  The error was %s\n", e, pushproxy.err)
+						fmt.Printf("Error pushing proxy for %s.  The error was %s\n", expt.name, pushproxy.err)
 						expt.success = false
 					}
 				case <-exptTimeoutChan:
@@ -363,20 +333,20 @@ func experimentWorker(e string, globalConfig map[string]string, exptConfig Confi
 	return c
 }
 
-func manageExperimentChannels(exptList []string, cfg config) <-chan experiment {
-	agg := make(chan experiment)
-	exptChans := make([]<-chan experiment, len(exptList))
+func manageExperimentChannels(exptList []string, cfg config) <-chan experimentSuccess {
+	agg := make(chan experimentSuccess)
+	exptChans := make([]<-chan experimentSuccess, len(exptList))
 
 	go func() {
 		// Start all of the experiment workers
 		for _, expt := range exptList {
-			exptChans = append(exptChans, experimentWorker(expt, cfg.Global, cfg.Experiments[expt]))
+			exptChans = append(exptChans, experimentWorker(cfg.Global, cfg.Experiments[expt]))
 		}
 
 		// Launch goroutines that listen on experiment channels.  Since each experimentWorker closes its channel,
 		// each of these goroutines should exit after that happens
 		for _, exptChan := range exptChans {
-			go func(c <-chan experiment) {
+			go func(c <-chan experimentSuccess) {
 				for expt := range c {
 					agg <- expt
 				}
@@ -406,9 +376,14 @@ func cleanup(success map[string]bool) {
 	return
 }
 
+func (e *ConfigExperiment) setConfigExptName(name string) {
+	e.Name = name
+	return
+}
+
 func main() {
 	var cfg config
-	experimentSuccess := make(map[string]bool)
+	exptSuccess := make(map[string]bool)
 
 	// Parse flags
 	flags := parseFlags()
@@ -439,17 +414,18 @@ func main() {
 		os.Exit(3)
 	}
 
-	// Get our list of experiments from the config file
+	// Get our list of experiments from the config file.  Also set expt config Name attribute
 	expts := make([]string, len(cfg.Experiments))
 	i := 0
-	for k := range cfg.Experiments {
+	for k, v := range cfg.Experiments {
 		expts[i] = k
+		(&v).setConfigExptName(k)
 		i++
 	}
 
 	// Initialize our successful experiments slice
 	for _, expt := range expts {
-		experimentSuccess[expt] = false
+		exptSuccess[expt] = false
 	}
 
 	// Start up the expt manager
@@ -460,14 +436,14 @@ func main() {
 		select {
 		case expt := <-c:
 			if expt.success {
-				experimentSuccess[expt.name] = true
+				exptSuccess[expt.name] = true
 			}
 			// fmt.Println(expt.name, expt.success)
 		case <-timeout:
 			fmt.Println("hit the global timeout!")
-			cleanup(experimentSuccess)
+			cleanup(exptSuccess)
 			return
 		}
 	}
-	cleanup(experimentSuccess)
+	cleanup(exptSuccess)
 }
