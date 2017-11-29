@@ -152,7 +152,7 @@ func getProxies(exptConfig *ConfigExperiment, globalConfig map[string]string) <-
 		vomsprefix = "fermilab:/fermilab/" + exptConfig.Name + "/"
 	}
 
-	fmt.Println(vomsprefix)
+	// fmt.Println(vomsprefix)
 
 	for role, account := range exptConfig.Roles {
 		go func(role, account string) {
