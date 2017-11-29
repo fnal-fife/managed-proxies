@@ -420,9 +420,15 @@ func main() {
 	} else {
 		for k := range cfg.Experiments {
 			expts = append(expts, k)
-			ptr := cfg.Experiments[k]
-			(&ptr).setConfigExptName(k)
-			fmt.Println(k, cfg.Experiments[k].Name)
+			// ptr := cfg.Experiments[k]
+			// cfg.Experiments[k].Name = k
+			// (&ptr).setConfigExptName(k)
+
+		}
+		for _, expt := range expts {
+			v := cfg.Experiments[expt]
+			(&v).setConfigExptName(expt)
+			fmt.Println(expt, cfg.Experiments[expt].Name)
 		}
 	}
 
