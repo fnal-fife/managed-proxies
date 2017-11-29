@@ -421,6 +421,7 @@ func main() {
 		for k, v := range cfg.Experiments {
 			expts = append(expts, k)
 			(&v).setConfigExptName(k)
+			fmt.Println(k, cfg.Experiments[k].Name)
 		}
 	}
 
