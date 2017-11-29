@@ -152,6 +152,8 @@ func getProxies(exptConfig ConfigExperiment, globalConfig map[string]string) <-c
 		vomsprefix = "fermilab:/fermilab/" + exptConfig.Name + "/"
 	}
 
+	fmt.Println(vomsprefix)
+
 	for role, account := range exptConfig.Roles {
 		go func(role, account string) {
 
@@ -247,8 +249,8 @@ func copyProxies(exptConfig ConfigExperiment) <-chan copyProxiesStatus {
 func experimentWorker(globalConfig map[string]string, exptConfig ConfigExperiment) <-chan experimentSuccess {
 	c := make(chan experimentSuccess)
 	expt := experimentSuccess{exptConfig.Name, true}
-	m := &sync.Mutex{}
 	go func() {
+		m := &sync.Mutex{}
 		badnodes := make(map[string]struct{})
 
 		for _, node := range exptConfig.Nodes {
