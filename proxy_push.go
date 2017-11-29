@@ -42,7 +42,7 @@ type config struct {
 	Notifications      map[string]string
 	Notifications_test map[string]string
 	Global             map[string]string
-	Experiments        map[string]ConfigExperiment
+	Experiments        map[string]*ConfigExperiment
 }
 
 type ConfigExperiment struct {
@@ -140,7 +140,7 @@ func pingAllNodes(nodes []string) <-chan pingNodeStatus {
 	return c
 }
 
-func getProxies(exptConfig ConfigExperiment, globalConfig map[string]string) <-chan vomsProxyStatus {
+func getProxies(exptConfig *ConfigExperiment, globalConfig map[string]string) <-chan vomsProxyStatus {
 	c := make(chan vomsProxyStatus)
 	var vomsprefix, certfile, keyfile string
 
@@ -197,7 +197,7 @@ func getProxies(exptConfig ConfigExperiment, globalConfig map[string]string) <-c
 	return c
 }
 
-func copyProxies(exptConfig ConfigExperiment) <-chan copyProxiesStatus {
+func copyProxies(exptConfig *ConfigExperiment) <-chan copyProxiesStatus {
 	c := make(chan copyProxiesStatus)
 	// One copy per node and role
 	for role, acct := range exptConfig.Roles {
@@ -246,7 +246,7 @@ func copyProxies(exptConfig ConfigExperiment) <-chan copyProxiesStatus {
 	return c
 }
 
-func experimentWorker(globalConfig map[string]string, exptConfig ConfigExperiment) <-chan experimentSuccess {
+func experimentWorker(globalConfig map[string]string, exptConfig *ConfigExperiment) <-chan experimentSuccess {
 	c := make(chan experimentSuccess)
 	expt := experimentSuccess{exptConfig.Name, true}
 	go func() {
@@ -372,10 +372,10 @@ func cleanup(success map[string]bool) {
 	return
 }
 
-func (e *ConfigExperiment) setConfigExptName(name string) {
-	e.Name = name
-	return
-}
+// func (e *ConfigExperiment) setConfigExptName(name string) {
+// 	e.Name = name
+// 	return
+// }
 
 func main() {
 	var cfg config
@@ -416,20 +416,23 @@ func main() {
 	if flags.experiment != "" {
 		expts = append(expts, flags.experiment)
 		v := cfg.Experiments[flags.experiment]
-		(&v).setConfigExptName(flags.experiment)
+		// (&v).setConfigExptName(flags.experiment)
+		v.Name = flags.experiment
 	} else {
 		for k := range cfg.Experiments {
 			expts = append(expts, k)
+			ptr := cfg.Experiments[k]
+			ptr.Name = k
 			// ptr := cfg.Experiments[k]
 			// cfg.Experiments[k].Name = k
 			// (&ptr).setConfigExptName(k)
 
 		}
-		for _, expt := range expts {
-			v := cfg.Experiments[expt]
-			(&v).setConfigExptName(expt)
-			fmt.Println(expt, cfg.Experiments[expt].Name)
-		}
+		// for _, expt := range expts {
+		// 	v := cfg.Experiments[expt]
+		// 	(&v).setConfigExptName(expt)
+		// 	fmt.Println(expt, cfg.Experiments[expt].Name)
+		// }
 	}
 
 	// Initialize our successful experiments slice
