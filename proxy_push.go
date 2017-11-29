@@ -10,7 +10,6 @@ import (
 	"os/user"
 	"path"
 	"strings"
-	"sync"
 	"time"
 
 	"gopkg.in/yaml.v2"
@@ -248,25 +247,21 @@ func experimentWorker(globalConfig map[string]string, exptConfig ConfigExperimen
 	c := make(chan experimentSuccess)
 	expt := experimentSuccess{exptConfig.Name, true}
 	go func() {
-		m := &sync.Mutex{}
 		badnodes := make(map[string]struct{})
 
 		for _, node := range exptConfig.Nodes {
 			badnodes[node] = struct{}{}
 		}
 
-		time.Sleep(2 * time.Second)
+		// time.Sleep(2 * time.Second)
 		// if e == "darkside" {
 		// 	time.Sleep(20 * time.Second)
 		// }
 
-		m.Lock()
 		krb5ccnameCfg := globalConfig["KRB5CCNAME"]
-		m.Unlock()
 
 		getKerbTicket(krb5ccnameCfg)
 
-		m.Lock()
 		pingChannel := pingAllNodes(exptConfig.Nodes)
 		for _ = range exptConfig.Nodes { // Note that we're iterating over the range of nodes so we make sure
 			// that we listen on the channel the right number of times
@@ -278,7 +273,6 @@ func experimentWorker(globalConfig map[string]string, exptConfig ConfigExperimen
 			case <-time.After(time.Duration(5) * time.Second):
 			}
 		}
-		m.Unlock()
 
 		badNodesSlice := make([]string, 0, len(badnodes))
 		for node := range badnodes {
@@ -289,7 +283,6 @@ func experimentWorker(globalConfig map[string]string, exptConfig ConfigExperimen
 			fmt.Println("Bad nodes are: ", badNodesSlice)
 		}
 
-		m.Lock()
 		vpiChan := getProxies(exptConfig, globalConfig)
 		for _ = range exptConfig.Roles {
 			select {
@@ -303,9 +296,7 @@ func experimentWorker(globalConfig map[string]string, exptConfig ConfigExperimen
 				expt.success = false
 			}
 		}
-		m.Unlock()
 
-		m.Lock()
 		copyChan := copyProxies(exptConfig)
 		exptTimeoutChan := time.After(time.Duration(exptTimeout) * time.Second)
 		for _ = range exptConfig.Nodes {
@@ -324,7 +315,6 @@ func experimentWorker(globalConfig map[string]string, exptConfig ConfigExperimen
 			}
 		}
 		// fmt.Printf("%v\n", exptConfig.Nodes)
-		m.Unlock()
 
 		//		expt.success = true
 		c <- expt
