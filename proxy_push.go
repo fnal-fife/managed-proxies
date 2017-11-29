@@ -143,6 +143,8 @@ func getProxies(exptConfig ConfigExperiment, globalConfig map[string]string) <-c
 	c := make(chan vomsProxyStatus)
 	var vomsprefix, certfile, keyfile string
 
+	fmt.Println(os.Getenv("KRB5CCNAME"))
+
 	if exptConfig.Vomsgroup != "" {
 		vomsprefix = exptConfig.Vomsgroup
 	} else {
