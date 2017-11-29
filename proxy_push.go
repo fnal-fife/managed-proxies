@@ -249,14 +249,12 @@ func experimentWorker(globalConfig map[string]string, exptConfig *ConfigExperime
 	c := make(chan experimentSuccess)
 	expt := experimentSuccess{exptConfig.Name, true}
 	go func() {
-		// m := &sync.Mutex{}
 		badnodes := make(map[string]struct{})
 
 		for _, node := range exptConfig.Nodes {
 			badnodes[node] = struct{}{}
 		}
 
-		// time.Sleep(2 * time.Second)
 		// if e == "darkside" {
 		// 	time.Sleep(20 * time.Second)
 		// }
@@ -286,7 +284,6 @@ func experimentWorker(globalConfig map[string]string, exptConfig *ConfigExperime
 			fmt.Println("Bad nodes are: ", badNodesSlice)
 		}
 
-		// m.Lock()
 		vpiChan := getProxies(exptConfig, globalConfig)
 		for _ = range exptConfig.Roles {
 			select {
@@ -300,12 +297,11 @@ func experimentWorker(globalConfig map[string]string, exptConfig *ConfigExperime
 				expt.success = false
 			}
 		}
-		// m.Unlock()
 
 		copyChan := copyProxies(exptConfig)
 		exptTimeoutChan := time.After(time.Duration(exptTimeout) * time.Second)
 		for _ = range exptConfig.Nodes {
-			for _ = range exptConfig.Roles { // Note that eventually, we want to include the key, which is the role
+			for _ = range exptConfig.Roles {
 				select {
 				case pushproxy := <-copyChan:
 					if !pushproxy.success {
@@ -316,12 +312,8 @@ func experimentWorker(globalConfig map[string]string, exptConfig *ConfigExperime
 					fmt.Printf("Experiment %s hit the timeout when waiting to push proxy.\n", expt.name)
 					expt.success = false
 				}
-				// testSSH(acct, node) // Placeholder for other operations
 			}
 		}
-		// fmt.Printf("%v\n", exptConfig.Nodes)
-
-		//		expt.success = true
 		c <- expt
 		close(c)
 	}()
@@ -371,11 +363,6 @@ func cleanup(success map[string]bool) {
 	return
 }
 
-// func (e *ConfigExperiment) setConfigExptName(name string) {
-// 	e.Name = name
-// 	return
-// }
-
 func main() {
 	var cfg config
 	expts := make([]string, 0, len(cfg.Experiments))
@@ -410,28 +397,17 @@ func main() {
 		os.Exit(3)
 	}
 
-	// Get our list of experiments from the config file
-
+	// Get our list of experiments from the config file, set exptConfig Name variable
 	if flags.experiment != "" {
 		expts = append(expts, flags.experiment)
-		v := cfg.Experiments[flags.experiment]
-		// (&v).setConfigExptName(flags.experiment)
-		v.Name = flags.experiment
+		ptr := cfg.Experiments[flags.experiment]
+		ptr.Name = flags.experiment
 	} else {
 		for k := range cfg.Experiments {
 			expts = append(expts, k)
 			ptr := cfg.Experiments[k]
 			ptr.Name = k
-			// ptr := cfg.Experiments[k]
-			// cfg.Experiments[k].Name = k
-			// (&ptr).setConfigExptName(k)
-
 		}
-		// for _, expt := range expts {
-		// 	v := cfg.Experiments[expt]
-		// 	(&v).setConfigExptName(expt)
-		// 	fmt.Println(expt, cfg.Experiments[expt].Name)
-		// }
 	}
 
 	// Initialize our successful experiments slice
