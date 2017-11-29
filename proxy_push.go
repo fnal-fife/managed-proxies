@@ -20,7 +20,7 @@ import (
 // config viper?
 // test mode
 //Logging
-//notifications	// gomail https://godoc.org/gopkg.in/gomail.v2#Message.SetBody  net/http, notifications change!
+//notifications	// gomail https://godoc.org/gopkg.in/gomail.v2#Message.SetBody  go-slack?  net/http, notifications change!
 // Error handling - break everything!
 
 const (
@@ -352,6 +352,7 @@ func manageExperimentChannels(exptList []string, cfg config) <-chan experimentSu
 func init() {
 
 	log.SetLevel(log.DebugLevel)
+	log.SetFormatter(&log.TextFormatter{FullTimestamp: true})
 }
 
 func cleanup(success map[string]bool) {
