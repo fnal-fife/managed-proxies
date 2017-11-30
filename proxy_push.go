@@ -84,6 +84,7 @@ func parseFlags() flagHolder {
 	flag.Parse()
 
 	fh := flagHolder{*e, *c, *t}
+	log.Debug(fh)
 	return fh
 }
 
@@ -436,31 +437,24 @@ func main() {
 	if flags.test {
 		log.Info("This is in test mode")
 	}
-	//	fmt.Println(flags)
 
 	// Read the config file
 	log.Debugf("Using config file %s", flags.config)
-	// fmt.Printf("Using config file %s\n", flags.config)
 	source, err := ioutil.ReadFile(flags.config)
 	if err != nil {
 		log.Error(err)
-		// fmt.Println(err)
 		os.Exit(2)
 	}
-	//fmt.Printf("File contents: %s", source)
+
 	err = yaml.Unmarshal(source, &cfg)
 	if err != nil {
 		log.Error(err)
-		// fmt.Println(err)
 		os.Exit(2)
 	}
-	//	fmt.Printf("foo Value: %#v\n, Value: %#v\n", cfg.Logs, cfg.Notifications)
-	// fmt.Printf("%v\n", cfg.Experiments["mu2e"].Emails)
 
 	// Check that we're running as the right user
 	if err = checkUser(cfg.Global["should_runuser"]); err != nil {
 		log.Error(err)
-		// fmt.Println(err)
 		os.Exit(3)
 	}
 
@@ -497,7 +491,6 @@ func main() {
 			exptSuccesses[expt.name] = expt.success
 		case <-timeout:
 			log.Error("Hit the global timeout!")
-			// fmt.Println("hit the global timeout!")
 			cleanup(exptSuccesses, expts)
 			return
 		}
