@@ -135,9 +135,9 @@ func pingAllNodes(nodes []string) <-chan pingNodeStatus {
 			p := pingNodeStatus{node, false}
 			pingargs := []string{"-W", "5", "-c", "1", node}
 			cmd := exec.Command("ping", pingargs...)
-			cmdErr := cmd.Run()
+			cmdOut, cmdErr := cmd.CombinedOutput()
 			if cmdErr != nil {
-				log.Error(cmdErr)
+				log.Error(cmdErr, cmdOut)
 			} else {
 				p.success = true
 			}
