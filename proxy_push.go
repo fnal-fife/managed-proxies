@@ -109,10 +109,9 @@ func getKerbTicket(krb5ccname string) error {
 		"monitor/gcso/fermigrid.fnal.gov@FNAL.GOV"}
 
 	cmd := exec.Command("/usr/krb5/bin/kinit", kerbcmdargs...)
-	_, cmdErr := cmd.CombinedOutput()
+	cmdOut, cmdErr := cmd.CombinedOutput()
 	if cmdErr != nil {
-		// msg := fmt.Sprintf(
-		return fmt.Errorf("Initializing a kerb ticket failed.  The error was %s", cmdErr)
+		return fmt.Errorf("Initializing a kerb ticket failed.  The error was %s: %s", cmdErr, cmdOut)
 	}
 	// fmt.Println(os.Getenv("KRB5CCNAME"))
 	return nil
@@ -234,9 +233,9 @@ func copyProxies(exptConfig *ConfigExperiment) <-chan copyProxiesStatus {
 						return
 					}
 
-					_, cmdErr = sshCmd.CombinedOutput()
+					cmdOut, cmdErr = sshCmd.CombinedOutput()
 					if cmdErr != nil {
-						msg := fmt.Errorf("Error changing permission of proxy %s to mode 400 on %s.  The error was %s", proxyFile, node, cmdErr)
+						msg := fmt.Errorf("Error changing permission of proxy %s to mode 400 on %s.  The error was %s: %s", proxyFile, node, cmdErr, cmdOut)
 						cps.err = msg
 						c <- cps
 						return
