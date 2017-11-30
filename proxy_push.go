@@ -226,7 +226,7 @@ func copyProxies(exptConfig *ConfigExperiment) <-chan copyProxiesStatus {
 					scpCmd := exec.Command("scp", scpargs...)
 					sshCmd := exec.Command("ssh", sshargs...)
 
-					_, cmdErr := scpCmd.CombinedOutput()
+					cmdErr := scpCmd.Run()
 					if cmdErr != nil {
 						msg := fmt.Errorf("Copying proxy %s to node %s failed.  The error was %s", proxyFile, node, cmdErr)
 						cps.err = msg
