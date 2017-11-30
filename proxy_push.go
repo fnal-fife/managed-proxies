@@ -493,10 +493,10 @@ func main() {
 	// for i := 0; i < len(expts); i++ {
 	for _ = range c {
 		select {
-		case expt := <-c:
-			fmt.Println(expt)
-			exptSuccesses[expt.name] = expt.success
-			fmt.Println("Success!", expt.name)
+		case eStatus := <-c:
+			fmt.Println(eStatus)
+			exptSuccesses[eStatus.name] = eStatus.success
+			fmt.Println("Success!", eStatus.name)
 			fmt.Println(exptSuccesses)
 			// if expt.success {
 			// 	exptSuccess[expt.name] = true
