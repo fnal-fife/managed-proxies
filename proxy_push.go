@@ -387,6 +387,7 @@ func manageExperimentChannels(exptList []string, cfg config) <-chan experimentSu
 		// Wait until we've received on all expt channels, then close agg channel
 		for {
 			if i == len(exptList) {
+				log.Debug("Closing aggregation channel")
 				close(agg)
 				return
 			}
