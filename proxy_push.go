@@ -378,6 +378,7 @@ func manageExperimentChannels(exptList []string, cfg config) <-chan experimentSu
 			go func(c <-chan experimentSuccess) {
 				for expt := range c {
 					agg <- expt
+					fmt.Println("expt coming in is", expt)
 					i++
 				}
 			}(exptChan)
