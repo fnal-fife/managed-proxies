@@ -365,7 +365,6 @@ func manageExperimentChannels(exptList []string, cfg config, quit <-chan bool) <
 	agg := make(chan experimentSuccess)
 	exptChans := make([]<-chan experimentSuccess, len(exptList))
 
-	var i int // Count how many times we've put values into agg channel
 	go func() {
 		// Start all of the experiment workers
 		for _, expt := range exptList {
@@ -378,13 +377,11 @@ func manageExperimentChannels(exptList []string, cfg config, quit <-chan bool) <
 			go func(c <-chan experimentSuccess) {
 				for expt := range c {
 					agg <- expt
-					fmt.Println("expt coming in is", expt)
-					i++
 				}
 			}(exptChan)
 		}
 
-		// Close out agg channel when main tells us we're done
+		// Close out agg channel when cleanup tells us we're done
 		for {
 			select {
 			case <-quit:
@@ -499,14 +496,7 @@ func main() {
 		// for _ = range c {
 		select {
 		case expt := <-c:
-			fmt.Println(expt)
 			exptSuccesses[expt.name] = expt.success
-			fmt.Println("Success!", expt.name)
-			fmt.Println(exptSuccesses)
-			// if expt.success {
-			// 	exptSuccess[expt.name] = true
-			// }
-			// fmt.Println(expt.name, expt.success)
 		case <-timeout:
 			log.Error("Hit the global timeout!")
 			// fmt.Println("hit the global timeout!")
