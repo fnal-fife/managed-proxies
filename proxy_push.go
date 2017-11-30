@@ -397,6 +397,8 @@ func init() {
 		log.Info("Failed to log to file, using default stderr")
 	}
 
+	log2.Info("Activated this logger")
+
 	// log.(&logrus.TextFormatter{FullTimestamp: true})
 
 	// filehook := lfshook.NewHook(lfshook.PathMap{
