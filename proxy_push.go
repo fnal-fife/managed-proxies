@@ -388,6 +388,7 @@ func manageExperimentChannels(exptList []string, cfg config, quit <-chan bool) <
 		for {
 			select {
 			case <-quit:
+				log.Debugf("Closing aggregation channel")
 				close(agg)
 			default:
 			}
