@@ -404,6 +404,8 @@ func cleanup(exptStatus map[string]bool, experiments []string) {
 	s := make([]string, 0, len(experiments))
 	f := make([]string, 0, len(experiments))
 
+	fmt.Println(experiments, exptStatus)
+
 	for _, expt := range experiments {
 		if _, ok := exptStatus[expt]; !ok {
 			f = append(f, expt)
