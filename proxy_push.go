@@ -84,7 +84,7 @@ func parseFlags() flagHolder {
 	flag.Parse()
 
 	fh := flagHolder{*e, *c, *t}
-	log.Debugf("Flags: {Experiment: %s, Alternate Config: %s, Test Mode: $v}", fh.experiment, fh.config, fh.test)
+	log.Debugf("Flags: {Experiment: %s, Alternate Config: %s, Test Mode: %v}", fh.experiment, fh.config, fh.test)
 	return fh
 }
 
