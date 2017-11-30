@@ -12,14 +12,15 @@ import (
 	"strings"
 	"time"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/rifflock/lfshook"
+	"github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v2"
 	//	gomail "gopkg.in/gomail.v2"
 )
 
 // config viper?
 // test mode - IN PROGRESS
-//Logging - IN PROGRESS
+// Logging - IN PROGRESS
 //notifications	// gomail https://godoc.org/gopkg.in/gomail.v2#Message.SetBody  go-slack?  net/http, notifications change!
 // Error handling - break everything!
 
@@ -28,6 +29,8 @@ const (
 	exptTimeout   uint   = 20                           // Experiment timeout in seconds
 	configFile    string = "proxy_push_config_test.yml" // CHANGE ME BEFORE PRODUCTION
 )
+
+var log = logrus.New()
 
 type flagHolder struct {
 	experiment string
@@ -102,7 +105,6 @@ func checkUser(authuser string) error {
 
 func getKerbTicket(krb5ccname string) error {
 	os.Setenv("KRB5CCNAME", krb5ccname)
-	// fmt.Println(os.Environ())
 
 	kerbcmdargs := []string{"-k", "-t",
 		"/opt/gen_keytabs/config/gcso_monitor.keytab",
@@ -113,7 +115,6 @@ func getKerbTicket(krb5ccname string) error {
 	if cmdErr != nil {
 		return fmt.Errorf("Initializing a kerb ticket failed.  The error was %s: %s", cmdErr, cmdOut)
 	}
-	// fmt.Println(os.Getenv("KRB5CCNAME"))
 	return nil
 }
 
@@ -384,9 +385,11 @@ func manageExperimentChannels(exptList []string, cfg config) <-chan experimentSu
 }
 
 func init() {
+	logrus.SetLevel(logrus.DebugLevel)
+	logrus.SetFormatter(&logrus.TextFormatter{FullTimestamp: true})
 
-	log.SetLevel(log.DebugLevel)
-	log.SetFormatter(&log.TextFormatter{FullTimestamp: true})
+	log.AddHook(lfshook.NewHook(lfshook.PathMap{logrus.InfoLevel: "golang_proxy_push_test.log"}))
+
 }
 
 func cleanup(exptStatus map[string]bool, experiments []string) {
@@ -408,8 +411,6 @@ func cleanup(exptStatus map[string]bool, experiments []string) {
 	}
 
 	log.Infof("Successes: %v\nFailures: %v\n", strings.Join(s, ", "), strings.Join(f, ", "))
-	// fmt.Printf("Successes: %v\n", strings.Join(s, ", "))
-	// fmt.Printf("Failures: %v\n", strings.Join(f, ", "))
 
 	return
 }
