@@ -385,8 +385,8 @@ func manageExperimentChannels(exptList []string, cfg config) <-chan experimentSu
 }
 
 func init() {
-	logrus.SetLevel(logrus.DebugLevel)
-	logrus.SetFormatter(&logrus.TextFormatter{FullTimestamp: true})
+	log.Level = logrus.DebugLevel
+	log.Formatter = &logrus.TextFormatter{FullTimestamp: true}
 
 	log.AddHook(lfshook.NewHook(lfshook.PathMap{logrus.InfoLevel: "golang_proxy_push_test.log"}))
 
