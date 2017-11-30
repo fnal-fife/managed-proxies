@@ -13,6 +13,7 @@ import (
 	"time"
 
 	// "github.com/rifflock/lfshook"
+	"github.com/rifflock/lfshook"
 	"github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v2"
 	//	gomail "gopkg.in/gomail.v2"
@@ -30,7 +31,7 @@ const (
 	configFile    string = "proxy_push_config_test.yml" // CHANGE ME BEFORE PRODUCTION
 )
 
-var log, log2 = logrus.New(), logrus.New()
+var log = logrus.New()
 
 type flagHolder struct {
 	experiment string
@@ -387,31 +388,32 @@ func manageExperimentChannels(exptList []string, cfg config) <-chan experimentSu
 func init() {
 
 	// Set up our logs
-	log.SetLevel(logrus.DebugLevel)
-	log2.SetLevel(logrus.InfoLevel)
+	log.Level = logrus.DebugLevel
 
-	file, err := os.OpenFile("golang_proxy_push_test.log", os.O_CREATE|os.O_WRONLY, 0666)
-	if err == nil {
-		log2.Out = file
-	} else {
-		log.Info("Failed to log to file, using default stderr")
-	}
+	// file, err := os.OpenFile("golang_proxy_push_test.log", os.O_CREATE|os.O_WRONLY, 0666)
+	// if err == nil {
+	// 	log2.Out = file
+	// } else {
+	// 	log.Info("Failed to log to file, using default stderr")
+	// }
 
-	log2.Info("Activated this logger")
+	// log2.Info("Activated this logger")
 
-	// log.(&logrus.TextFormatter{FullTimestamp: true})
+	logFormatter := &logrus.TextFormatter{FullTimestamp: true}
 
-	// filehook := lfshook.NewHook(lfshook.PathMap{
-	// 	logrus.DebugLevel: "golang_proxy_push_test.log",
-	// 	logrus.InfoLevel:  "golang_proxy_push_test.log",
-	// 	logrus.WarnLevel:  "golang_proxy_push_test.log",
-	// 	logrus.ErrorLevel: "golang_proxy_push_test.log",
-	// 	logrus.FatalLevel: "golang_proxy_push_test.log",
-	// 	logrus.PanicLevel: "golang_proxy_push_test.log"})
+	log.Formatter = logFormatter
 
-	// filehook.SetFormatter(&logrus.TextFormatter{FullTimestamp: true})
+	filehook := lfshook.NewHook(lfshook.PathMap{
+		logrus.DebugLevel: "golang_proxy_push_test.log",
+		logrus.InfoLevel:  "golang_proxy_push_test.log",
+		logrus.WarnLevel:  "golang_proxy_push_test.log",
+		logrus.ErrorLevel: "golang_proxy_push_test.log",
+		logrus.FatalLevel: "golang_proxy_push_test.log",
+		logrus.PanicLevel: "golang_proxy_push_test.log"})
 
-	// log.AddHook(filehook)
+	filehook.SetFormatter(logFormatter)
+
+	log.AddHook(filehook)
 
 }
 
