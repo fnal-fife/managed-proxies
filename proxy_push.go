@@ -399,9 +399,9 @@ func init() {
 
 	// log2.Info("Activated this logger")
 
-	logFormatter := &logrus.TextFormatter{FullTimestamp: true}
+	logFormatter := logrus.TextFormatter{FullTimestamp: true}
 
-	log.Formatter = logFormatter
+	log.Formatter = &logFormatter
 
 	filehook := lfshook.NewHook(lfshook.PathMap{
 		logrus.DebugLevel: "golang_proxy_push_test.log",
@@ -411,7 +411,7 @@ func init() {
 		logrus.FatalLevel: "golang_proxy_push_test.log",
 		logrus.PanicLevel: "golang_proxy_push_test.log"})
 
-	filehook.SetFormatter(logFormatter)
+	filehook.SetFormatter(&logFormatter)
 
 	log.AddHook(filehook)
 
