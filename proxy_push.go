@@ -354,7 +354,6 @@ func experimentWorker(globalConfig map[string]string, exptConfig *ConfigExperime
 			}
 		}
 		log.Debugf("Finished processing %s", expt.name)
-		fmt.Println(expt)
 		c <- expt
 		close(c)
 	}()
@@ -407,8 +406,6 @@ func cleanup(exptStatus map[string]bool, experiments []string, quit chan bool) {
 
 	quit <- true
 
-	fmt.Println(experiments, exptStatus)
-
 	for _, expt := range experiments {
 		if _, ok := exptStatus[expt]; !ok {
 			f = append(f, expt)
@@ -444,7 +441,7 @@ func main() {
 	//	fmt.Println(flags)
 
 	// Read the config file
-	log.Debugf("Using config file %s\n", flags.config)
+	log.Debugf("Using config file %s", flags.config)
 	// fmt.Printf("Using config file %s\n", flags.config)
 	source, err := ioutil.ReadFile(flags.config)
 	if err != nil {
