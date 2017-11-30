@@ -385,10 +385,22 @@ func manageExperimentChannels(exptList []string, cfg config) <-chan experimentSu
 }
 
 func init() {
+
+	// Set up our logs
 	log.Level = logrus.DebugLevel
 	log.Formatter = &logrus.TextFormatter{FullTimestamp: true}
 
-	log.AddHook(lfshook.NewHook(lfshook.PathMap{logrus.InfoLevel: "golang_proxy_push_test.log"}))
+	filehook := lfshook.NewHook(lfshook.PathMap{
+		logrus.DebugLevel: "golang_proxy_push_test.log",
+		logrus.InfoLevel:  "golang_proxy_push_test.log",
+		logrus.WarnLevel:  "golang_proxy_push_test.log",
+		logrus.ErrorLevel: "golang_proxy_push_test.log",
+		logrus.FatalLevel: "golang_proxy_push_test.log",
+		logrus.PanicLevel: "golang_proxy_push_test.log"})
+
+	filehook.SetFormatter(&logrus.TextFormatter{FullTimestamp: true})
+
+	log.AddHook(filehook)
 
 }
 
