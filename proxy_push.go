@@ -384,6 +384,7 @@ func manageExperimentChannels(exptList []string, cfg config) <-chan experimentSu
 		for {
 			if i == len(exptList) {
 				close(agg)
+				break
 			}
 		}
 	}()
