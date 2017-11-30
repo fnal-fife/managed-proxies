@@ -18,8 +18,8 @@ import (
 )
 
 // config viper?
-// test mode
-//Logging
+// test mode - IN PROGRESS
+//Logging - IN PROGRESS
 //notifications	// gomail https://godoc.org/gopkg.in/gomail.v2#Message.SetBody  go-slack?  net/http, notifications change!
 // Error handling - break everything!
 
@@ -66,21 +66,13 @@ type pingNodeStatus struct {
 
 type vomsProxyStatus struct {
 	filename string
-	success  bool
-}
-
-type sshNodeStatus struct {
-	node    string
-	account string
-	role    string
-	success bool
+	err      error
 }
 
 type copyProxiesStatus struct {
 	node    string
 	account string
 	role    string
-	success bool
 	err     error
 }
 
@@ -100,13 +92,14 @@ func checkUser(authuser string) error {
 	if err != nil {
 		return errors.New("Could not lookup current user.  Exiting")
 	}
+	log.Info("Running script as ", cuser.Username)
 	if cuser.Username != authuser {
 		return fmt.Errorf("This must be run as %s.  Trying to run as %s", authuser, cuser.Username)
 	}
 	return nil
 }
 
-func getKerbTicket(krb5ccname string) {
+func getKerbTicket(krb5ccname string) error {
 	os.Setenv("KRB5CCNAME", krb5ccname)
 	// fmt.Println(os.Environ())
 
@@ -118,10 +111,21 @@ func getKerbTicket(krb5ccname string) {
 	_, cmdErr := cmd.CombinedOutput()
 	if cmdErr != nil {
 		// msg := fmt.Sprintf(
-		log.Errorf("Initializing a kerb ticket failed.  The error was %s\n", cmdErr)
+		return fmt.Errorf("Initializing a kerb ticket failed.  The error was %s", cmdErr)
 	}
 	// fmt.Println(os.Getenv("KRB5CCNAME"))
-	return
+	return nil
+}
+
+func checkKeys(exptConfig *ConfigExperiment) error {
+	// Nodes and Roles
+	if len(exptConfig.Nodes) == 0 || len(exptConfig.Roles) == 0 {
+		msg := fmt.Sprintf(`Input file improperly formatted for %s (roles or nodes don't 
+			exist for this experiment). Please check the config file on fifeutilgpvm01.
+			 I will skip this experiment for now.`, exptConfig.Name)
+		return errors.New(msg)
+	}
+	return nil
 }
 
 func pingAllNodes(nodes []string) <-chan pingNodeStatus {
@@ -178,7 +182,7 @@ func getProxies(exptConfig *ConfigExperiment, globalConfig map[string]string) <-
 			outfile := account + "." + role + ".proxy"
 			outfilePath := path.Join("proxies", outfile)
 
-			vpi := vomsProxyStatus{outfile, false}
+			vpi := vomsProxyStatus{outfile, nil}
 			vpiargs := []string{"-rfc", "-valid", "24:00", "-voms",
 				vomsstring, "-cert", certfile,
 				"-key", keyfile, "-out", outfilePath}
@@ -186,12 +190,13 @@ func getProxies(exptConfig *ConfigExperiment, globalConfig map[string]string) <-
 			cmd := exec.Command("/usr/bin/voms-proxy-init", vpiargs...)
 			cmdErr := cmd.Run()
 			if cmdErr != nil {
-				log.Error(cmdErr)
+				err := fmt.Sprintf(`Error obtaining %s.  Please check the cert on 
+				  fifeutilgpvm01. \n%s Continuing on to next role.`, outfile, cmdErr)
+				vpi.err = errors.New(err)
 				// fmt.Println(cmdErr)
 			} else {
 				log.Infoln("Generated voms proxy: ", outfilePath)
 				// fmt.Println("Generated voms proxy: ", outfilePath)
-				vpi.success = true
 			}
 			// if e == "darkside" {
 			// 	time.Sleep(time.Duration(10) * time.Second)
@@ -213,7 +218,7 @@ func copyProxies(exptConfig *ConfigExperiment) <-chan copyProxiesStatus {
 
 			for _, node := range exptConfig.Nodes {
 				go func(role, acct, node string) {
-					cps := copyProxiesStatus{node, acct, role, false, nil}
+					cps := copyProxiesStatus{node, acct, role, nil}
 					accountNode := acct + "@" + node + ".fnal.gov"
 					newProxyPath := path.Join(exptConfig.Dir, acct, proxyFile+".new")
 					finalProxyPath := path.Join(exptConfig.Dir, acct, proxyFile)
@@ -242,8 +247,6 @@ func copyProxies(exptConfig *ConfigExperiment) <-chan copyProxiesStatus {
 						c <- cps
 						return
 					}
-
-					cps.success = true
 					c <- cps
 				}(role, acct, node)
 			}
@@ -266,9 +269,30 @@ func experimentWorker(globalConfig map[string]string, exptConfig *ConfigExperime
 		// 	time.Sleep(20 * time.Second)
 		// }
 
+		if _, ok := globalConfig["KRB5CCNAME"]; !ok {
+			log.Error(`Could not obtain KRB5CCNAME environmental variable from
+				config.  Please check the config file on fifeutilgpvm01.`)
+			expt.success = false
+			c <- expt
+			close(c)
+			return
+		}
 		krb5ccnameCfg := globalConfig["KRB5CCNAME"]
 
-		getKerbTicket(krb5ccnameCfg)
+		// If we can't get a kerb ticket, log error and keep going.
+		// We might have an old one that's still valid.
+		if err := getKerbTicket(krb5ccnameCfg); err != nil {
+			log.Error(err)
+		}
+
+		// If check of exptConfig keys fails, experiment fails immediately
+		if err := checkKeys(exptConfig); err != nil {
+			log.Error(err)
+			expt.success = false
+			c <- expt
+			close(c)
+			return
+		}
 
 		pingChannel := pingAllNodes(exptConfig.Nodes)
 		for _ = range exptConfig.Nodes { // Note that we're iterating over the range of nodes so we make sure
@@ -292,12 +316,14 @@ func experimentWorker(globalConfig map[string]string, exptConfig *ConfigExperime
 			// fmt.Println("Bad nodes are: ", badNodesSlice)
 		}
 
+		// If voms-proxy-init fails, we'll just continue on.  We'll still try to push proxies,
+		// since they're valid for 24 hours
 		vpiChan := getProxies(exptConfig, globalConfig)
 		for _ = range exptConfig.Roles {
 			select {
 			case vpi := <-vpiChan:
-				if !vpi.success {
-					log.Errorf("Error obtaining %s.  Please check the cert on fifeutilgpvm01.  Continuing to next proxy.\n", vpi.filename)
+				if vpi.err != nil {
+					log.Error(vpi.err)
 					// fmt.Printf("Error obtaining %s.  Please check the cert on fifeutilgpvm01.  Continuing to next proxy.\n", vpi.filename)
 					expt.success = false
 				}
@@ -314,7 +340,7 @@ func experimentWorker(globalConfig map[string]string, exptConfig *ConfigExperime
 			for _ = range exptConfig.Roles {
 				select {
 				case pushproxy := <-copyChan:
-					if !pushproxy.success {
+					if pushproxy.err != nil {
 						log.Errorf("Error pushing proxy for %s.  The error was %s\n", expt.name, pushproxy.err)
 						// fmt.Printf("Error pushing proxy for %s.  The error was %s\n", expt.name, pushproxy.err)
 						expt.success = false
@@ -336,6 +362,7 @@ func manageExperimentChannels(exptList []string, cfg config) <-chan experimentSu
 	agg := make(chan experimentSuccess)
 	exptChans := make([]<-chan experimentSuccess, len(exptList))
 
+	var i int // Count how many times we've put values into agg channel
 	go func() {
 		// Start all of the experiment workers
 		for _, expt := range exptList {
@@ -348,12 +375,18 @@ func manageExperimentChannels(exptList []string, cfg config) <-chan experimentSu
 			go func(c <-chan experimentSuccess) {
 				for expt := range c {
 					agg <- expt
+					i++
 				}
 			}(exptChan)
 		}
 
+		// Wait until we've received on all expt channels, then close agg channel
+		for {
+			if i == len(exptList) {
+				close(agg)
+			}
+		}
 	}()
-
 	return agg
 }
 
@@ -363,12 +396,18 @@ func init() {
 	log.SetFormatter(&log.TextFormatter{FullTimestamp: true})
 }
 
-func cleanup(success map[string]bool) {
-	s := make([]string, 0, len(success))
-	f := make([]string, 0, len(success))
+func cleanup(exptStatus map[string]bool, experiments []string) {
+	s := make([]string, 0, len(experiments))
+	f := make([]string, 0, len(experiments))
 
-	for expt := range success {
-		if success[expt] {
+	for _, expt := range experiments {
+		if _, ok := exptStatus[expt]; !ok {
+			f = append(f, expt)
+		}
+	}
+
+	for expt, success := range exptStatus {
+		if success {
 			s = append(s, expt)
 		} else {
 			f = append(f, expt)
@@ -384,8 +423,8 @@ func cleanup(success map[string]bool) {
 
 func main() {
 	var cfg config
-	expts := make([]string, 0, len(cfg.Experiments))
-	exptSuccess := make(map[string]bool)
+	expts := make([]string, 0, len(cfg.Experiments)) // Slice of experiments we will actually process
+	exptSuccesses := make(map[string]bool)           // map of successful expts
 
 	// Parse flags
 	flags := parseFlags()
@@ -439,28 +478,25 @@ func main() {
 		}
 	}
 
-	// Initialize our successful experiments slice
-	for _, expt := range expts {
-		exptSuccess[expt] = false
-	}
-
 	// Start up the expt manager
 	c := manageExperimentChannels(expts, cfg)
 	// Listen on the manager channel
 	timeout := time.After(time.Duration(globalTimeout) * time.Second)
-	for i := 0; i < len(expts); i++ {
+	// for i := 0; i < len(expts); i++ {
+	for _ = range c {
 		select {
 		case expt := <-c:
-			if expt.success {
-				exptSuccess[expt.name] = true
-			}
+			exptSuccesses[expt.name] = expt.success
+			// if expt.success {
+			// 	exptSuccess[expt.name] = true
+			// }
 			// fmt.Println(expt.name, expt.success)
 		case <-timeout:
 			log.Error("Hit the global timeout!")
 			// fmt.Println("hit the global timeout!")
-			cleanup(exptSuccess)
+			cleanup(exptSuccesses, expts)
 			return
 		}
 	}
-	cleanup(exptSuccess)
+	cleanup(exptSuccesses, expts)
 }
