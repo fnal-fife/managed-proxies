@@ -493,6 +493,8 @@ func main() {
 		select {
 		case expt := <-c:
 			exptSuccesses[expt.name] = expt.success
+			fmt.Println("Success!", expt.name)
+			fmt.Println(exptSuccesses)
 			// if expt.success {
 			// 	exptSuccess[expt.name] = true
 			// }
