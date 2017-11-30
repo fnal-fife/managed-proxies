@@ -360,9 +360,10 @@ func experimentWorker(globalConfig map[string]string, exptConfig *ConfigExperime
 	return c
 }
 
-func manageExperimentChannels(exptList []string, cfg config, quit <-chan bool) <-chan experimentSuccess {
+func manageExperimentChannels(exptList []string, cfg config) <-chan experimentSuccess {
 	agg := make(chan experimentSuccess)
 	exptChans := make([]<-chan experimentSuccess, len(exptList))
+	var i int // Counter to keep track of how many times we've sent over agg channel
 
 	go func() {
 		// Start all of the experiment workers
@@ -376,17 +377,17 @@ func manageExperimentChannels(exptList []string, cfg config, quit <-chan bool) <
 			go func(c <-chan experimentSuccess) {
 				for expt := range c {
 					agg <- expt
+					i++
 				}
 			}(exptChan)
 		}
 
-		// Close out agg channel when cleanup tells us we're done
+		// Close out agg channel when we're done sending
 		for {
-			select {
-			case <-quit:
-				log.Debugf("Closing aggregation channel")
+			if i == len(exptList) {
+				log.Debug("Closing aggregation channel")
 				close(agg)
-			default:
+				return
 			}
 		}
 
@@ -400,11 +401,9 @@ func init() {
 	log.SetFormatter(&log.TextFormatter{FullTimestamp: true})
 }
 
-func cleanup(exptStatus map[string]bool, experiments []string, quit chan bool) {
+func cleanup(exptStatus map[string]bool, experiments []string) {
 	s := make([]string, 0, len(experiments))
 	f := make([]string, 0, len(experiments))
-
-	quit <- true
 
 	for _, expt := range experiments {
 		if _, ok := exptStatus[expt]; !ok {
@@ -431,7 +430,6 @@ func main() {
 	var cfg config
 	expts := make([]string, 0, len(cfg.Experiments)) // Slice of experiments we will actually process
 	exptSuccesses := make(map[string]bool)           // map of successful expts
-	quit := make(chan bool)
 
 	// Parse flags
 	flags := parseFlags()
@@ -486,20 +484,22 @@ func main() {
 	}
 
 	// Start up the expt manager
-	c := manageExperimentChannels(expts, cfg, quit)
+	c := manageExperimentChannels(expts, cfg)
 	// Listen on the manager channel
 	timeout := time.After(time.Duration(globalTimeout) * time.Second)
-	for i := 0; i < len(expts); i++ {
-		// for _ = range c {
+	for {
 		select {
-		case expt := <-c:
+		case expt, chanOK := <-c:
+			if !chanOK {
+				cleanup(exptSuccesses, expts)
+				return
+			}
 			exptSuccesses[expt.name] = expt.success
 		case <-timeout:
 			log.Error("Hit the global timeout!")
 			// fmt.Println("hit the global timeout!")
-			cleanup(exptSuccesses, expts, quit)
+			cleanup(exptSuccesses, expts)
 			return
 		}
 	}
-	cleanup(exptSuccesses, expts, quit)
 }
