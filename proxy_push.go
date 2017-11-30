@@ -258,6 +258,7 @@ func copyProxies(exptConfig *ConfigExperiment) <-chan copyProxiesStatus {
 func experimentWorker(globalConfig map[string]string, exptConfig *ConfigExperiment) <-chan experimentSuccess {
 	c := make(chan experimentSuccess)
 	expt := experimentSuccess{exptConfig.Name, true}
+	log.Debug("Now processing ", expt.name)
 	go func() {
 		badnodes := make(map[string]struct{})
 
@@ -352,6 +353,8 @@ func experimentWorker(globalConfig map[string]string, exptConfig *ConfigExperime
 				}
 			}
 		}
+		log.Debugf("Finished processing %s", expt.name)
+		fmt.Println(expt)
 		c <- expt
 		close(c)
 	}()
@@ -384,7 +387,7 @@ func manageExperimentChannels(exptList []string, cfg config) <-chan experimentSu
 		for {
 			if i == len(exptList) {
 				close(agg)
-				break
+				return
 			}
 		}
 	}()
