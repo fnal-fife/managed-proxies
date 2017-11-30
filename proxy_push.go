@@ -492,6 +492,7 @@ func main() {
 	for _ = range c {
 		select {
 		case expt := <-c:
+			fmt.Println(expt)
 			exptSuccesses[expt.name] = expt.success
 			fmt.Println("Success!", expt.name)
 			fmt.Println(exptSuccesses)
