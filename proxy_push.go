@@ -389,6 +389,14 @@ func init() {
 	// Set up our logs
 	log.SetLevel(logrus.DebugLevel)
 	log2.SetLevel(logrus.InfoLevel)
+
+	file, err := os.OpenFile("golang_proxy_push_test.log", os.O_CREATE|os.O_WRONLY, 0666)
+	if err == nil {
+		log2.Out = file
+	} else {
+		log.Info("Failed to log to file, using default stderr")
+	}
+
 	// log.(&logrus.TextFormatter{FullTimestamp: true})
 
 	// filehook := lfshook.NewHook(lfshook.PathMap{
