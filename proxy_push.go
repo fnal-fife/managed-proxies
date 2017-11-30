@@ -490,13 +490,13 @@ func main() {
 	c := manageExperimentChannels(expts, cfg)
 	// Listen on the manager channel
 	timeout := time.After(time.Duration(globalTimeout) * time.Second)
-	// for i := 0; i < len(expts); i++ {
-	for _ = range c {
+	for i := 0; i < len(expts); i++ {
+		// for _ = range c {
 		select {
-		case eStatus := <-c:
-			fmt.Println(eStatus)
-			exptSuccesses[eStatus.name] = eStatus.success
-			fmt.Println("Success!", eStatus.name)
+		case expt := <-c:
+			fmt.Println(expt)
+			exptSuccesses[expt.name] = expt.success
+			fmt.Println("Success!", expt.name)
 			fmt.Println(exptSuccesses)
 			// if expt.success {
 			// 	exptSuccess[expt.name] = true
