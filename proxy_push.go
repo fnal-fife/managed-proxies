@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/rifflock/lfshook"
+	// "github.com/rifflock/lfshook"
 	"github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v2"
 	//	gomail "gopkg.in/gomail.v2"
@@ -30,7 +30,7 @@ const (
 	configFile    string = "proxy_push_config_test.yml" // CHANGE ME BEFORE PRODUCTION
 )
 
-var log = logrus.New()
+var log, log2 = logrus.New(), logrus.New()
 
 type flagHolder struct {
 	experiment string
@@ -387,20 +387,21 @@ func manageExperimentChannels(exptList []string, cfg config) <-chan experimentSu
 func init() {
 
 	// Set up our logs
-	log.Level = logrus.DebugLevel
-	log.Formatter = &logrus.TextFormatter{FullTimestamp: true}
+	log.SetLevel(logrus.DebugLevel)
+	log2.SetLevel(logrus.InfoLevel)
+	// log.(&logrus.TextFormatter{FullTimestamp: true})
 
-	filehook := lfshook.NewHook(lfshook.PathMap{
-		logrus.DebugLevel: "golang_proxy_push_test.log",
-		logrus.InfoLevel:  "golang_proxy_push_test.log",
-		logrus.WarnLevel:  "golang_proxy_push_test.log",
-		logrus.ErrorLevel: "golang_proxy_push_test.log",
-		logrus.FatalLevel: "golang_proxy_push_test.log",
-		logrus.PanicLevel: "golang_proxy_push_test.log"})
+	// filehook := lfshook.NewHook(lfshook.PathMap{
+	// 	logrus.DebugLevel: "golang_proxy_push_test.log",
+	// 	logrus.InfoLevel:  "golang_proxy_push_test.log",
+	// 	logrus.WarnLevel:  "golang_proxy_push_test.log",
+	// 	logrus.ErrorLevel: "golang_proxy_push_test.log",
+	// 	logrus.FatalLevel: "golang_proxy_push_test.log",
+	// 	logrus.PanicLevel: "golang_proxy_push_test.log"})
 
-	filehook.SetFormatter(&logrus.TextFormatter{FullTimestamp: true})
+	// filehook.SetFormatter(&logrus.TextFormatter{FullTimestamp: true})
 
-	log.AddHook(filehook)
+	// log.AddHook(filehook)
 
 }
 
