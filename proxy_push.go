@@ -195,7 +195,7 @@ func getProxies(exptConfig *ConfigExperiment, globalConfig map[string]string) <-
 				vpi.err = errors.New(err)
 				// fmt.Println(cmdErr)
 			} else {
-				log.Infoln("Generated voms proxy: ", outfilePath)
+				log.Debug("Generated voms proxy: ", outfilePath)
 				// fmt.Println("Generated voms proxy: ", outfilePath)
 			}
 			// if e == "darkside" {
@@ -258,7 +258,7 @@ func copyProxies(exptConfig *ConfigExperiment) <-chan copyProxiesStatus {
 func experimentWorker(globalConfig map[string]string, exptConfig *ConfigExperiment) <-chan experimentSuccess {
 	c := make(chan experimentSuccess)
 	expt := experimentSuccess{exptConfig.Name, true}
-	log.Debug("Now processing ", expt.name)
+	log.Info("Now processing ", expt.name)
 	go func() {
 		badnodes := make(map[string]struct{})
 
@@ -313,7 +313,7 @@ func experimentWorker(globalConfig map[string]string, exptConfig *ConfigExperime
 		}
 
 		if len(badNodesSlice) > 0 {
-			log.Infoln("Bad nodes are: ", badNodesSlice)
+			log.Warn("Bad nodes are: ", badNodesSlice)
 			// fmt.Println("Bad nodes are: ", badNodesSlice)
 		}
 
@@ -353,7 +353,7 @@ func experimentWorker(globalConfig map[string]string, exptConfig *ConfigExperime
 				}
 			}
 		}
-		log.Debugf("Finished processing %s", expt.name)
+		log.Info("Finished processing ", expt.name)
 		c <- expt
 		close(c)
 	}()
