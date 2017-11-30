@@ -361,7 +361,7 @@ func experimentWorker(globalConfig map[string]string, exptConfig *ConfigExperime
 	return c
 }
 
-func manageExperimentChannels(exptList []string, cfg config) <-chan experimentSuccess {
+func manageExperimentChannels(exptList []string, cfg config, quit <-chan bool) <-chan experimentSuccess {
 	agg := make(chan experimentSuccess)
 	exptChans := make([]<-chan experimentSuccess, len(exptList))
 
@@ -384,14 +384,15 @@ func manageExperimentChannels(exptList []string, cfg config) <-chan experimentSu
 			}(exptChan)
 		}
 
-		// Wait until we've received on all expt channels, then close agg channel
+		// Close out agg channel when main tells us we're done
 		for {
-			if i == len(exptList) {
-				log.Debug("Closing aggregation channel")
+			select {
+			case <-quit:
 				close(agg)
-				return
+			default:
 			}
 		}
+
 	}()
 	return agg
 }
@@ -402,9 +403,11 @@ func init() {
 	log.SetFormatter(&log.TextFormatter{FullTimestamp: true})
 }
 
-func cleanup(exptStatus map[string]bool, experiments []string) {
+func cleanup(exptStatus map[string]bool, experiments []string, quit chan bool) {
 	s := make([]string, 0, len(experiments))
 	f := make([]string, 0, len(experiments))
+
+	quit <- true
 
 	fmt.Println(experiments, exptStatus)
 
@@ -433,6 +436,7 @@ func main() {
 	var cfg config
 	expts := make([]string, 0, len(cfg.Experiments)) // Slice of experiments we will actually process
 	exptSuccesses := make(map[string]bool)           // map of successful expts
+	quit := make(chan bool)
 
 	// Parse flags
 	flags := parseFlags()
@@ -487,7 +491,7 @@ func main() {
 	}
 
 	// Start up the expt manager
-	c := manageExperimentChannels(expts, cfg)
+	c := manageExperimentChannels(expts, cfg, quit)
 	// Listen on the manager channel
 	timeout := time.After(time.Duration(globalTimeout) * time.Second)
 	for i := 0; i < len(expts); i++ {
@@ -505,9 +509,9 @@ func main() {
 		case <-timeout:
 			log.Error("Hit the global timeout!")
 			// fmt.Println("hit the global timeout!")
-			cleanup(exptSuccesses, expts)
+			cleanup(exptSuccesses, expts, quit)
 			return
 		}
 	}
-	cleanup(exptSuccesses, expts)
+	cleanup(exptSuccesses, expts, quit)
 }
