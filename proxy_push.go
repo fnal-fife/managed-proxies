@@ -139,7 +139,6 @@ func pingAllNodes(nodes []string) <-chan pingNodeStatus {
 			cmdErr := cmd.Run()
 			if cmdErr != nil {
 				log.Error(cmdErr)
-				// fmt.Println(cmdErr)
 			} else {
 				p.success = true
 			}
@@ -153,15 +152,11 @@ func getProxies(exptConfig *ConfigExperiment, globalConfig map[string]string) <-
 	c := make(chan vomsProxyStatus)
 	var vomsprefix, certfile, keyfile string
 
-	// fmt.Println(os.Getenv("KRB5CCNAME"))
-
 	if exptConfig.Vomsgroup != "" {
 		vomsprefix = exptConfig.Vomsgroup
 	} else {
 		vomsprefix = "fermilab:/fermilab/" + exptConfig.Name + "/"
 	}
-
-	// fmt.Println(vomsprefix)
 
 	for role, account := range exptConfig.Roles {
 		go func(role, account string) {
@@ -194,10 +189,8 @@ func getProxies(exptConfig *ConfigExperiment, globalConfig map[string]string) <-
 				err := fmt.Sprintf(`Error obtaining %s.  Please check the cert on 
 				  fifeutilgpvm01. \n%s Continuing on to next role.`, outfile, cmdErr)
 				vpi.err = errors.New(err)
-				// fmt.Println(cmdErr)
 			} else {
 				log.Debug("Generated voms proxy: ", outfilePath)
-				// fmt.Println("Generated voms proxy: ", outfilePath)
 			}
 			// if e == "darkside" {
 			// 	time.Sleep(time.Duration(10) * time.Second)
@@ -315,7 +308,6 @@ func experimentWorker(globalConfig map[string]string, exptConfig *ConfigExperime
 
 		if len(badNodesSlice) > 0 {
 			log.Warn("Bad nodes are: ", badNodesSlice)
-			// fmt.Println("Bad nodes are: ", badNodesSlice)
 		}
 
 		// If voms-proxy-init fails, we'll just continue on.  We'll still try to push proxies,
@@ -326,12 +318,10 @@ func experimentWorker(globalConfig map[string]string, exptConfig *ConfigExperime
 			case vpi := <-vpiChan:
 				if vpi.err != nil {
 					log.Error(vpi.err)
-					// fmt.Printf("Error obtaining %s.  Please check the cert on fifeutilgpvm01.  Continuing to next proxy.\n", vpi.filename)
 					expt.success = false
 				}
 			case <-time.After(time.Duration(5) * time.Second):
 				log.Errorf("Error obtaining proxy for %s:  timeout.  Check log for details. Continuing to next proxy.\n", expt.name)
-				// fmt.Printf("Error obtaining proxy for %s:  timeout.  Check log for details. Continuing to next proxy.\n", expt.name)
 				expt.success = false
 			}
 		}
@@ -343,13 +333,11 @@ func experimentWorker(globalConfig map[string]string, exptConfig *ConfigExperime
 				select {
 				case pushproxy := <-copyChan:
 					if pushproxy.err != nil {
-						log.Errorf("Error pushing proxy for %s.  The error was %s\n", expt.name, pushproxy.err)
-						// fmt.Printf("Error pushing proxy for %s.  The error was %s\n", expt.name, pushproxy.err)
+						log.Error(pushproxy.err)
 						expt.success = false
 					}
 				case <-exptTimeoutChan:
 					log.Errorf("Experiment %s hit the timeout when waiting to push proxy.\n", expt.name)
-					// fmt.Printf("Experiment %s hit the timeout when waiting to push proxy.\n", expt.name)
 					expt.success = false
 				}
 			}
