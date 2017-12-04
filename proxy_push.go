@@ -118,14 +118,14 @@ func exptLogInit(ename string, logconfig map[string]string) *logrus.Entry {
 
 	Log.SetLevel(logrus.DebugLevel)
 
-	// Experiment-specific log
+	// General Log
 	Log.AddHook(lfshook.NewHook(lfshook.PathMap{
-		logrus.DebugLevel: exptlogfilename,
-		logrus.InfoLevel:  exptlogfilename,
-		logrus.WarnLevel:  exptlogfilename,
-		logrus.ErrorLevel: exptlogfilename,
-		logrus.FatalLevel: exptlogfilename,
-		logrus.PanicLevel: exptlogfilename,
+		logrus.DebugLevel: logfilename,
+		logrus.InfoLevel:  logfilename,
+		logrus.WarnLevel:  logfilename,
+		logrus.ErrorLevel: logfilename,
+		logrus.FatalLevel: logfilename,
+		logrus.PanicLevel: logfilename,
 	}))
 
 	// Error log
@@ -135,14 +135,14 @@ func exptLogInit(ename string, logconfig map[string]string) *logrus.Entry {
 		logrus.PanicLevel: errfilename,
 	}))
 
-	// General Log
+	// Experiment-specific log
 	Log.AddHook(lfshook.NewHook(lfshook.PathMap{
-		logrus.DebugLevel: logfilename,
-		logrus.InfoLevel:  logfilename,
-		logrus.WarnLevel:  logfilename,
-		logrus.ErrorLevel: logfilename,
-		logrus.FatalLevel: logfilename,
-		logrus.PanicLevel: logfilename,
+		logrus.DebugLevel: exptlogfilename,
+		logrus.InfoLevel:  exptlogfilename,
+		logrus.WarnLevel:  exptlogfilename,
+		logrus.ErrorLevel: exptlogfilename,
+		logrus.FatalLevel: exptlogfilename,
+		logrus.PanicLevel: exptlogfilename,
 	}))
 
 	exptlog := Log.WithFields(logrus.Fields{"experiment": ename})
