@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"os/user"
 	"path"
+	"sort"
 	"strings"
 	"time"
 
@@ -427,7 +428,9 @@ func experimentWorker(cfg config, exptConfig *ConfigExperiment) <-chan experimen
 				}
 			}
 		}
+
 		for role, nodes := range successfulCopies {
+			sort.Strings(nodes)
 			exptLog.Debugf("Successful copies for role %s were %v", role, nodes)
 		}
 		exptLog.Info("Finished processing ", expt.name)
