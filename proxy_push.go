@@ -291,11 +291,12 @@ func experimentCleanup(expt experimentSuccess) error {
 			} else {
 				archiveLogDir := path.Join(dir, "experiment_log_archive")
 				if _, e = os.Stat(archiveLogDir); os.IsNotExist(e) {
-					os.Mkdir(archiveLogDir, 0666)
+					archiveLogDir = dir
 				}
 
 				oldpath := path.Join(dir, exptlogfilename)
-				newpath := path.Join(archiveLogDir, exptlogfilename)
+				newfilename := fmt.Sprintf("%s%s", exptlogfilename, time.Now())
+				newpath := path.Join(archiveLogDir, newfilename)
 
 				if e = os.Rename(oldpath, newpath); e != nil {
 					return fmt.Errorf("Could not move file %s to %s.  The error was %v", oldpath, newpath, e)
