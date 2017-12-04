@@ -289,8 +289,10 @@ func (expt *experimentSuccess) experimentCleanup() error {
 	}
 
 	// Successful experiment, but no errors in log file.  Probably the default option
-	if err := os.Remove(exptlogfilepath); expt.success && err != nil {
-		return fmt.Errorf("Could not remove successful experiment log %s.  Please clean up manually", exptlogfilepath)
+	if expt.success {
+		if err := os.Remove(exptlogfilepath); err != nil {
+			return fmt.Errorf("Could not remove successful experiment log %s.  Please clean up manually", exptlogfilepath)
+		}
 	}
 
 	if !expt.success {
