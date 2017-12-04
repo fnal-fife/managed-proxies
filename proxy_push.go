@@ -427,7 +427,9 @@ func experimentWorker(cfg config, exptConfig *ConfigExperiment) <-chan experimen
 				}
 			}
 		}
-		exptLog.Debugf("Successful copies (in role: nodes format) were: %#v", successfulCopies)
+		for role, nodes := range successfulCopies {
+			exptLog.Debugf("Successful copies for role %s were %v", role, nodes)
+		}
 		exptLog.Info("Finished processing ", expt.name)
 		c <- expt
 		close(c)
