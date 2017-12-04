@@ -120,6 +120,9 @@ func exptLogInit(ename string, logconfig map[string]string) *logrus.Entry {
 
 	// Experiment-specific log
 	Log.AddHook(lfshook.NewHook(lfshook.PathMap{
+		logrus.DebugLevel: logfilename,
+		logrus.InfoLevel:  logfilename,
+		logrus.WarnLevel:  logfilename,
 		logrus.ErrorLevel: exptlogfilename,
 		logrus.FatalLevel: exptlogfilename,
 		logrus.PanicLevel: exptlogfilename,
