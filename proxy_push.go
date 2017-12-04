@@ -108,13 +108,13 @@ func checkUser(authuser string) error {
 
 // Experiment worker-specific functions
 
-func exptLogInit(ename string, gconfig map[string]string) *logrus.Entry {
+func exptLogInit(ename string, logconfig map[string]string) *logrus.Entry {
 	var Log = logrus.New()
 	exptlogfilename := path.Join(tempLogDir, "golang_proxy_push_"+ename+".log") // Remove GOLANG before production
 
 	// remove the golang stuff for production
-	logfilename := fmt.Sprintf("golang%s", gconfig["logfile"])
-	errfilename := fmt.Sprintf("golang%s", gconfig["errfile"])
+	logfilename := fmt.Sprintf("golang%s", logconfig["logfile"])
+	errfilename := fmt.Sprintf("golang%s", logconfig["errfile"])
 
 	Log.SetLevel(logrus.DebugLevel)
 
@@ -432,13 +432,13 @@ func manageExperimentChannels(exptList []string, cfg config) <-chan experimentSu
 	return agg
 }
 
-func loginit(gconfig map[string]string) {
+func loginit(logconfig map[string]string) {
 
 	// Set up our global logger
 
 	// remove the golang stuff for production
-	logfilename := fmt.Sprintf("golang%s", gconfig["logfile"])
-	errfilename := fmt.Sprintf("golang%s", gconfig["errfile"])
+	logfilename := fmt.Sprintf("golang%s", logconfig["logfile"])
+	errfilename := fmt.Sprintf("golang%s", logconfig["errfile"])
 
 	log.Level = logrus.DebugLevel
 
@@ -516,7 +516,7 @@ func main() {
 		os.Exit(2)
 	}
 
-	loginit(cfg.Global)
+	loginit(cfg.Logs)
 
 	// From here on out, we're logging to the log file too
 	log.Debugf("Using config file %s", flags.config)
