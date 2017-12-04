@@ -113,8 +113,8 @@ func exptLogInit(ename string, gconfig map[string]string) *logrus.Entry {
 	exptlogfilename := path.Join(tempLogDir, "golang_proxy_push_"+ename+".log") // Remove GOLANG before production
 
 	// remove the golang stuff for production
-	logfilename := "golang" + gconfig["logfile"]
-	errfilename := "golang" + gconfig["errfile"]
+	logfilename := fmt.Sprintf("golang%s", gconfig["logfile"])
+	errfilename := fmt.Sprintf("golang%s", gconfig["errfile"])
 
 	Log.SetLevel(logrus.DebugLevel)
 
@@ -437,8 +437,8 @@ func loginit(gconfig map[string]string) {
 	// Set up our global logger
 
 	// remove the golang stuff for production
-	logfilename := "golang" + gconfig["logfile"]
-	errfilename := "golang" + gconfig["errfile"]
+	logfilename := fmt.Sprintf("golang%s", gconfig["logfile"])
+	errfilename := fmt.Sprintf("golang%s", gconfig["errfile"])
 
 	log.Level = logrus.DebugLevel
 
