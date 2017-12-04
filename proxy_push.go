@@ -272,7 +272,7 @@ func copyProxies(exptConfig *ConfigExperiment) <-chan copyProxiesStatus {
 	return c
 }
 
-func experimentCleanup(expt experimentSuccess) error {
+func (expt *experimentSuccess) experimentCleanup() error {
 	exptlogfilename := "golang_proxy_push_" + expt.name + ".log" // Remove GOLANG before production
 
 	// No error file
@@ -289,7 +289,8 @@ func experimentCleanup(expt experimentSuccess) error {
 	if !expt.success {
 		// Try to send email, which also deletes expt file, returns error
 		// var err error = nil // Dummy
-		err := errors.New("Dummy error for email")
+		// err := sendExperimentEmail()
+		err := errors.New("Dummy error for email") // Take this line out and replace it with
 		if err != nil {
 			archiveLogDir := path.Join(dir, "experiment_log_archive")
 			if _, e = os.Stat(archiveLogDir); os.IsNotExist(e) {
@@ -415,7 +416,7 @@ func experimentWorker(cfg config, exptConfig *ConfigExperiment) <-chan experimen
 
 		// We're logging the cleanup in the general log so that we don't create an extraneous
 		// experiment log file
-		if err := experimentCleanup(expt); err != nil {
+		if err := expt.experimentCleanup(); err != nil {
 			log.Error(err)
 		}
 		log.Info("Finished cleaning up ", expt.name)
