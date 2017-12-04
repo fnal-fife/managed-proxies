@@ -295,7 +295,7 @@ func experimentCleanup(expt experimentSuccess) error {
 				}
 
 				oldpath := path.Join(dir, exptlogfilename)
-				newfilename := fmt.Sprintf("%s%s", exptlogfilename, time.Now())
+				newfilename := fmt.Sprintf("%s%s", exptlogfilename, time.Now().Format(time.RFC3339))
 				newpath := path.Join(archiveLogDir, newfilename)
 
 				if e = os.Rename(oldpath, newpath); e != nil {
