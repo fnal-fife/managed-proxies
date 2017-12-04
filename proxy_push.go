@@ -443,7 +443,7 @@ func loginit(logconfig map[string]string) {
 	// Check for existence of temp log dir for experiment loggers
 	if _, err := os.Stat(tempLogDir); os.IsNotExist(err) {
 		log.Debug("Experiment temporary log dir didn't exist (normal behavior).  Creating it now")
-		if err := os.Mkdir(tempLogDir, 0644); err != nil {
+		if err := os.Mkdir(tempLogDir, 0666); err != nil {
 			defer log.Warnf(`Could not create the temp log dir.  
 				We expect experiment-specific emails to fail, but
 				all log messages should be in general log`, logfilename)
