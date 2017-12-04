@@ -84,30 +84,6 @@ type copyProxiesStatus struct {
 	err     error
 }
 
-func parseFlags() flagHolder {
-	var e = flag.String("e", "", "Name of single experiment to push proxies")
-	var c = flag.String("c", configFile, "Specify alternate config file")
-	var t = flag.Bool("t", false, "Test mode")
-
-	flag.Parse()
-
-	fh := flagHolder{*e, *c, *t}
-	log.Debugf("Flags: {Experiment: %s, Alternate Config: %s, Test Mode: %v}", fh.experiment, fh.config, fh.test)
-	return fh
-}
-
-func checkUser(authuser string) error {
-	cuser, err := user.Current()
-	if err != nil {
-		return errors.New("Could not lookup current user.  Exiting")
-	}
-	log.Info("Running script as ", cuser.Username)
-	if cuser.Username != authuser {
-		return fmt.Errorf("This must be run as %s.  Trying to run as %s", authuser, cuser.Username)
-	}
-	return nil
-}
-
 // Experiment worker-specific functions
 
 func exptLogInit(ename string, logconfig map[string]string) *logrus.Entry {
@@ -296,6 +272,42 @@ func copyProxies(exptConfig *ConfigExperiment) <-chan copyProxiesStatus {
 	return c
 }
 
+func experimentCleanup(expt experimentSuccess) error {
+	exptlogfilename := "golang_proxy_push_" + expt.name + ".log" // Remove GOLANG before production
+
+	// No error file
+	if _, err := os.Stat(exptlogfilename); os.IsNotExist(err) {
+		return nil
+	}
+
+	if !expt.success {
+		// Try to send email, return error
+		// var err error = nil // Dummy
+		var err error = errors.New("Dummy error for email")
+		if err != nil {
+			if dir, e := os.Getwd(); e != nil {
+				return errors.New(`Could not get current working directory.  Aborting cleanup.  
+					Please check working directory and manually clean up log files`)
+			} else {
+				archiveLogDir := path.Join(dir, "experiment_log_archive")
+				if _, e = os.Stat(archiveLogDir); os.IsNotExist(e) {
+					os.Mkdir(archiveLogDir, 0666)
+				}
+
+				oldpath := path.Join(dir, exptlogfilename)
+				newpath := path.Join(archiveLogDir, exptlogfilename)
+
+				if e = os.Rename(oldpath, newpath); e != nil {
+					return fmt.Errorf("Could not move file %s to %s.  The error was %v", oldpath, newpath, e)
+				} else {
+					return fmt.Errorf("Could not send email for experiment %s.  Archived error file at %s", expt.name, newpath)
+				}
+			}
+		}
+	}
+	return nil
+}
+
 func experimentWorker(cfg config, exptConfig *ConfigExperiment) <-chan experimentSuccess {
 	c := make(chan experimentSuccess)
 	expt := experimentSuccess{exptConfig.Name, true}
@@ -395,11 +407,40 @@ func experimentWorker(cfg config, exptConfig *ConfigExperiment) <-chan experimen
 				}
 			}
 		}
+		if err := experimentCleanup(expt); err != nil {
+			exptLog.Error(err)
+		}
 		exptLog.Info("Finished processing ", expt.name)
 		c <- expt
 		close(c)
 	}()
 	return c
+}
+
+// Global functions
+
+func parseFlags() flagHolder {
+	var e = flag.String("e", "", "Name of single experiment to push proxies")
+	var c = flag.String("c", configFile, "Specify alternate config file")
+	var t = flag.Bool("t", false, "Test mode")
+
+	flag.Parse()
+
+	fh := flagHolder{*e, *c, *t}
+	log.Debugf("Flags: {Experiment: %s, Alternate Config: %s, Test Mode: %v}", fh.experiment, fh.config, fh.test)
+	return fh
+}
+
+func checkUser(authuser string) error {
+	cuser, err := user.Current()
+	if err != nil {
+		return errors.New("Could not lookup current user.  Exiting")
+	}
+	log.Info("Running script as ", cuser.Username)
+	if cuser.Username != authuser {
+		return fmt.Errorf("This must be run as %s.  Trying to run as %s", authuser, cuser.Username)
+	}
+	return nil
 }
 
 func manageExperimentChannels(exptList []string, cfg config) <-chan experimentSuccess {
@@ -498,7 +539,9 @@ func cleanup(exptStatus map[string]bool, experiments []string) {
 
 	log.Infof("Successes: %v\nFailures: %v\n", strings.Join(s, ", "), strings.Join(f, ", "))
 
-	// Something in here to delete temp log dir if needed
+	// Something in here to delete/archive temp log dir if needed
+
+	// tempFiles, err := ioutil.ReadDir()
 
 	return
 }
