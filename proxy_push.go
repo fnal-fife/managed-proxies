@@ -22,6 +22,7 @@ import (
 // config viper?
 // test mode - IN PROGRESS
 // Logging - IN PROGRESS
+// Optional debug for verbose mode
 //notifications	// gomail https://godoc.org/gopkg.in/gomail.v2#Message.SetBody  go-slack?  net/http, notifications change!
 // Error handling - break everything!
 
