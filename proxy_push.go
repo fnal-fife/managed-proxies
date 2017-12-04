@@ -280,32 +280,30 @@ func experimentCleanup(expt experimentSuccess) error {
 		return nil
 	}
 
-	if !expt.success {
-		// Try to send email, return error
-		// var err error = nil // Dummy
-		var err error = errors.New("Dummy error for email")
-		if err != nil {
-			if dir, e := os.Getwd(); e != nil {
-				return errors.New(`Could not get current working directory.  Aborting cleanup.  
+	dir, e := os.Getwd()
+	if e != nil {
+		return errors.New(`Could not get current working directory.  Aborting cleanup.  
 					Please check working directory and manually clean up log files`)
-			} else {
-				archiveLogDir := path.Join(dir, "experiment_log_archive")
-				if _, e = os.Stat(archiveLogDir); os.IsNotExist(e) {
-					archiveLogDir = dir
-				}
+	}
 
-				oldpath := path.Join(dir, exptlogfilename)
-				newfilename := fmt.Sprintf("%s-%s", exptlogfilename, time.Now().Format(time.RFC3339))
-				newpath := path.Join(archiveLogDir, newfilename)
-
-				if e = os.Rename(oldpath, newpath); e != nil {
-					return fmt.Errorf("Could not move file %s to %s.  The error was %v", oldpath, newpath, e)
-					// log.Error(er)
-				} else {
-					return fmt.Errorf("Could not send email for experiment %s.  Archived error file at %s", expt.name, newpath)
-					// log.Error(er)
-				}
+	if !expt.success {
+		// Try to send email, which also deletes expt file, returns error
+		// var err error = nil // Dummy
+		err := errors.New("Dummy error for email")
+		if err != nil {
+			archiveLogDir := path.Join(dir, "experiment_log_archive")
+			if _, e = os.Stat(archiveLogDir); os.IsNotExist(e) {
+				archiveLogDir = dir
 			}
+
+			oldpath := path.Join(dir, exptlogfilename)
+			newfilename := fmt.Sprintf("%s-%s", exptlogfilename, time.Now().Format(time.RFC3339))
+			newpath := path.Join(archiveLogDir, newfilename)
+
+			if e = os.Rename(oldpath, newpath); e != nil {
+				return fmt.Errorf("Could not move file %s to %s.  The error was %v", oldpath, newpath, e)
+			}
+			return fmt.Errorf("Could not send email for experiment %s.  Archived error file at %s", expt.name, newpath)
 		}
 	}
 	return nil
@@ -414,6 +412,9 @@ func experimentWorker(cfg config, exptConfig *ConfigExperiment) <-chan experimen
 		exptLog.Info("Finished processing ", expt.name)
 		c <- expt
 		close(c)
+
+		// We're logging the cleanup in the general log so that we don't create an extraneous
+		// experiment log file
 		if err := experimentCleanup(expt); err != nil {
 			log.Error(err)
 		}
