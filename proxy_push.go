@@ -300,8 +300,10 @@ func experimentCleanup(expt experimentSuccess) error {
 
 				if e = os.Rename(oldpath, newpath); e != nil {
 					return fmt.Errorf("Could not move file %s to %s.  The error was %v", oldpath, newpath, e)
+					// log.Error(er)
 				} else {
 					return fmt.Errorf("Could not send email for experiment %s.  Archived error file at %s", expt.name, newpath)
+					// log.Error(er)
 				}
 			}
 		}
@@ -408,12 +410,14 @@ func experimentWorker(cfg config, exptConfig *ConfigExperiment) <-chan experimen
 				}
 			}
 		}
-		if err := experimentCleanup(expt); err != nil {
-			exptLog.Error(err)
-		}
+
 		exptLog.Info("Finished processing ", expt.name)
 		c <- expt
 		close(c)
+		if err := experimentCleanup(expt); err != nil {
+			log.Error(err)
+		}
+		log.Info("Finished cleaning up ", expt.name)
 	}()
 	return c
 }
