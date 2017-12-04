@@ -31,7 +31,9 @@ const (
 	configFile    string = "proxy_push_config_test.yml" // CHANGE ME BEFORE PRODUCTION
 )
 
+// Global logger
 var log = logrus.New()
+var tempLogDir string
 
 type flagHolder struct {
 	experiment string
@@ -64,8 +66,8 @@ type ConfigExperiment struct {
 }
 
 type pingNodeStatus struct {
-	node    string
-	success bool
+	node string
+	err  error
 }
 
 type vomsProxyStatus struct {
@@ -104,6 +106,49 @@ func checkUser(authuser string) error {
 	return nil
 }
 
+// Experiment worker-specific functions
+
+func exptLogInit(ename string, gconfig map[string]string) *logrus.Entry {
+	var Log = logrus.New()
+	exptlogfilename := path.Join(tempLogDir, "golang_proxy_push_"+ename+".log") // Remove GOLANG before production
+
+	// remove the golang stuff for production
+	logfilename := "golang" + gconfig["logfile"]
+	errfilename := "golang" + gconfig["errfile"]
+
+	Log.SetLevel(logrus.DebugLevel)
+
+	// Experiment-specific log
+	Log.AddHook(lfshook.NewHook(lfshook.PathMap{
+		logrus.ErrorLevel: exptlogfilename,
+		logrus.FatalLevel: exptlogfilename,
+		logrus.PanicLevel: exptlogfilename,
+	}))
+
+	// Error log
+	Log.AddHook(lfshook.NewHook(lfshook.PathMap{
+		logrus.ErrorLevel: errfilename,
+		logrus.FatalLevel: errfilename,
+		logrus.PanicLevel: errfilename,
+	}))
+
+	// General Log
+	Log.AddHook(lfshook.NewHook(lfshook.PathMap{
+		logrus.DebugLevel: logfilename,
+		logrus.InfoLevel:  logfilename,
+		logrus.WarnLevel:  logfilename,
+		logrus.ErrorLevel: logfilename,
+		logrus.FatalLevel: logfilename,
+		logrus.PanicLevel: logfilename,
+	}))
+
+	exptlog := Log.WithFields(logrus.Fields{"experiment": ename})
+
+	exptlog.Info("Set up experiment logger")
+
+	return exptlog
+}
+
 func getKerbTicket(krb5ccname string) error {
 	os.Setenv("KRB5CCNAME", krb5ccname)
 
@@ -134,14 +179,12 @@ func pingAllNodes(nodes []string) <-chan pingNodeStatus {
 	c := make(chan pingNodeStatus, len(nodes))
 	for _, node := range nodes {
 		go func(node string) {
-			p := pingNodeStatus{node, false}
+			p := pingNodeStatus{node, nil}
 			pingargs := []string{"-W", "5", "-c", "1", node}
 			cmd := exec.Command("ping", pingargs...)
 			cmdOut, cmdErr := cmd.CombinedOutput()
 			if cmdErr != nil {
-				log.Errorf("%s %s", cmdErr, cmdOut)
-			} else {
-				p.success = true
+				p.err = fmt.Errorf("%s %s", cmdErr, cmdOut)
 			}
 			c <- p
 		}(node)
@@ -190,8 +233,6 @@ func getProxies(exptConfig *ConfigExperiment, globalConfig map[string]string) <-
 				err := fmt.Sprintf(`Error obtaining %s.  Please check the cert on 
 				  fifeutilgpvm01. \n%s Continuing on to next role.`, outfile, cmdErr)
 				vpi.err = errors.New(err)
-			} else {
-				log.Debug("Generated voms proxy: ", outfilePath)
 			}
 			// if e == "darkside" {
 			// 	time.Sleep(time.Duration(10) * time.Second)
@@ -250,10 +291,12 @@ func copyProxies(exptConfig *ConfigExperiment) <-chan copyProxiesStatus {
 	return c
 }
 
-func experimentWorker(globalConfig map[string]string, exptConfig *ConfigExperiment) <-chan experimentSuccess {
+func experimentWorker(cfg config, exptConfig *ConfigExperiment) <-chan experimentSuccess {
 	c := make(chan experimentSuccess)
 	expt := experimentSuccess{exptConfig.Name, true}
-	log.Info("Now processing ", expt.name)
+	exptLog := exptLogInit(expt.name, cfg.Logs)
+
+	exptLog.Info("Now processing ", expt.name)
 	go func() {
 		badnodes := make(map[string]struct{})
 
@@ -265,25 +308,25 @@ func experimentWorker(globalConfig map[string]string, exptConfig *ConfigExperime
 		// 	time.Sleep(20 * time.Second)
 		// }
 
-		if _, ok := globalConfig["KRB5CCNAME"]; !ok {
-			log.Error(`Could not obtain KRB5CCNAME environmental variable from
+		if _, ok := cfg.Global["KRB5CCNAME"]; !ok {
+			exptLog.Error(`Could not obtain KRB5CCNAME environmental variable from
 				config.  Please check the config file on fifeutilgpvm01.`)
 			expt.success = false
 			c <- expt
 			close(c)
 			return
 		}
-		krb5ccnameCfg := globalConfig["KRB5CCNAME"]
+		krb5ccnameCfg := cfg.Global["KRB5CCNAME"]
 
 		// If we can't get a kerb ticket, log error and keep going.
 		// We might have an old one that's still valid.
 		if err := getKerbTicket(krb5ccnameCfg); err != nil {
-			log.Error(err)
+			exptLog.Error(err)
 		}
 
 		// If check of exptConfig keys fails, experiment fails immediately
 		if err := checkKeys(exptConfig); err != nil {
-			log.Error(err)
+			exptLog.Error(err)
 			expt.success = false
 			c <- expt
 			close(c)
@@ -295,10 +338,12 @@ func experimentWorker(globalConfig map[string]string, exptConfig *ConfigExperime
 			// that we listen on the channel the right number of times
 			select {
 			case testnode := <-pingChannel:
-				if testnode.success {
+				if testnode.err == nil {
 					delete(badnodes, testnode.node)
+				} else {
+					exptLog.Error(testnode.err)
 				}
-			case <-time.After(time.Duration(5) * time.Second):
+			case <-time.After(time.Duration(10) * time.Second):
 			}
 		}
 
@@ -308,21 +353,23 @@ func experimentWorker(globalConfig map[string]string, exptConfig *ConfigExperime
 		}
 
 		if len(badNodesSlice) > 0 {
-			log.Warn("Bad nodes are: ", badNodesSlice)
+			exptLog.Warn("Bad nodes are: ", badNodesSlice)
 		}
 
 		// If voms-proxy-init fails, we'll just continue on.  We'll still try to push proxies,
 		// since they're valid for 24 hours
-		vpiChan := getProxies(exptConfig, globalConfig)
+		vpiChan := getProxies(exptConfig, cfg.Global)
 		for _ = range exptConfig.Roles {
 			select {
 			case vpi := <-vpiChan:
 				if vpi.err != nil {
-					log.Error(vpi.err)
+					exptLog.Error(vpi.err)
 					expt.success = false
+				} else {
+					exptLog.Debug("Generated voms proxy: ", vpi.filename)
 				}
 			case <-time.After(time.Duration(5) * time.Second):
-				log.Errorf("Error obtaining proxy for %s:  timeout.  Check log for details. Continuing to next proxy.\n", expt.name)
+				exptLog.Errorf("Error obtaining proxy for %s:  timeout.  Check log for details. Continuing to next proxy.\n", expt.name)
 				expt.success = false
 			}
 		}
@@ -334,16 +381,16 @@ func experimentWorker(globalConfig map[string]string, exptConfig *ConfigExperime
 				select {
 				case pushproxy := <-copyChan:
 					if pushproxy.err != nil {
-						log.Error(pushproxy.err)
+						exptLog.Error(pushproxy.err)
 						expt.success = false
 					}
 				case <-exptTimeoutChan:
-					log.Errorf("Experiment %s hit the timeout when waiting to push proxy.\n", expt.name)
+					exptLog.Error("Experiment hit the timeout when waiting to push proxy.")
 					expt.success = false
 				}
 			}
 		}
-		log.Info("Finished processing ", expt.name)
+		exptLog.Info("Finished processing ", expt.name)
 		c <- expt
 		close(c)
 	}()
@@ -358,7 +405,7 @@ func manageExperimentChannels(exptList []string, cfg config) <-chan experimentSu
 	go func() {
 		// Start all of the experiment workers
 		for _, expt := range exptList {
-			exptChans = append(exptChans, experimentWorker(cfg.Global, cfg.Experiments[expt]))
+			exptChans = append(exptChans, experimentWorker(cfg, cfg.Experiments[expt]))
 		}
 
 		// Launch goroutines that listen on experiment channels.  Since each experimentWorker closes its channel,
@@ -385,35 +432,36 @@ func manageExperimentChannels(exptList []string, cfg config) <-chan experimentSu
 	return agg
 }
 
-func init() {
+func loginit(gconfig map[string]string) {
 
-	// Set up our logs
+	// Set up our global logger
+
+	// remove the golang stuff for production
+	logfilename := "golang" + gconfig["logfile"]
+	errfilename := "golang" + gconfig["errfile"]
+
 	log.Level = logrus.DebugLevel
-
-	// file, err := os.OpenFile("golang_proxy_push_test.log", os.O_CREATE|os.O_WRONLY, 0666)
-	// if err == nil {
-	// 	log2.Out = file
-	// } else {
-	// 	log.Info("Failed to log to file, using default stderr")
-	// }
-
-	// log2.Info("Activated this logger")
 
 	logFormatter := logrus.TextFormatter{FullTimestamp: true}
 
 	log.Formatter = &logFormatter
 
-	filehook := lfshook.NewHook(lfshook.PathMap{
-		logrus.DebugLevel: "golang_proxy_push_test.log",
-		logrus.InfoLevel:  "golang_proxy_push_test.log",
-		logrus.WarnLevel:  "golang_proxy_push_test.log",
-		logrus.ErrorLevel: "golang_proxy_push_test.log",
-		logrus.FatalLevel: "golang_proxy_push_test.log",
-		logrus.PanicLevel: "golang_proxy_push_test.log"})
+	// Error log
+	log.AddHook(lfshook.NewHook(lfshook.PathMap{
+		logrus.ErrorLevel: errfilename,
+		logrus.FatalLevel: errfilename,
+		logrus.PanicLevel: errfilename,
+	}))
 
-	filehook.SetFormatter(&logFormatter)
-
-	log.AddHook(filehook)
+	// General Log
+	log.AddHook(lfshook.NewHook(lfshook.PathMap{
+		logrus.DebugLevel: logfilename,
+		logrus.InfoLevel:  logfilename,
+		logrus.WarnLevel:  logfilename,
+		logrus.ErrorLevel: logfilename,
+		logrus.FatalLevel: logfilename,
+		logrus.PanicLevel: logfilename,
+	}))
 
 }
 
@@ -445,14 +493,17 @@ func main() {
 	expts := make([]string, 0, len(cfg.Experiments)) // Slice of experiments we will actually process
 	exptSuccesses := make(map[string]bool)           // map of successful expts
 
-	// Parse flags
-	flags := parseFlags()
-	if flags.test {
-		log.Info("This is in test mode")
+	if cwd, err := os.Getwd(); err != nil {
+		log.Fatal("Could not get current working directory.  Exiting")
+	} else {
+		t := &tempLogDir
+		*t = path.Join(cwd, "golang_temp_log_dir") // Remove golang prefix before PRODUCTION
 	}
 
+	// Parse flags
+	flags := parseFlags()
+
 	// Read the config file
-	log.Debugf("Using config file %s", flags.config)
 	source, err := ioutil.ReadFile(flags.config)
 	if err != nil {
 		log.Error(err)
@@ -465,16 +516,23 @@ func main() {
 		os.Exit(2)
 	}
 
+	loginit(cfg.Global)
+
+	// From here on out, we're logging to the log file too
+	log.Debugf("Using config file %s", flags.config)
+
+	// Test flag sets which notifications section from config we want to use.
+	// After this, cfg.Notifications map is the map we want to use later on.
+
+	if flags.test {
+		log.Info("Running in test mode")
+		cfg.Notifications = cfg.Notifications_test
+	}
+
 	// Check that we're running as the right user
 	if err = checkUser(cfg.Global["should_runuser"]); err != nil {
 		log.Error(err)
 		os.Exit(3)
-	}
-
-	// Test flag sets which notifications section from config we want to use.
-	// After this, cfg.Notifications map is the map we want to use later on.
-	if flags.test {
-		cfg.Notifications = cfg.Notifications_test
 	}
 
 	// Get our list of experiments from the config file, set exptConfig Name variable
