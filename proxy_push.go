@@ -272,7 +272,12 @@ func copyProxies(exptConfig *ConfigExperiment) <-chan copyProxiesStatus {
 	return c
 }
 
-func (expt *experimentSuccess) experimentCleanup() error {
+func (exptConfig *ConfigExperiment) sendExperimentEmail(logfilepath string) error {
+	// func to send email of logfile
+	return nil
+}
+
+func (expt *experimentSuccess) experimentCleanup(exptConfig *ConfigExperiment) error {
 	exptlogfilename := "golang_proxy_push_" + expt.name + ".log" // Remove GOLANG before production
 
 	dir, e := os.Getwd()
@@ -298,7 +303,7 @@ func (expt *experimentSuccess) experimentCleanup() error {
 	if !expt.success {
 		// Try to send email, which also deletes expt file, returns error
 		// var err error = nil // Dummy
-		// err := sendExperimentEmail()
+		// err := exptConfig.sendExperimentEmail(exptlogfilepath)
 		err := errors.New("Dummy error for email") // Take this line out and replace it with
 		if err != nil {
 			archiveLogDir := path.Join(dir, "experiment_log_archive")
@@ -306,12 +311,12 @@ func (expt *experimentSuccess) experimentCleanup() error {
 				archiveLogDir = dir
 			}
 
-			oldpath := path.Join(dir, exptlogfilename)
+			// oldpath := exptlogfile
 			newfilename := fmt.Sprintf("%s-%s", exptlogfilename, time.Now().Format(time.RFC3339))
 			newpath := path.Join(archiveLogDir, newfilename)
 
-			if e = os.Rename(oldpath, newpath); e != nil {
-				return fmt.Errorf("Could not move file %s to %s.  The error was %v", oldpath, newpath, e)
+			if e = os.Rename(exptlogfilepath, newpath); e != nil {
+				return fmt.Errorf("Could not move file %s to %s.  The error was %v", exptlogfilepath, newpath, e)
 			}
 			return fmt.Errorf("Could not send email for experiment %s.  Archived error file at %s", expt.name, newpath)
 		}
@@ -328,6 +333,7 @@ func experimentWorker(cfg config, exptConfig *ConfigExperiment) <-chan experimen
 	exptLog.Info("Now processing ", expt.name)
 	go func() {
 		badnodes := make(map[string]struct{})
+		successfulCopies := make(map[string][]string)
 
 		for _, node := range exptConfig.Nodes {
 			badnodes[node] = struct{}{}
@@ -412,6 +418,8 @@ func experimentWorker(cfg config, exptConfig *ConfigExperiment) <-chan experimen
 					if pushproxy.err != nil {
 						exptLog.Error(pushproxy.err)
 						expt.success = false
+					} else {
+						successfulCopies[pushproxy.role] = append(successfulCopies[pushproxy.role], pushproxy.node)
 					}
 				case <-exptTimeoutChan:
 					exptLog.Error("Experiment hit the timeout when waiting to push proxy.")
@@ -419,14 +427,14 @@ func experimentWorker(cfg config, exptConfig *ConfigExperiment) <-chan experimen
 				}
 			}
 		}
-
+		exptLog.Debugf("Successful copies (in role: nodes format) were: %#v", successfulCopies)
 		exptLog.Info("Finished processing ", expt.name)
 		c <- expt
 		close(c)
 
 		// We're logging the cleanup in the general log so that we don't create an extraneous
 		// experiment log file
-		if err := expt.experimentCleanup(); err != nil {
+		if err := expt.experimentCleanup(exptConfig); err != nil {
 			log.Error(err)
 		}
 		log.Info("Finished cleaning up ", expt.name)
@@ -499,16 +507,6 @@ func loginit(logconfig map[string]string) {
 	// remove the golang stuff for production
 	logfilename := fmt.Sprintf("golang%s", logconfig["logfile"])
 	errfilename := fmt.Sprintf("golang%s", logconfig["errfile"])
-
-	// // Check for existence of temp log dir for experiment loggers
-	// if _, err := os.Stat(tempLogDir); os.IsNotExist(err) {
-	// 	log.Debug("Experiment temporary log dir didn't exist (normal behavior).  Creating it now")
-	// 	if err := os.Mkdir(tempLogDir, 0666); err != nil {
-	// 		defer log.Warnf(`Could not create the temp log dir.
-	// 			We expect experiment-specific emails to fail, but
-	// 			all log messages should be in general log`, logfilename)
-	// 	}
-	// }
 
 	// Set up our global logger
 	log.Level = logrus.DebugLevel
