@@ -34,7 +34,8 @@ const (
 
 // Global logger
 var log = logrus.New()
-var tempLogDir string
+
+// var tempLogDir string
 
 type flagHolder struct {
 	experiment string
@@ -111,7 +112,7 @@ func checkUser(authuser string) error {
 
 func exptLogInit(ename string, logconfig map[string]string) *logrus.Entry {
 	var Log = logrus.New()
-	exptlogfilename := path.Join(tempLogDir, "golang_proxy_push_"+ename+".log") // Remove GOLANG before production
+	exptlogfilename := "golang_proxy_push_" + ename + ".log" // Remove GOLANG before production
 
 	// remove the golang stuff for production
 	logfilename := fmt.Sprintf("golang%s", logconfig["logfile"])
@@ -441,15 +442,15 @@ func loginit(logconfig map[string]string) {
 	logfilename := fmt.Sprintf("golang%s", logconfig["logfile"])
 	errfilename := fmt.Sprintf("golang%s", logconfig["errfile"])
 
-	// Check for existence of temp log dir for experiment loggers
-	if _, err := os.Stat(tempLogDir); os.IsNotExist(err) {
-		log.Debug("Experiment temporary log dir didn't exist (normal behavior).  Creating it now")
-		if err := os.Mkdir(tempLogDir, 0666); err != nil {
-			defer log.Warnf(`Could not create the temp log dir.  
-				We expect experiment-specific emails to fail, but
-				all log messages should be in general log`, logfilename)
-		}
-	}
+	// // Check for existence of temp log dir for experiment loggers
+	// if _, err := os.Stat(tempLogDir); os.IsNotExist(err) {
+	// 	log.Debug("Experiment temporary log dir didn't exist (normal behavior).  Creating it now")
+	// 	if err := os.Mkdir(tempLogDir, 0666); err != nil {
+	// 		defer log.Warnf(`Could not create the temp log dir.
+	// 			We expect experiment-specific emails to fail, but
+	// 			all log messages should be in general log`, logfilename)
+	// 	}
+	// }
 
 	// Set up our global logger
 	log.Level = logrus.DebugLevel
@@ -507,12 +508,12 @@ func main() {
 	expts := make([]string, 0, len(cfg.Experiments)) // Slice of experiments we will actually process
 	exptSuccesses := make(map[string]bool)           // map of successful expts
 
-	if cwd, err := os.Getwd(); err != nil {
-		log.Fatal("Could not get current working directory.  Exiting")
-	} else {
-		t := &tempLogDir
-		*t = path.Join(cwd, "golang_temp_log_dir") // Remove golang prefix before PRODUCTION
-	}
+	// if cwd, err := os.Getwd(); err != nil {
+	// 	log.Fatal("Could not get current working directory.  Exiting")
+	// } else {
+	// 	t := &tempLogDir
+	// 	*t = path.Join(cwd, "golang_temp_log_dir") // Remove golang prefix before PRODUCTION
+	// }
 
 	// Parse flags
 	flags := parseFlags()
