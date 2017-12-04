@@ -275,15 +275,22 @@ func copyProxies(exptConfig *ConfigExperiment) <-chan copyProxiesStatus {
 func (expt *experimentSuccess) experimentCleanup() error {
 	exptlogfilename := "golang_proxy_push_" + expt.name + ".log" // Remove GOLANG before production
 
-	// No error file
-	if _, err := os.Stat(exptlogfilename); os.IsNotExist(err) {
-		return nil
-	}
-
 	dir, e := os.Getwd()
 	if e != nil {
 		return errors.New(`Could not get current working directory.  Aborting cleanup.  
 					Please check working directory and manually clean up log files`)
+	}
+
+	exptlogfilepath := path.Join(dir, exptlogfilename)
+
+	// No experiment logfile
+	if _, err := os.Stat(exptlogfilepath); os.IsNotExist(err) {
+		return nil
+	}
+
+	// Successful experiment, but no errors in log file.  Probably the default option
+	if err := os.Remove(exptlogfilepath); expt.success && err != nil {
+		return fmt.Errorf("Could not remove successful experiment log %s.  Please clean up manually", exptlogfilepath)
 	}
 
 	if !expt.success {
@@ -307,6 +314,7 @@ func (expt *experimentSuccess) experimentCleanup() error {
 			return fmt.Errorf("Could not send email for experiment %s.  Archived error file at %s", expt.name, newpath)
 		}
 	}
+
 	return nil
 }
 
