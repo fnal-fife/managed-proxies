@@ -136,7 +136,7 @@ func exptLogInit(ename string, logconfig map[string]string) *logrus.Entry {
 	}))
 
 	// Experiment-specific log
-	Log.AddHook(lfshook.NewHook(lfshook.PathMap{
+	Log.AddHook(lfshook.NewHook(lfshook.PathMap{ // For production, take out all until ErrorLevel
 		logrus.DebugLevel: exptlogfilename,
 		logrus.InfoLevel:  exptlogfilename,
 		logrus.WarnLevel:  exptlogfilename,
@@ -436,13 +436,21 @@ func manageExperimentChannels(exptList []string, cfg config) <-chan experimentSu
 }
 
 func loginit(logconfig map[string]string) {
-
-	// Set up our global logger
-
 	// remove the golang stuff for production
 	logfilename := fmt.Sprintf("golang%s", logconfig["logfile"])
 	errfilename := fmt.Sprintf("golang%s", logconfig["errfile"])
 
+	// Check for existence of temp log dir for experiment loggers
+	if _, err := os.Stat(tempLogDir); os.IsNotExist(err) {
+		log.Debug("Experiment temporary log dir didn't exist (normal behavior).  Creating it now")
+		if err := os.Mkdir(tempLogDir, 0644); err != nil {
+			defer log.Warnf(`Could not create the temp log dir.  
+				We expect experiment-specific emails to fail, but
+				all log messages should be in general log`, logfilename)
+		}
+	}
+
+	// Set up our global logger
 	log.Level = logrus.DebugLevel
 
 	logFormatter := logrus.TextFormatter{FullTimestamp: true}
@@ -487,6 +495,8 @@ func cleanup(exptStatus map[string]bool, experiments []string) {
 	}
 
 	log.Infof("Successes: %v\nFailures: %v\n", strings.Join(s, ", "), strings.Join(f, ", "))
+
+	// Something in here to delete temp log dir if needed
 
 	return
 }
