@@ -11,16 +11,13 @@ import (
 	"strings"
 	"time"
 
-	// "github.com/rifflock/lfshook"
 	"github.com/rifflock/lfshook"
 	"github.com/sirupsen/logrus"
-	// "gopkg.in/yaml.v2"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	//	gomail "gopkg.in/gomail.v2"
 )
 
-// config viper?
 // test mode - IN PROGRESS
 //notifications	// gomail https://godoc.org/gopkg.in/gomail.v2#Message.SetBody  go-slack?  net/http, notifications change!
 // Error handling - break everything!
@@ -34,37 +31,10 @@ const (
 // Global logger
 var log = logrus.New()
 
-// var tempLogDir string
-
-// type flagHolder struct {
-// 	experiment string
-// 	config     string
-// 	test       bool
-// }
-
 type experimentSuccess struct {
 	name    string
 	success bool
 }
-
-// type config struct {
-// 	Logs               map[string]string
-// 	Notifications      map[string]string
-// 	Notifications_test map[string]string
-// 	Global             map[string]string
-// 	Experiments        map[string]*ConfigExperiment
-// }
-
-// type ConfigExperiment struct {
-// 	Name      string
-// 	Dir       string
-// 	Emails    []string
-// 	Nodes     []string
-// 	Roles     map[string]string
-// 	Vomsgroup string
-// 	Certfile  string
-// 	Keyfile   string
-// }
 
 type pingNodeStatus struct {
 	node string
@@ -146,7 +116,6 @@ func getKerbTicket(krb5ccname string) error {
 
 func checkKeys(exptConfig *viper.Viper) error {
 	// Nodes and Roles
-	// if len(exptConfig.GetStringSlice("nodes") == 0 || len(exptConfig.Roles) == 0 {
 	if !exptConfig.IsSet("nodes") || !exptConfig.IsSet("accounts") {
 		return errors.New(`Input file improperly formatted for %s (accounts or nodes don't 
 			exist for this experiment). Please check the config file on fifeutilgpvm01.
@@ -327,7 +296,6 @@ func (expt *experimentSuccess) experimentCleanup(exptConfig *viper.Viper) error 
 func experimentWorker(exptname string) <-chan experimentSuccess {
 	c := make(chan experimentSuccess)
 	expt := experimentSuccess{exptname, true} // Initialize
-	// exptLog := exptLogInit(expt.name, cfg.Logs)
 	exptLog := exptLogInit(expt.name, viper.GetStringMapString("logs"))
 
 	exptLog.Info("Now processing ", expt.name)
@@ -458,9 +426,6 @@ func parseFlags() {
 	pflag.Parse()
 
 	viper.BindPFlags(pflag.CommandLine)
-	// fh := flagHolder{*e, *c, *t}
-	log.Debugf("Flags: {Experiment: %s, Alternate Config: %s, Test Mode: %v}", viper.GetString("experiment"), viper.GetString("configfile"),
-		viper.GetBool("test"))
 	return
 }
 
@@ -570,17 +535,8 @@ func cleanup(exptStatus map[string]bool, experiments []string) {
 }
 
 func main() {
-	// var cfg config
 	exptSuccesses := make(map[string]bool) // map of successful expts
 
-	// if cwd, err := os.Getwd(); err != nil {
-	// 	log.Fatal("Could not get current working directory.  Exiting")
-	// } else {
-	// 	t := &tempLogDir
-	// 	*t = path.Join(cwd, "golang_temp_log_dir") // Remove golang prefix before PRODUCTION
-	// }
-
-	// Parse flags
 	parseFlags()
 
 	// Read the config file
@@ -590,26 +546,13 @@ func main() {
 		panic(fmt.Errorf("Fatal error config file: %s", err))
 	}
 
-	// source, err := ioutil.ReadFile(flags.config)
-	// if err != nil {
-	// 	log.Error(err)
-	// 	os.Exit(2)
-	// }
-
-	// err = yaml.Unmarshal(source, &cfg)
-	// if err != nil {
-	// 	log.Error(err)
-	// 	os.Exit(2)
-	// }
-
-	loginit(viper.GetStringMapString("logs"))
-
+	// Set up our logger
 	// From here on out, we're logging to the log file too
+	loginit(viper.GetStringMapString("logs"))
 	log.Debugf("Using config file %s", viper.GetString("configfile"))
 
 	// Test flag sets which notifications section from config we want to use.
-	// After this, cfg.Notifications map is the map we want to use later on.
-
+	// After this, cfg.Notifications map is the map we want to use later on. -- check this
 	if viper.GetBool("test") {
 		log.Info("Running in test mode")
 		viper.Set("notifications", viper.Get("notifications_test"))
@@ -627,17 +570,11 @@ func main() {
 	// Get our list of experiments from the config file, set exptConfig Name variable
 	if viper.GetString("experiment") != "" {
 		expts = append(expts, viper.GetString("experiment"))
-		// ptr := cfg.Experiments[flags.experiment]
-		// ptr.Name = flags.experiment
 	} else {
 		for k := range viper.GetStringMap("experiments") {
 			expts = append(expts, k)
-			// ptr := cfg.Experiments[k]
-			// ptr.Name = k
 		}
 	}
-
-	// Left off here
 
 	// Start up the expt manager
 	c := manageExperimentChannels(expts)
