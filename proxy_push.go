@@ -2,9 +2,7 @@ package main
 
 import (
 	"errors"
-	"flag"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"os/user"
@@ -16,14 +14,14 @@ import (
 	// "github.com/rifflock/lfshook"
 	"github.com/rifflock/lfshook"
 	"github.com/sirupsen/logrus"
-	"gopkg.in/yaml.v2"
+	// "gopkg.in/yaml.v2"
+	"github.com/spf13/pflag"
+	"github.com/spf13/viper"
 	//	gomail "gopkg.in/gomail.v2"
 )
 
 // config viper?
 // test mode - IN PROGRESS
-// Logging - IN PROGRESS
-// Optional debug for verbose mode
 //notifications	// gomail https://godoc.org/gopkg.in/gomail.v2#Message.SetBody  go-slack?  net/http, notifications change!
 // Error handling - break everything!
 
@@ -38,35 +36,35 @@ var log = logrus.New()
 
 // var tempLogDir string
 
-type flagHolder struct {
-	experiment string
-	config     string
-	test       bool
-}
+// type flagHolder struct {
+// 	experiment string
+// 	config     string
+// 	test       bool
+// }
 
 type experimentSuccess struct {
 	name    string
 	success bool
 }
 
-type config struct {
-	Logs               map[string]string
-	Notifications      map[string]string
-	Notifications_test map[string]string
-	Global             map[string]string
-	Experiments        map[string]*ConfigExperiment
-}
+// type config struct {
+// 	Logs               map[string]string
+// 	Notifications      map[string]string
+// 	Notifications_test map[string]string
+// 	Global             map[string]string
+// 	Experiments        map[string]*ConfigExperiment
+// }
 
-type ConfigExperiment struct {
-	Name      string
-	Dir       string
-	Emails    []string
-	Nodes     []string
-	Roles     map[string]string
-	Vomsgroup string
-	Certfile  string
-	Keyfile   string
-}
+// type ConfigExperiment struct {
+// 	Name      string
+// 	Dir       string
+// 	Emails    []string
+// 	Nodes     []string
+// 	Roles     map[string]string
+// 	Vomsgroup string
+// 	Certfile  string
+// 	Keyfile   string
+// }
 
 type pingNodeStatus struct {
 	node string
@@ -146,13 +144,13 @@ func getKerbTicket(krb5ccname string) error {
 	return nil
 }
 
-func checkKeys(exptConfig *ConfigExperiment) error {
+func checkKeys(exptConfig *viper.Viper) error {
 	// Nodes and Roles
-	if len(exptConfig.Nodes) == 0 || len(exptConfig.Roles) == 0 {
-		msg := fmt.Sprintf(`Input file improperly formatted for %s (roles or nodes don't 
+	// if len(exptConfig.GetStringSlice("nodes") == 0 || len(exptConfig.Roles) == 0 {
+	if !exptConfig.IsSet("nodes") || !exptConfig.IsSet("accounts") {
+		return errors.New(`Input file improperly formatted for %s (accounts or nodes don't 
 			exist for this experiment). Please check the config file on fifeutilgpvm01.
-			 I will skip this experiment for now.`, exptConfig.Name)
-		return errors.New(msg)
+			 I will skip this experiment for now.`)
 	}
 	return nil
 }
@@ -174,31 +172,31 @@ func pingAllNodes(nodes []string) <-chan pingNodeStatus {
 	return c
 }
 
-func getProxies(exptConfig *ConfigExperiment, globalConfig map[string]string) <-chan vomsProxyStatus {
+func getProxies(exptConfig *viper.Viper, globalConfig map[string]string, exptname string) <-chan vomsProxyStatus {
 	c := make(chan vomsProxyStatus)
 	var vomsprefix, certfile, keyfile string
 
-	if exptConfig.Vomsgroup != "" {
-		vomsprefix = exptConfig.Vomsgroup
+	if exptConfig.IsSet("vomsgroup") {
+		vomsprefix = exptConfig.GetString("vomsgroup")
 	} else {
-		vomsprefix = "fermilab:/fermilab/" + exptConfig.Name + "/"
+		vomsprefix = "fermilab:/fermilab/" + exptname + "/"
 	}
 
-	for role, account := range exptConfig.Roles {
-		go func(role, account string) {
+	for account, role := range exptConfig.GetStringMapString("accounts") {
+		go func(account, role string) {
 
 			vomsstring := vomsprefix + "Role=" + role
 
-			if exptConfig.Certfile != "" {
-				certfile = exptConfig.Certfile
+			if exptConfig.IsSet("certfile") {
+				certfile = exptConfig.GetString("certfile")
 			} else {
-				certfile = path.Join(globalConfig["CERT_BASE_DIR"], account+".cert")
+				certfile = path.Join(globalConfig["cert_base_dir"], account+".cert")
 			}
 
-			if exptConfig.Keyfile != "" {
-				keyfile = exptConfig.Keyfile
+			if exptConfig.IsSet("keyfile") {
+				keyfile = exptConfig.GetString("keyfile")
 			} else {
-				keyfile = path.Join(globalConfig["CERT_BASE_DIR"], account+".key")
+				keyfile = path.Join(globalConfig["cert_base_dir"], account+".key")
 			}
 
 			outfile := account + "." + role + ".proxy"
@@ -221,25 +219,25 @@ func getProxies(exptConfig *ConfigExperiment, globalConfig map[string]string) <-
 			// }
 
 			c <- vpi
-		}(role, account)
+		}(account, role)
 	}
 	return c
 }
 
-func copyProxies(exptConfig *ConfigExperiment) <-chan copyProxiesStatus {
+func copyProxies(exptConfig *viper.Viper) <-chan copyProxiesStatus {
 	c := make(chan copyProxiesStatus)
 	// One copy per node and role
-	for role, acct := range exptConfig.Roles {
-		go func(role, acct string) {
+	for acct, role := range exptConfig.GetStringMapString("accounts") {
+		go func(acct, role string) {
 			proxyFile := acct + "." + role + ".proxy"
 			proxyFilePath := path.Join("proxies", proxyFile)
 
-			for _, node := range exptConfig.Nodes {
-				go func(role, acct, node string) {
+			for _, node := range exptConfig.GetStringSlice("nodes") {
+				go func(acct, role, node string) {
 					cps := copyProxiesStatus{node, acct, role, nil}
 					accountNode := acct + "@" + node + ".fnal.gov"
-					newProxyPath := path.Join(exptConfig.Dir, acct, proxyFile+".new")
-					finalProxyPath := path.Join(exptConfig.Dir, acct, proxyFile)
+					newProxyPath := path.Join(exptConfig.GetString("dir"), acct, proxyFile+".new")
+					finalProxyPath := path.Join(exptConfig.GetString("dir"), acct, proxyFile)
 
 					sshopts := []string{"-o", "ConnectTimeout=30",
 						"-o", "ServerAliveInterval=30",
@@ -266,19 +264,19 @@ func copyProxies(exptConfig *ConfigExperiment) <-chan copyProxiesStatus {
 						return
 					}
 					c <- cps
-				}(role, acct, node)
+				}(acct, role, node)
 			}
-		}(role, acct)
+		}(acct, role)
 	}
 	return c
 }
 
-func (exptConfig *ConfigExperiment) sendExperimentEmail(logfilepath string) error {
+func sendExperimentEmail(exptConfig *viper.Viper, logfilepath string) error {
 	// func to send email of logfile
 	return nil
 }
 
-func (expt *experimentSuccess) experimentCleanup(exptConfig *ConfigExperiment) error {
+func (expt *experimentSuccess) experimentCleanup(exptConfig *viper.Viper) error {
 	exptlogfilename := "golang_proxy_push_" + expt.name + ".log" // Remove GOLANG before production
 
 	dir, e := os.Getwd()
@@ -326,17 +324,20 @@ func (expt *experimentSuccess) experimentCleanup(exptConfig *ConfigExperiment) e
 	return nil
 }
 
-func experimentWorker(cfg config, exptConfig *ConfigExperiment) <-chan experimentSuccess {
+func experimentWorker(exptname string) <-chan experimentSuccess {
 	c := make(chan experimentSuccess)
-	expt := experimentSuccess{exptConfig.Name, true}
-	exptLog := exptLogInit(expt.name, cfg.Logs)
+	expt := experimentSuccess{exptname, true} // Initialize
+	// exptLog := exptLogInit(expt.name, cfg.Logs)
+	exptLog := exptLogInit(expt.name, viper.GetStringMapString("logs"))
 
 	exptLog.Info("Now processing ", expt.name)
 	go func() {
+		exptConfig := viper.Sub("experiments." + expt.name)
+
 		badnodes := make(map[string]struct{})
 		successfulCopies := make(map[string][]string)
 
-		for _, node := range exptConfig.Nodes {
+		for _, node := range exptConfig.GetStringSlice("nodes") {
 			badnodes[node] = struct{}{}
 		}
 
@@ -344,7 +345,7 @@ func experimentWorker(cfg config, exptConfig *ConfigExperiment) <-chan experimen
 		// 	time.Sleep(20 * time.Second)
 		// }
 
-		if _, ok := cfg.Global["KRB5CCNAME"]; !ok {
+		if !viper.IsSet("global.krb5ccname") {
 			exptLog.Error(`Could not obtain KRB5CCNAME environmental variable from
 				config.  Please check the config file on fifeutilgpvm01.`)
 			expt.success = false
@@ -352,7 +353,7 @@ func experimentWorker(cfg config, exptConfig *ConfigExperiment) <-chan experimen
 			close(c)
 			return
 		}
-		krb5ccnameCfg := cfg.Global["KRB5CCNAME"]
+		krb5ccnameCfg := viper.GetString("global.krb5ccname")
 
 		// If we can't get a kerb ticket, log error and keep going.
 		// We might have an old one that's still valid.
@@ -369,8 +370,8 @@ func experimentWorker(cfg config, exptConfig *ConfigExperiment) <-chan experimen
 			return
 		}
 
-		pingChannel := pingAllNodes(exptConfig.Nodes)
-		for _ = range exptConfig.Nodes { // Note that we're iterating over the range of nodes so we make sure
+		pingChannel := pingAllNodes(exptConfig.GetStringSlice("nodes"))
+		for _ = range exptConfig.GetStringSlice("nodes") { // Note that we're iterating over the range of nodes so we make sure
 			// that we listen on the channel the right number of times
 			select {
 			case testnode := <-pingChannel:
@@ -394,8 +395,8 @@ func experimentWorker(cfg config, exptConfig *ConfigExperiment) <-chan experimen
 
 		// If voms-proxy-init fails, we'll just continue on.  We'll still try to push proxies,
 		// since they're valid for 24 hours
-		vpiChan := getProxies(exptConfig, cfg.Global)
-		for _ = range exptConfig.Roles {
+		vpiChan := getProxies(exptConfig, viper.GetStringMapString("global"), expt.name)
+		for _ = range exptConfig.GetStringMapString("accounts") {
 			select {
 			case vpi := <-vpiChan:
 				if vpi.err != nil {
@@ -412,8 +413,8 @@ func experimentWorker(cfg config, exptConfig *ConfigExperiment) <-chan experimen
 
 		copyChan := copyProxies(exptConfig)
 		exptTimeoutChan := time.After(time.Duration(exptTimeout) * time.Second)
-		for _ = range exptConfig.Nodes {
-			for _ = range exptConfig.Roles {
+		for _ = range exptConfig.GetStringSlice("nodes") {
+			for _ = range exptConfig.GetStringMapString("accounts") {
 				select {
 				case pushproxy := <-copyChan:
 					if pushproxy.err != nil {
@@ -449,16 +450,18 @@ func experimentWorker(cfg config, exptConfig *ConfigExperiment) <-chan experimen
 
 // Global functions
 
-func parseFlags() flagHolder {
-	var e = flag.String("e", "", "Name of single experiment to push proxies")
-	var c = flag.String("c", configFile, "Specify alternate config file")
-	var t = flag.Bool("t", false, "Test mode")
+func parseFlags() {
+	pflag.StringP("experiment", "e", "", "Name of single experiment to push proxies")
+	pflag.StringP("configfile", "c", configFile, "Specify alternate config file")
+	pflag.BoolP("test", "t", false, "Test mode")
 
-	flag.Parse()
+	pflag.Parse()
 
-	fh := flagHolder{*e, *c, *t}
-	log.Debugf("Flags: {Experiment: %s, Alternate Config: %s, Test Mode: %v}", fh.experiment, fh.config, fh.test)
-	return fh
+	viper.BindPFlags(pflag.CommandLine)
+	// fh := flagHolder{*e, *c, *t}
+	log.Debugf("Flags: {Experiment: %s, Alternate Config: %s, Test Mode: %v}", viper.GetString("experiment"), viper.GetString("configfile"),
+		viper.GetBool("test"))
+	return
 }
 
 func checkUser(authuser string) error {
@@ -473,15 +476,15 @@ func checkUser(authuser string) error {
 	return nil
 }
 
-func manageExperimentChannels(exptList []string, cfg config) <-chan experimentSuccess {
+func manageExperimentChannels(exptList []string) <-chan experimentSuccess {
 	agg := make(chan experimentSuccess)
-	exptChans := make([]<-chan experimentSuccess, len(exptList))
+	exptChans := make([]<-chan experimentSuccess, 0, len(exptList))
 	var i int // Counter to keep track of how many times we've sent over agg channel
 
 	go func() {
 		// Start all of the experiment workers
 		for _, expt := range exptList {
-			exptChans = append(exptChans, experimentWorker(cfg, cfg.Experiments[expt]))
+			exptChans = append(exptChans, experimentWorker(expt))
 		}
 
 		// Launch goroutines that listen on experiment channels.  Since each experimentWorker closes its channel,
@@ -567,9 +570,8 @@ func cleanup(exptStatus map[string]bool, experiments []string) {
 }
 
 func main() {
-	var cfg config
-	expts := make([]string, 0, len(cfg.Experiments)) // Slice of experiments we will actually process
-	exptSuccesses := make(map[string]bool)           // map of successful expts
+	// var cfg config
+	exptSuccesses := make(map[string]bool) // map of successful expts
 
 	// if cwd, err := os.Getwd(); err != nil {
 	// 	log.Fatal("Could not get current working directory.  Exiting")
@@ -579,55 +581,66 @@ func main() {
 	// }
 
 	// Parse flags
-	flags := parseFlags()
+	parseFlags()
 
 	// Read the config file
-	source, err := ioutil.ReadFile(flags.config)
+	viper.SetConfigFile(viper.GetString("configfile"))
+	err := viper.ReadInConfig()
 	if err != nil {
-		log.Error(err)
-		os.Exit(2)
+		panic(fmt.Errorf("Fatal error config file: %s", err))
 	}
 
-	err = yaml.Unmarshal(source, &cfg)
-	if err != nil {
-		log.Error(err)
-		os.Exit(2)
-	}
+	// source, err := ioutil.ReadFile(flags.config)
+	// if err != nil {
+	// 	log.Error(err)
+	// 	os.Exit(2)
+	// }
 
-	loginit(cfg.Logs)
+	// err = yaml.Unmarshal(source, &cfg)
+	// if err != nil {
+	// 	log.Error(err)
+	// 	os.Exit(2)
+	// }
+
+	loginit(viper.GetStringMapString("logs"))
 
 	// From here on out, we're logging to the log file too
-	log.Debugf("Using config file %s", flags.config)
+	log.Debugf("Using config file %s", viper.GetString("configfile"))
 
 	// Test flag sets which notifications section from config we want to use.
 	// After this, cfg.Notifications map is the map we want to use later on.
 
-	if flags.test {
+	if viper.GetBool("test") {
 		log.Info("Running in test mode")
-		cfg.Notifications = cfg.Notifications_test
+		viper.Set("notifications", viper.Get("notifications_test"))
+		// cfg.Notifications = cfg.Notifications_test
 	}
 
 	// Check that we're running as the right user
-	if err = checkUser(cfg.Global["should_runuser"]); err != nil {
+	if err = checkUser(viper.GetString("global.should_runuser")); err != nil {
 		log.Error(err)
 		os.Exit(3)
 	}
 
+	expts := make([]string, 0, len(viper.GetStringMap("experiments"))) // Slice of experiments we will actually process
+
 	// Get our list of experiments from the config file, set exptConfig Name variable
-	if flags.experiment != "" {
-		expts = append(expts, flags.experiment)
-		ptr := cfg.Experiments[flags.experiment]
-		ptr.Name = flags.experiment
+	if viper.GetString("experiment") != "" {
+		expts = append(expts, viper.GetString("experiment"))
+		// ptr := cfg.Experiments[flags.experiment]
+		// ptr.Name = flags.experiment
 	} else {
-		for k := range cfg.Experiments {
+		for k := range viper.GetStringMap("experiments") {
 			expts = append(expts, k)
-			ptr := cfg.Experiments[k]
-			ptr.Name = k
+			// ptr := cfg.Experiments[k]
+			// ptr.Name = k
 		}
 	}
 
+	// Left off here
+
 	// Start up the expt manager
-	c := manageExperimentChannels(expts, cfg)
+	c := manageExperimentChannels(expts)
 	// Listen on the manager channel
 	timeout := time.After(time.Duration(globalTimeout) * time.Second)
 	for {
