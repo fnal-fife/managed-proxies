@@ -219,6 +219,7 @@ func copyProxies(exptConfig *viper.Viper) <-chan copyProxiesStatus {
 					scpCmd := exec.Command("scp", scpargs...)
 					sshCmd := exec.Command("ssh", sshargs...)
 
+					fmt.Println("Now trying to copy ", node, acct, role)
 					cmdOut, cmdErr := scpCmd.CombinedOutput()
 					if cmdErr != nil {
 						msg := fmt.Errorf("Copying proxy %s to node %s failed.  The error was %s: %s", proxyFile, node, cmdErr, cmdOut)
