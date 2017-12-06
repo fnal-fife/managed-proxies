@@ -204,7 +204,7 @@ func copyProxies(exptConfig *viper.Viper) <-chan copyProxiesStatus {
 
 			for _, node := range exptConfig.GetStringSlice("nodes") {
 				go func(acct, role, node string) {
-					fmt.Println("Now trying to copy ", node, acct, role)
+					// fmt.Println("Now trying to copy ", node, acct, role)
 					cps := copyProxiesStatus{node, acct, role, nil}
 					accountNode := acct + "@" + node + ".fnal.gov"
 					newProxyPath := path.Join(exptConfig.GetString("dir"), acct, proxyFile+".new")
@@ -219,7 +219,7 @@ func copyProxies(exptConfig *viper.Viper) <-chan copyProxiesStatus {
 					scpCmd := exec.Command("scp", scpargs...)
 					sshCmd := exec.Command("ssh", sshargs...)
 
-					fmt.Println("Now trying to copy ", node, acct, role)
+					// fmt.Println("Now trying to copy ", node, acct, role)
 					cmdOut, cmdErr := scpCmd.CombinedOutput()
 					if cmdErr != nil {
 						msg := fmt.Errorf("Copying proxy %s to node %s failed.  The error was %s: %s", proxyFile, node, cmdErr, cmdOut)
@@ -227,21 +227,23 @@ func copyProxies(exptConfig *viper.Viper) <-chan copyProxiesStatus {
 						c <- cps
 						return
 					}
-					fmt.Println("Succeeded copying proxy ", node, acct, role)
+					// fmt.Println("Succeeded copying proxy ", node, acct, role)
 
-					fmt.Println("Changing permission of proxy", node, acct, role)
+					// fmt.Println("Changing permission of proxy", node, acct, role)
 					cmdOut, cmdErr = sshCmd.CombinedOutput()
 					if cmdErr != nil {
 						msg := fmt.Errorf("Error changing permission of proxy %s to mode 400 on %s.  The error was %s: %s", proxyFile, node, cmdErr, cmdOut)
 						cps.err = msg
-						c <- cps
-						return
+						// c <- cps
+						// return
 					}
-					fmt.Println("Succeeded Changing permission of proxy", node, acct, role)
-
+					// fmt.Println("Succeeded Changing permission of proxy", node, acct, role)
 					c <- cps
+					return
 				}(acct, role, node)
 			}
+
+			return
 		}(acct, role)
 	}
 	return c
