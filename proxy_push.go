@@ -256,11 +256,8 @@ func sendExperimentEmail(ename, logfilepath string, recipients []string) error {
 	m.SetHeader("Subject", subject)
 	m.SetBody("text/plain", msg)
 
-	if err := emailDialer.DialAndSend(m); err != nil {
-		return err
-	}
-
-	return nil
+	err = emailDialer.DialAndSend(m)
+	return err
 
 }
 
@@ -399,7 +396,7 @@ func experimentWorker(exptname string) <-chan experimentSuccess {
 		}
 
 		copyChan := copyProxies(exptConfig)
-		exptTimeoutChan := time.After(time.Duration(exptTimeout) * time.Second)
+		// exptTimeoutChan := time.After(time.Duration(exptTimeout) * time.Second)
 		for _ = range exptConfig.GetStringSlice("nodes") {
 			for _ = range exptConfig.GetStringMapString("accounts") {
 				select {
@@ -410,7 +407,7 @@ func experimentWorker(exptname string) <-chan experimentSuccess {
 					} else {
 						successfulCopies[pushproxy.role] = append(successfulCopies[pushproxy.role], pushproxy.node)
 					}
-				case <-exptTimeoutChan:
+				case <-time.After(time.Duration(5) * time.Second):
 					exptLog.Error("Experiment hit the timeout when waiting to push proxy.")
 					expt.success = false
 				}
