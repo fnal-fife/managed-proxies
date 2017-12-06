@@ -227,8 +227,9 @@ func copyProxies(exptConfig *viper.Viper) <-chan copyProxiesStatus {
 						c <- cps
 						return
 					}
-					fmt.Println("Copied proxy ", node, acct, role)
+					fmt.Println("Succeeded copying proxy ", node, acct, role)
 
+					fmt.Println("Changing permission of proxy", node, acct, role)
 					cmdOut, cmdErr = sshCmd.CombinedOutput()
 					if cmdErr != nil {
 						msg := fmt.Errorf("Error changing permission of proxy %s to mode 400 on %s.  The error was %s: %s", proxyFile, node, cmdErr, cmdOut)
@@ -236,6 +237,8 @@ func copyProxies(exptConfig *viper.Viper) <-chan copyProxiesStatus {
 						c <- cps
 						return
 					}
+					fmt.Println("Succeeded Changing permission of proxy", node, acct, role)
+
 					c <- cps
 				}(acct, role, node)
 			}
