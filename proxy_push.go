@@ -204,6 +204,7 @@ func copyProxies(exptConfig *viper.Viper) <-chan copyProxiesStatus {
 
 			for _, node := range exptConfig.GetStringSlice("nodes") {
 				go func(acct, role, node string) {
+					fmt.Println("Now trying to copy ", node, acct, role)
 					cps := copyProxiesStatus{node, acct, role, nil}
 					accountNode := acct + "@" + node + ".fnal.gov"
 					newProxyPath := path.Join(exptConfig.GetString("dir"), acct, proxyFile+".new")
@@ -407,7 +408,7 @@ func experimentWorker(exptname string) <-chan experimentSuccess {
 					} else {
 						successfulCopies[pushproxy.role] = append(successfulCopies[pushproxy.role], pushproxy.node)
 					}
-				case <-time.After(time.Duration(5) * time.Second):
+				case <-time.After(time.Duration(2) * time.Second):
 					exptLog.Error("Experiment hit the timeout when waiting to push proxy.")
 					expt.success = false
 				}
