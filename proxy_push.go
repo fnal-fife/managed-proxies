@@ -398,7 +398,7 @@ func experimentWorker(exptname string) <-chan experimentSuccess {
 		}
 
 		copyChan := copyProxies(exptConfig)
-		// exptTimeoutChan := time.After(time.Duration(exptTimeout) * time.Second)
+		exptTimeoutChan := time.After(time.Duration(exptTimeout) * time.Second)
 		for _ = range exptConfig.GetStringSlice("nodes") {
 			for _ = range exptConfig.GetStringMapString("accounts") {
 				select {
@@ -409,7 +409,7 @@ func experimentWorker(exptname string) <-chan experimentSuccess {
 					} else {
 						successfulCopies[pushproxy.role] = append(successfulCopies[pushproxy.role], pushproxy.node)
 					}
-				case <-time.After(time.Duration(2) * time.Second):
+				case <-exptTimeoutChan:
 					exptLog.Error("Experiment hit the timeout when waiting to push proxy.")
 					expt.success = false
 				}
