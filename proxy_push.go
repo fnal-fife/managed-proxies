@@ -227,6 +227,7 @@ func copyProxies(exptConfig *viper.Viper) <-chan copyProxiesStatus {
 						c <- cps
 						return
 					}
+					fmt.Println("Copied proxy ", node, acct, role)
 
 					cmdOut, cmdErr = sshCmd.CombinedOutput()
 					if cmdErr != nil {
