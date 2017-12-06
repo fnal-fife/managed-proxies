@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"os/exec"
 	"os/user"
@@ -15,7 +16,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
-	//	gomail "gopkg.in/gomail.v2"
+	gomail "gopkg.in/gomail.v2"
 )
 
 // test mode - IN PROGRESS
@@ -28,8 +29,8 @@ const (
 	configFile    string = "proxy_push_config_test.yml" // CHANGE ME BEFORE PRODUCTION
 )
 
-// Global logger
-var log = logrus.New()
+var log = logrus.New()                                       // Global logger
+var emailDialer = gomail.Dialer{Host: "localhost", Port: 25} // gomail dialer to use to send emails
 
 type experimentSuccess struct {
 	name    string
@@ -240,12 +241,30 @@ func copyProxies(exptConfig *viper.Viper) <-chan copyProxiesStatus {
 	return c
 }
 
-func sendExperimentEmail(exptConfig *viper.Viper, logfilepath string) error {
-	// func to send email of logfile
+func sendExperimentEmail(ename, logfilepath string, recipients []string) error {
+	data, err := ioutil.ReadFile(logfilepath)
+	if err != nil {
+		return err
+	}
+
+	msg := string(data)
+	subject := "Managed Proxy Push errors for " + ename
+
+	m := gomail.NewMessage()
+	m.SetHeader("From", "fife-group@fnal.gov")
+	m.SetHeader("To", recipients...)
+	m.SetHeader("Subject", subject)
+	m.SetBody("text/plain", msg)
+
+	if err := emailDialer.DialAndSend(m); err != nil {
+		return err
+	}
+
 	return nil
+
 }
 
-func (expt *experimentSuccess) experimentCleanup(exptConfig *viper.Viper) error {
+func (expt *experimentSuccess) experimentCleanup(emailSlice []string) error {
 	exptlogfilename := "golang_proxy_push_" + expt.name + ".log" // Remove GOLANG before production
 
 	dir, e := os.Getwd()
@@ -271,9 +290,9 @@ func (expt *experimentSuccess) experimentCleanup(exptConfig *viper.Viper) error 
 	if !expt.success {
 		// Try to send email, which also deletes expt file, returns error
 		// var err error = nil // Dummy
-		// err := exptConfig.sendExperimentEmail(exptlogfilepath)
-		err := errors.New("Dummy error for email") // Take this line out and replace it with
-		if err != nil {
+		// err := sendExperimentEmail(expt.name, exptlogfilepath, emailSlice)
+		// err := errors.New("Dummy error for email") // Take this line out and replace it with
+		if err := sendExperimentEmail(expt.name, exptlogfilepath, emailSlice); err != nil {
 			archiveLogDir := path.Join(dir, "experiment_log_archive")
 			if _, e = os.Stat(archiveLogDir); os.IsNotExist(e) {
 				archiveLogDir = dir
@@ -408,7 +427,7 @@ func experimentWorker(exptname string) <-chan experimentSuccess {
 
 		// We're logging the cleanup in the general log so that we don't create an extraneous
 		// experiment log file
-		if err := expt.experimentCleanup(exptConfig); err != nil {
+		if err := expt.experimentCleanup(exptConfig.GetStringSlice("emails")); err != nil {
 			log.Error(err)
 		}
 		log.Info("Finished cleaning up ", expt.name)
