@@ -302,14 +302,13 @@ func copyLogs(exptlogpath, exptgenlogpath string, logconfig map[string]string) {
 				log.Error(err)
 				log.Error("Please clean up manually")
 			}
-			f.Close()
+			if err = f.Close(); err != nil {
+				log.Error(err)
+				log.Errorf("Could not close file %s.  Please investigate", f.Name())
+			}
 		}
 		rwmux.Unlock()
 
-		// err = ioutil.WriteFile(dest, data, os.ModeAppend)
-		// if err != nil {
-		// log.Errorf("Could not copy log %s.  Please clean up manually", src)
-		// log.Error(err)
 		if err := os.Remove(src); err != nil {
 			log.Errorf("Could not remove experiment log %s.  Please clean up manually", src)
 		}
