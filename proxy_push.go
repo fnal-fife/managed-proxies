@@ -297,6 +297,7 @@ func copyLogs(exptlogpath, exptgenlogpath string, logconfig map[string]string) {
 		rwmux.Unlock()
 		if err != nil {
 			log.Errorf("Could not copy log %s.  Please clean up manually", src)
+			log.Error(err)
 		} else {
 			if err := os.Remove(src); err != nil {
 				log.Errorf("Could not remove experiment log %s.  Please clean up manually", src)

@@ -4,8 +4,8 @@
 
 # Logging/Error handling files.
 logs:
-  logfile:  proxy_push.log
-  errfile:  proxy_push.err      # Set the temporary output file for errors.  
+  logfile:  golang_proxy_push.log
+  errfile:  golang_proxy_push.err      # Set the temporary output file for errors.  
 
 
 # Global email and slack notification parameters
