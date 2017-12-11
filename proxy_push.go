@@ -38,11 +38,6 @@ var log = logrus.New()                                       // Global logger
 var emailDialer = gomail.Dialer{Host: "localhost", Port: 25} // gomail dialer to use to send emails
 var rwmux sync.RWMutex
 
-// type myint struct {
-// 	value int
-// 	mux   sync.Mutex
-// }
-
 type experimentSuccess struct {
 	name    string
 	success bool
@@ -102,9 +97,9 @@ func exptLogInit(ename string) *logrus.Entry {
 
 	// Experiment-specific log
 	Log.AddHook(lfshook.NewHook(lfshook.PathMap{ // For production, take out all until ErrorLevel
-		logrus.DebugLevel: exptlog,
-		logrus.InfoLevel:  exptlog,
-		logrus.WarnLevel:  exptlog,
+		// logrus.DebugLevel: exptlog,
+		// logrus.InfoLevel:  exptlog,
+		// logrus.WarnLevel:  exptlog,
 		logrus.ErrorLevel: exptlog,
 		logrus.FatalLevel: exptlog,
 		logrus.PanicLevel: exptlog,
