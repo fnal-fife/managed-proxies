@@ -279,11 +279,14 @@ func sendExperimentEmail(ename, logfilepath string, recipients []string) error {
 
 }
 
-func copyLogs(exptlogpath, exptgenlogpath string, logconfig map[string]string) {
+func copyLogs(exptSuccess bool, exptlogpath, exptgenlogpath string, logconfig map[string]string) {
 
 	copyLog := func(src, dest string) {
 		data, err := ioutil.ReadFile(src)
 		if err != nil {
+			if exptSuccess {
+				return
+			}
 			log.Error("Could not read experiment logfile ", src)
 			return
 		}
@@ -328,7 +331,7 @@ func (expt *experimentSuccess) experimentCleanup(emailSlice []string, logconfig 
 	exptlogfilepath := path.Join(dir, fmt.Sprintf(exptLogFilename, expt.name))
 	exptgenlogfilepath := path.Join(dir, fmt.Sprintf(exptGenFilename, expt.name))
 
-	defer copyLogs(exptlogfilepath, exptgenlogfilepath, logconfig)
+	defer copyLogs(expt.success, exptlogfilepath, exptgenlogfilepath, logconfig)
 
 	// No experiment logfile
 	if _, err = os.Stat(exptlogfilepath); os.IsNotExist(err) {
