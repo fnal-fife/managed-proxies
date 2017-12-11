@@ -4,13 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"net/http"
-	_ "net/http/pprof"
+	// _ "net/http/pprof"
 	"os"
 	"os/exec"
 	"os/user"
 	"path"
-	"runtime"
+	// "runtime"
 	"sort"
 	"strings"
 	"time"
@@ -28,7 +27,7 @@ import (
 
 const (
 	globalTimeout uint   = 30                           // Global timeout in seconds
-	exptTimeout   uint   = 20                           // Experiment timeout in seconds
+	exptTimeout   uint   = 10                           // Experiment timeout in seconds
 	configFile    string = "proxy_push_config_test.yml" // CHANGE ME BEFORE PRODUCTION
 )
 
@@ -560,10 +559,10 @@ func cleanup(exptStatus map[string]bool, experiments []string) {
 }
 
 func main() {
-	go func() {
-		log.Println(http.ListenAndServe("localhost:6060", nil))
-	}()
-	runtime.SetBlockProfileRate(1)
+	// go func() {
+	// 	log.Println(http.ListenAndServe("localhost:6060", nil))
+	// }()
+	// runtime.SetBlockProfileRate(1)
 
 	exptSuccesses := make(map[string]bool) // map of successful expts
 
