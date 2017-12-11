@@ -4,10 +4,13 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/exec"
 	"os/user"
 	"path"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -239,11 +242,8 @@ func copyProxies(exptConfig *viper.Viper) <-chan copyProxiesStatus {
 					}
 					// fmt.Println("Succeeded Changing permission of proxy", node, acct, role)
 					c <- cps
-					return
 				}(acct, role, node)
 			}
-
-			return
 		}(acct, role)
 	}
 	return c
@@ -560,6 +560,11 @@ func cleanup(exptStatus map[string]bool, experiments []string) {
 }
 
 func main() {
+	go func() {
+		log.Println(http.ListenAndServe("localhost:6060", nil))
+	}()
+	runtime.SetBlockProfileRate(1)
+
 	exptSuccesses := make(map[string]bool) // map of successful expts
 
 	parseFlags()
