@@ -473,21 +473,16 @@ func checkUser(authuser string) error {
 
 func manageExperimentChannels(exptList []string) <-chan experimentSuccess {
 	agg := make(chan experimentSuccess)
-	// exptChans := make([]<-chan experimentSuccess, 0, len(exptList))
 	var wg sync.WaitGroup
-	// Wait group
-	// i := myint{0, } // Counter to keep track of how many times we've sent over agg channel
-
-	// go func() {
-	// Start all of the experiment workers
 	wg.Add(len(exptList))
+
+	// Start all of the experiment workers, put their results into the agg channel
 	for _, expt := range exptList {
 		go func(expt string) {
 			c := experimentWorker(expt)
 			agg <- <-c
 			wg.Done()
 		}(expt)
-		// exptChans = append(exptChans, experimentWorker(expt))
 	}
 
 	go func() {
@@ -497,28 +492,6 @@ func manageExperimentChannels(exptList []string) <-chan experimentSuccess {
 	}()
 
 	return agg
-	// Launch goroutines that listen on experiment channels.  Since each experimentWorker closes its channel,
-	// each of these goroutines should exit after that happens
-	// for _, exptChan := range exptChans {
-	// 	go func(c <-chan experimentSuccess) {
-	// 		for expt := range c {
-	// 			agg <- expt
-	// 			i++
-	// 		}
-	// 	}(exptChan)
-	// }
-
-	// Close out agg channel when we're done sending
-	// 	for {
-	// 		if i == len(exptList) {
-	// 			log.Debug("Closing aggregation channel")
-	// 			close(agg)
-	// 			return
-	// 		}
-	// 	}
-
-	// }()
-	// return agg
 }
 
 func loginit(logconfig map[string]string) {
