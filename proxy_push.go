@@ -28,7 +28,7 @@ import (
 
 const (
 	globalTimeout   uint   = 30                           // Global timeout in seconds
-	exptTimeout     uint   = 10                           // Experiment timeout in seconds
+	exptTimeout     uint   = 20                           // Experiment timeout in seconds
 	configFile      string = "proxy_push_config_test.yml" // CHANGE ME BEFORE PRODUCTION
 	exptLogFilename string = "golang_proxy_push_%s.log"
 	exptGenFilename string = "golang_proxy_push_general_%s.log"
@@ -36,11 +36,12 @@ const (
 
 var log = logrus.New()                                       // Global logger
 var emailDialer = gomail.Dialer{Host: "localhost", Port: 25} // gomail dialer to use to send emails
+var rwmux sync.RWMutex
 
-type myint struct {
-	value int
-	mux   sync.Mutex
-}
+// type myint struct {
+// 	value int
+// 	mux   sync.Mutex
+// }
 
 type experimentSuccess struct {
 	name    string
@@ -282,29 +283,58 @@ func sendExperimentEmail(ename, logfilepath string, recipients []string) error {
 
 }
 
-func (expt *experimentSuccess) experimentCleanup(emailSlice []string) error {
+func copyLogs(exptlogpath, exptgenlogpath string, logconfig map[string]string) {
+
+	copyLog := func(src, dest string) {
+		data, err := ioutil.ReadFile(src)
+		if err != nil {
+			log.Error("Could not read experiment logfile ", src)
+			return
+		}
+
+		rwmux.Lock()
+		err = ioutil.WriteFile(dest, data, os.ModeAppend)
+		rwmux.Unlock()
+		if err != nil {
+			log.Errorf("Could not copy log %s.  Please clean up manually", src)
+		} else {
+			if err := os.Remove(src); err != nil {
+				log.Errorf("Could not remove experiment log %s.  Please clean up manually", src)
+			}
+		}
+	}
+
+	copyLog(exptgenlogpath, logconfig["logfile"])
+	copyLog(exptlogpath, logconfig["errfile"])
+
+}
+
+func (expt *experimentSuccess) experimentCleanup(emailSlice []string, logconfig map[string]string) error {
 	// exptlogfilename := "golang_proxy_push_" + expt.name + ".log" // Remove GOLANG before production
 	exptlogfilename := fmt.Sprintf(exptLogFilename, expt.name)
 
-	dir, e := os.Getwd()
-	if e != nil {
+	dir, err := os.Getwd()
+	if err != nil {
 		return errors.New(`Could not get current working directory.  Aborting cleanup.  
 					Please check working directory and manually clean up log files`)
 	}
 
-	exptlogfilepath := path.Join(dir, exptlogfilename)
+	exptlogfilepath := path.Join(dir, fmt.Sprintf(exptLogFilename, expt.name))
+	exptgenlogfilepath := path.Join(dir, fmt.Sprintf(exptGenFilename, expt.name))
+
+	defer copyLogs(exptlogfilepath, exptgenlogfilepath, logconfig)
 
 	// No experiment logfile
-	if _, err := os.Stat(exptlogfilepath); os.IsNotExist(err) {
+	if _, err = os.Stat(exptlogfilepath); os.IsNotExist(err) {
 		return nil
 	}
 
 	// Successful experiment, but no errors in log file.  Probably the default option
-	if expt.success {
-		if err := os.Remove(exptlogfilepath); err != nil {
-			return fmt.Errorf("Could not remove successful experiment log %s.  Please clean up manually", exptlogfilepath)
-		}
-	}
+	// if expt.success {
+	// 	if err := os.Remove(exptlogfilepath); err != nil {
+	// 		return fmt.Errorf("Could not remove successful experiment log %s.  Please clean up manually", exptlogfilepath)
+	// 	}
+	// }
 
 	if !expt.success {
 		// Try to send email, which also deletes expt file, returns error
@@ -313,17 +343,17 @@ func (expt *experimentSuccess) experimentCleanup(emailSlice []string) error {
 		// err := errors.New("Dummy error for email") // Take this line out and replace it with
 		if err := sendExperimentEmail(expt.name, exptlogfilepath, emailSlice); err != nil {
 			// if err != nil {
-			archiveLogDir := path.Join(dir, "experiment_log_archive")
-			if _, e = os.Stat(archiveLogDir); os.IsNotExist(e) {
-				archiveLogDir = dir
-			}
+			// archiveLogDir := path.Join(dir, "experiment_log_archive")
+			// if _, e = os.Stat(archiveLogDir); os.IsNotExist(e) {
+			// 	archiveLogDir = dir
+			// }
 
 			// oldpath := exptlogfile
 			newfilename := fmt.Sprintf("%s-%s", exptlogfilename, time.Now().Format(time.RFC3339))
-			newpath := path.Join(archiveLogDir, newfilename)
+			newpath := path.Join(dir, newfilename)
 
-			if e = os.Rename(exptlogfilepath, newpath); e != nil {
-				return fmt.Errorf("Could not move file %s to %s.  The error was %v", exptlogfilepath, newpath, e)
+			if err := os.Rename(exptlogfilepath, newpath); err != nil {
+				return fmt.Errorf("Could not move file %s to %s.  The error was %v", exptlogfilepath, newpath, err)
 			}
 			return fmt.Errorf("Could not send email for experiment %s.  Archived error file at %s", expt.name, newpath)
 		}
@@ -449,7 +479,7 @@ func experimentWorker(exptname string) <-chan experimentSuccess {
 
 		// We're logging the cleanup in the general log so that we don't create an extraneous
 		// experiment log file
-		if err := expt.experimentCleanup(exptConfig.GetStringSlice("emails")); err != nil {
+		if err := expt.experimentCleanup(exptConfig.GetStringSlice("emails"), viper.GetStringMapString("logs")); err != nil {
 			log.Error(err)
 		}
 		log.Info("Finished cleaning up ", expt.name)
