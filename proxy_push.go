@@ -284,7 +284,7 @@ func copyLogs(exptSuccess bool, exptlogpath, exptgenlogpath string, logconfig ma
 	copyLog := func(src, dest string) {
 		data, err := ioutil.ReadFile(src)
 		if err != nil {
-			if exptSuccess {
+			if exptSuccess { // If the experiment was successful, there would be no error logfile, so we're not worried
 				return
 			}
 			log.Error("Could not read experiment logfile ", src)
@@ -318,7 +318,7 @@ func copyLogs(exptSuccess bool, exptlogpath, exptgenlogpath string, logconfig ma
 
 }
 
-func (expt *experimentSuccess) experimentCleanup(emailSlice []string, logconfig map[string]string) error {
+func (expt *experimentSuccess) experimentCleanup(emailSlice []string) error {
 	// exptlogfilename := "golang_proxy_push_" + expt.name + ".log" // Remove GOLANG before production
 	exptlogfilename := fmt.Sprintf(exptLogFilename, expt.name)
 
@@ -331,7 +331,7 @@ func (expt *experimentSuccess) experimentCleanup(emailSlice []string, logconfig 
 	exptlogfilepath := path.Join(dir, fmt.Sprintf(exptLogFilename, expt.name))
 	exptgenlogfilepath := path.Join(dir, fmt.Sprintf(exptGenFilename, expt.name))
 
-	defer copyLogs(expt.success, exptlogfilepath, exptgenlogfilepath, logconfig)
+	defer copyLogs(expt.success, exptlogfilepath, exptgenlogfilepath, viper.GetStringMapString("logs"))
 
 	// No experiment logfile
 	if _, err = os.Stat(exptlogfilepath); os.IsNotExist(err) {
@@ -488,7 +488,7 @@ func experimentWorker(exptname string) <-chan experimentSuccess {
 
 		// We're logging the cleanup in the general log so that we don't create an extraneous
 		// experiment log file
-		if err := expt.experimentCleanup(exptConfig.GetStringSlice("emails"), viper.GetStringMapString("logs")); err != nil {
+		if err := expt.experimentCleanup(exptConfig.GetStringSlice("emails")); err != nil {
 			log.Error(err)
 		}
 		log.Info("Finished cleaning up ", expt.name)
@@ -595,6 +595,9 @@ func cleanup(exptStatus map[string]bool, experiments []string) {
 
 	log.Infof("Successes: %v\nFailures: %v\n", strings.Join(s, ", "), strings.Join(f, ", "))
 
+	rSlice := []string{viper.GetString("notifications.admin_email")}
+	sendExperimentEmail("All experiments", viper.GetString("logs.errfile"), rSlice)
+	// Slack
 	// Something in here to delete/archive temp log dir if needed
 
 	// tempFiles, err := ioutil.ReadDir()
