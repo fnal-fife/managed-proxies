@@ -27,9 +27,11 @@ import (
 // Error handling - break everything!
 
 const (
-	globalTimeout uint   = 30                           // Global timeout in seconds
-	exptTimeout   uint   = 10                           // Experiment timeout in seconds
-	configFile    string = "proxy_push_config_test.yml" // CHANGE ME BEFORE PRODUCTION
+	globalTimeout   uint   = 30                           // Global timeout in seconds
+	exptTimeout     uint   = 10                           // Experiment timeout in seconds
+	configFile      string = "proxy_push_config_test.yml" // CHANGE ME BEFORE PRODUCTION
+	exptLogFilename string = "golang_proxy_push_%s.log"
+	exptGenFilename string = "golang_proxy_push_general_%s.log"
 )
 
 var log = logrus.New()                                       // Global logger
@@ -64,48 +66,54 @@ type copyProxiesStatus struct {
 
 // Experiment worker-specific functions
 
-func exptLogInit(ename string, logconfig map[string]string) *logrus.Entry {
+func exptLogInit(ename string) *logrus.Entry {
 	var Log = logrus.New()
-	exptlogfilename := "golang_proxy_push_" + ename + ".log" // Remove GOLANG before production
 
+	// exptlogfilename := "golang_proxy_push_" + ename + ".log" // Remove GOLANG before production
+	exptlog := fmt.Sprintf(exptLogFilename, ename)
+	genlog := fmt.Sprintf(exptGenFilename, ename)
+	// logfilename, err := ioutil.TempFile(pwd, "golang_genlog"+ename)
+	// if err != nil {
+	// 	return nil, errors.New("Could not create temp log file for logging within experiment " + ename)
+	// }
 	// remove the golang stuff for production
-	logfilename := fmt.Sprintf("golang%s", logconfig["logfile"])
-	errfilename := fmt.Sprintf("golang%s", logconfig["errfile"])
+	// logfilename := fmt.Sprintf("golang%s", logconfig["logfile"])
+	// errfilename := fmt.Sprintf("golang%s", logconfig["errfile"])
 
 	Log.SetLevel(logrus.DebugLevel)
 
 	// General Log
 	Log.AddHook(lfshook.NewHook(lfshook.PathMap{
-		logrus.DebugLevel: logfilename,
-		logrus.InfoLevel:  logfilename,
-		logrus.WarnLevel:  logfilename,
-		logrus.ErrorLevel: logfilename,
-		logrus.FatalLevel: logfilename,
-		logrus.PanicLevel: logfilename,
+		logrus.DebugLevel: genlog,
+		logrus.InfoLevel:  genlog,
+		logrus.WarnLevel:  genlog,
+		logrus.ErrorLevel: genlog,
+		logrus.FatalLevel: genlog,
+		logrus.PanicLevel: genlog,
 	}))
 
-	// Error log
-	Log.AddHook(lfshook.NewHook(lfshook.PathMap{
-		logrus.ErrorLevel: errfilename,
-		logrus.FatalLevel: errfilename,
-		logrus.PanicLevel: errfilename,
-	}))
+	// // Error log
+	// Log.AddHook(lfshook.NewHook(lfshook.PathMap{
+	// 	logrus.ErrorLevel: errfilename,
+	// 	logrus.FatalLevel: errfilename,
+	// 	logrus.PanicLevel: errfilename,
+	// }))
 
 	// Experiment-specific log
 	Log.AddHook(lfshook.NewHook(lfshook.PathMap{ // For production, take out all until ErrorLevel
-		logrus.DebugLevel: exptlogfilename,
-		logrus.InfoLevel:  exptlogfilename,
-		logrus.WarnLevel:  exptlogfilename,
-		logrus.ErrorLevel: exptlogfilename,
-		logrus.FatalLevel: exptlogfilename,
-		logrus.PanicLevel: exptlogfilename,
+		logrus.DebugLevel: exptlog,
+		logrus.InfoLevel:  exptlog,
+		logrus.WarnLevel:  exptlog,
+		logrus.ErrorLevel: exptlog,
+		logrus.FatalLevel: exptlog,
+		logrus.PanicLevel: exptlog,
 	}))
 
-	exptlog := Log.WithFields(logrus.Fields{"experiment": ename})
+	exptlogger := Log.WithFields(logrus.Fields{"experiment": ename})
 
-	exptlog.Info("Set up experiment logger")
+	exptlogger.Info("Set up experiment logger")
 
-	return exptlog
+	return exptlogger
 }
 
 func getKerbTicket(krb5ccname string) error {
@@ -275,7 +283,8 @@ func sendExperimentEmail(ename, logfilepath string, recipients []string) error {
 }
 
 func (expt *experimentSuccess) experimentCleanup(emailSlice []string) error {
-	exptlogfilename := "golang_proxy_push_" + expt.name + ".log" // Remove GOLANG before production
+	// exptlogfilename := "golang_proxy_push_" + expt.name + ".log" // Remove GOLANG before production
+	exptlogfilename := fmt.Sprintf(exptLogFilename, expt.name)
 
 	dir, e := os.Getwd()
 	if e != nil {
@@ -326,7 +335,9 @@ func (expt *experimentSuccess) experimentCleanup(emailSlice []string) error {
 func experimentWorker(exptname string) <-chan experimentSuccess {
 	c := make(chan experimentSuccess)
 	expt := experimentSuccess{exptname, true} // Initialize
-	exptLog := exptLogInit(expt.name, viper.GetStringMapString("logs"))
+	exptLog := exptLogInit(expt.name)
+
+	// , viper.GetStringMapString("logs")
 
 	exptLog.Info("Now processing ", expt.name)
 	go func() {
