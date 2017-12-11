@@ -301,9 +301,9 @@ func (expt *experimentSuccess) experimentCleanup(emailSlice []string) error {
 		// Try to send email, which also deletes expt file, returns error
 		// var err error = nil // Dummy
 		// err := sendExperimentEmail(expt.name, exptlogfilepath, emailSlice)
-		err := errors.New("Dummy error for email") // Take this line out and replace it with
-		// if err := sendExperimentEmail(expt.name, exptlogfilepath, emailSlice); err != nil {
-		if err != nil {
+		// err := errors.New("Dummy error for email") // Take this line out and replace it with
+		if err := sendExperimentEmail(expt.name, exptlogfilepath, emailSlice); err != nil {
+			// if err != nil {
 			archiveLogDir := path.Join(dir, "experiment_log_archive")
 			if _, e = os.Stat(archiveLogDir); os.IsNotExist(e) {
 				archiveLogDir = dir
