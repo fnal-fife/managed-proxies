@@ -293,15 +293,25 @@ func copyLogs(exptlogpath, exptgenlogpath string, logconfig map[string]string) {
 		}
 
 		rwmux.Lock()
-		err = ioutil.WriteFile(dest, data, os.ModeAppend)
-		rwmux.Unlock()
+		f, err := os.OpenFile(dest, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
-			log.Errorf("Could not copy log %s.  Please clean up manually", src)
 			log.Error(err)
+			log.Error("Please clean up manually")
 		} else {
-			if err := os.Remove(src); err != nil {
-				log.Errorf("Could not remove experiment log %s.  Please clean up manually", src)
+			if _, err = f.Write(data); err != nil {
+				log.Error(err)
+				log.Error("Please clean up manually")
 			}
+			f.Close()
+		}
+		rwmux.Unlock()
+
+		// err = ioutil.WriteFile(dest, data, os.ModeAppend)
+		// if err != nil {
+		// log.Errorf("Could not copy log %s.  Please clean up manually", src)
+		// log.Error(err)
+		if err := os.Remove(src); err != nil {
+			log.Errorf("Could not remove experiment log %s.  Please clean up manually", src)
 		}
 	}
 
@@ -538,8 +548,8 @@ func manageExperimentChannels(exptList []string) <-chan experimentSuccess {
 
 func loginit(logconfig map[string]string) {
 	// remove the golang stuff for production
-	logfilename := fmt.Sprintf("golang%s", logconfig["logfile"])
-	errfilename := fmt.Sprintf("golang%s", logconfig["errfile"])
+	// logfilename := fmt.Sprintf("golang%s", logconfig["logfile"])
+	// errfilename := fmt.Sprintf("golang%s", logconfig["errfile"])
 
 	// Set up our global logger
 	log.Level = logrus.DebugLevel
@@ -550,19 +560,19 @@ func loginit(logconfig map[string]string) {
 
 	// Error log
 	log.AddHook(lfshook.NewHook(lfshook.PathMap{
-		logrus.ErrorLevel: errfilename,
-		logrus.FatalLevel: errfilename,
-		logrus.PanicLevel: errfilename,
+		logrus.ErrorLevel: logconfig["errfile"],
+		logrus.FatalLevel: logconfig["errfile"],
+		logrus.PanicLevel: logconfig["errfile"],
 	}))
 
 	// General Log
 	log.AddHook(lfshook.NewHook(lfshook.PathMap{
-		logrus.DebugLevel: logfilename,
-		logrus.InfoLevel:  logfilename,
-		logrus.WarnLevel:  logfilename,
-		logrus.ErrorLevel: logfilename,
-		logrus.FatalLevel: logfilename,
-		logrus.PanicLevel: logfilename,
+		logrus.DebugLevel: logconfig["logfile"],
+		logrus.InfoLevel:  logconfig["logfile"],
+		logrus.WarnLevel:  logconfig["logfile"],
+		logrus.ErrorLevel: logconfig["logfile"],
+		logrus.FatalLevel: logconfig["logfile"],
+		logrus.PanicLevel: logconfig["logfile"],
 	}))
 
 }
