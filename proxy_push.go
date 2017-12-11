@@ -265,9 +265,9 @@ func copyProxies(exptConfig *viper.Viper) <-chan copyProxiesStatus {
 
 func sendExperimentEmail(ename, logfilepath string, recipients []string) error {
 	data, err := ioutil.ReadFile(logfilepath)
-	if err != nil || ename == "darkside" {
-		// return err
-		return errors.New("Couldn't read file to send email")
+	if err != nil {
+		return err
+		// return errors.New("Couldn't read file to send email")
 	}
 
 	msg := string(data)
