@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"sync"
 	// _ "net/http/pprof"
 	"os"
 	"os/exec"
@@ -33,6 +34,11 @@ const (
 
 var log = logrus.New()                                       // Global logger
 var emailDialer = gomail.Dialer{Host: "localhost", Port: 25} // gomail dialer to use to send emails
+
+type myint struct {
+	value int
+	mux   sync.Mutex
+}
 
 type experimentSuccess struct {
 	name    string
@@ -467,37 +473,52 @@ func checkUser(authuser string) error {
 
 func manageExperimentChannels(exptList []string) <-chan experimentSuccess {
 	agg := make(chan experimentSuccess)
-	exptChans := make([]<-chan experimentSuccess, 0, len(exptList))
-	var i int // Counter to keep track of how many times we've sent over agg channel
+	// exptChans := make([]<-chan experimentSuccess, 0, len(exptList))
+	var wg sync.WaitGroup
+	// Wait group
+	// i := myint{0, } // Counter to keep track of how many times we've sent over agg channel
+
+	// go func() {
+	// Start all of the experiment workers
+	wg.Add(len(exptList))
+	for _, expt := range exptList {
+		go func(expt string) {
+			c := experimentWorker(expt)
+			agg <- <-c
+			wg.Done()
+		}(expt)
+		// exptChans = append(exptChans, experimentWorker(expt))
+	}
 
 	go func() {
-		// Start all of the experiment workers
-		for _, expt := range exptList {
-			exptChans = append(exptChans, experimentWorker(expt))
-		}
-
-		// Launch goroutines that listen on experiment channels.  Since each experimentWorker closes its channel,
-		// each of these goroutines should exit after that happens
-		for _, exptChan := range exptChans {
-			go func(c <-chan experimentSuccess) {
-				for expt := range c {
-					agg <- expt
-					i++
-				}
-			}(exptChan)
-		}
-
-		// Close out agg channel when we're done sending
-		for {
-			if i == len(exptList) {
-				log.Debug("Closing aggregation channel")
-				close(agg)
-				return
-			}
-		}
-
+		wg.Wait()
+		log.Debug("Closing aggregation channel")
+		close(agg)
 	}()
+
 	return agg
+	// Launch goroutines that listen on experiment channels.  Since each experimentWorker closes its channel,
+	// each of these goroutines should exit after that happens
+	// for _, exptChan := range exptChans {
+	// 	go func(c <-chan experimentSuccess) {
+	// 		for expt := range c {
+	// 			agg <- expt
+	// 			i++
+	// 		}
+	// 	}(exptChan)
+	// }
+
+	// Close out agg channel when we're done sending
+	// 	for {
+	// 		if i == len(exptList) {
+	// 			log.Debug("Closing aggregation channel")
+	// 			close(agg)
+	// 			return
+	// 		}
+	// 	}
+
+	// }()
+	// return agg
 }
 
 func loginit(logconfig map[string]string) {
