@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"net/http"
 	"sync"
 	// _ "net/http/pprof"
 	"os"
@@ -22,15 +24,16 @@ import (
 	gomail "gopkg.in/gomail.v2"
 )
 
-// test mode - IN PROGRESS - disable emails to expts here
 // Wait group for all pings, proxy copies, etc.
 //notifications - IN PROGRESS - Formatting
 //Slack   go-slack?  net/http, notifications change!
+// time parser
 // Error handling - break everything!
 
 const (
-	globalTimeout   uint   = 30                           // Global timeout in seconds
-	exptTimeout     uint   = 20                           // Experiment timeout in seconds
+	globalTimeout   uint   = 30 // Global timeout in seconds
+	exptTimeout     uint   = 20 // Experiment timeout in seconds
+	slackTimeout    int    = 15
 	configFile      string = "proxy_push_config_test.yml" // CHANGE ME BEFORE PRODUCTION
 	exptLogFilename string = "golang_proxy_push_%s.log"
 	exptGenFilename string = "golang_proxy_push_general_%s.log"
@@ -261,35 +264,6 @@ func copyProxies(exptConfig *viper.Viper) <-chan copyProxiesStatus {
 	return c
 }
 
-func sendEmail(ename, logfilepath string, recipients []string) error {
-	if ename != "" && testMode {
-		return nil
-	}
-
-	if ename == "" {
-		ename = "all experiments" // Send email for all experiments to admin
-	}
-
-	data, err := ioutil.ReadFile(logfilepath)
-	if err != nil {
-		return err
-		// return errors.New("Couldn't read file to send email")
-	}
-
-	msg := string(data)
-	subject := "Managed Proxy Push errors for " + ename
-
-	m := gomail.NewMessage()
-	m.SetHeader("From", "fife-group@fnal.gov")
-	m.SetHeader("To", recipients...)
-	m.SetHeader("Subject", subject)
-	m.SetBody("text/plain", msg)
-
-	err = emailDialer.DialAndSend(m)
-	return err
-
-}
-
 func copyLogs(exptSuccess bool, exptlogpath, exptgenlogpath string, logconfig map[string]string) {
 
 	copyLog := func(src, dest string) {
@@ -329,7 +303,7 @@ func copyLogs(exptSuccess bool, exptlogpath, exptgenlogpath string, logconfig ma
 
 }
 
-func (expt *experimentSuccess) experimentCleanup(emailSlice []string) error {
+func (expt *experimentSuccess) experimentCleanup() error {
 	// exptlogfilename := "golang_proxy_push_" + expt.name + ".log" // Remove GOLANG before production
 	exptlogfilename := fmt.Sprintf(exptLogFilename, expt.name)
 
@@ -361,7 +335,18 @@ func (expt *experimentSuccess) experimentCleanup(emailSlice []string) error {
 		// var err error = nil // Dummy
 		// err := sendEmail(expt.name, exptlogfilepath, emailSlice)
 		// err := errors.New("Dummy error for email") // Take this line out and replace it with
-		if err := sendEmail(expt.name, exptlogfilepath, emailSlice); err != nil {
+		if testMode {
+			return nil // Don't do anything - we're testing.
+		}
+		data, err := ioutil.ReadFile(exptlogfilepath)
+		if err != nil {
+			return err
+			// return errors.New("Couldn't read file to send email")
+		}
+
+		msg := string(data)
+
+		if err := sendEmail(expt.name, msg); err != nil {
 			// if err != nil {
 			// archiveLogDir := path.Join(dir, "experiment_log_archive")
 			// if _, e = os.Stat(archiveLogDir); os.IsNotExist(e) {
@@ -499,7 +484,7 @@ func experimentWorker(exptname string) <-chan experimentSuccess {
 
 		// We're logging the cleanup in the general log so that we don't create an extraneous
 		// experiment log file
-		if err := expt.experimentCleanup(exptConfig.GetStringSlice("emails")); err != nil {
+		if err := expt.experimentCleanup(); err != nil {
 			log.Error(err)
 		}
 		log.Info("Finished cleaning up ", expt.name)
@@ -586,7 +571,66 @@ func loginit(logconfig map[string]string) {
 
 }
 
-func cleanup(exptStatus map[string]bool, experiments []string) {
+func sendEmail(exptName, message string) error {
+	var recipients []string
+	// if exptName != "" && testMode {
+	// 	return nil
+	// }
+
+	if exptName == "" {
+		exptName = "all experiments" // Send email for all experiments to admin
+		recipients = viper.GetStringSlice("notifications.admin_email")
+	} else {
+		emailsKeyLookup := "experiments." + exptName + ".emails"
+		recipients = viper.GetStringSlice(emailsKeyLookup)
+	}
+
+	// data, err := ioutil.ReadFile(logfilepath)
+	// if err != nil {
+	// 	return err
+	// 	// return errors.New("Couldn't read file to send email")
+	// }
+
+	// msg := string(data)
+	subject := "Managed Proxy Push errors for " + exptName
+
+	m := gomail.NewMessage()
+	m.SetHeader("From", "fife-group@fnal.gov")
+	m.SetHeader("To", recipients...)
+	m.SetHeader("Subject", subject)
+	m.SetBody("text/plain", message)
+
+	err := emailDialer.DialAndSend(m)
+	return err
+
+}
+
+func sendSlackMessage(message string) error {
+	msg := []byte(fmt.Sprintf(`{"text": "%s"}`, message))
+	req, err := http.NewRequest("POST", viper.GetString("notifications.slack_alerts_url"), bytes.NewBuffer(msg))
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: time.Duration(slackTimeout) * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := ioutil.ReadAll(resp.Body)
+		errmsg := fmt.Errorf("Slack Response Status: %s\nSlack Response Headers: %s\nSlack Response Body: %s",
+			resp.Status, resp.Header, string(body))
+		return errmsg
+		// fmt.Println("Slack Response Status:", resp.Status)
+		// fmt.Println("Slack Response Headers:", resp.Header)
+		// fmt.Println("Slack Response Body:", string(body))
+	}
+	fmt.Println("Slack message sent")
+	return nil
+}
+
+func cleanup(exptStatus map[string]bool, experiments []string) error {
 	s := make([]string, 0, len(experiments))
 	f := make([]string, 0, len(experiments))
 
@@ -606,15 +650,35 @@ func cleanup(exptStatus map[string]bool, experiments []string) {
 
 	log.Infof("Successes: %v\nFailures: %v\n", strings.Join(s, ", "), strings.Join(f, ", "))
 
-	rSlice := []string{viper.GetString("notifications.admin_email")}
-	sendEmail("", viper.GetString("logs.errfile"), rSlice)
-	// Slack
-	// Delete err log
-	// Something in here to delete/archive temp log dir if needed
+	data, err := ioutil.ReadFile(viper.GetString("logs.errfile"))
+	if err != nil {
+		return err
+	}
 
-	// tempFiles, err := ioutil.ReadDir()
+	msg := string(data)
 
-	return
+	finalCleanupSuccess := true
+	err = sendEmail("", msg)
+	if err != nil {
+		log.Error(err)
+		finalCleanupSuccess = false
+	}
+	err = sendSlackMessage(msg)
+	if err != nil {
+		log.Error(err)
+		finalCleanupSuccess = false
+	}
+
+	if err = os.Remove(viper.GetString("logs.errfile")); err != nil {
+		log.Error("Could not remove general error logfile.  Please clean up manually")
+		finalCleanupSuccess = false
+	}
+
+	if !finalCleanupSuccess {
+		return errors.New("Could not clean up.  Please review")
+	}
+
+	return nil
 }
 
 func main() {
@@ -674,13 +738,19 @@ func main() {
 		select {
 		case expt, chanOK := <-c:
 			if !chanOK {
-				cleanup(exptSuccesses, expts)
+				err := cleanup(exptSuccesses, expts)
+				if err != nil {
+					log.Error(err)
+				}
 				return
 			}
 			exptSuccesses[expt.name] = expt.success
 		case <-timeout:
 			log.Error("Hit the global timeout!")
-			cleanup(exptSuccesses, expts)
+			err := cleanup(exptSuccesses, expts)
+			if err != nil {
+				log.Error(err)
+			}
 			return
 		}
 	}
