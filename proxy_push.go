@@ -262,9 +262,11 @@ func copyProxies(exptConfig *viper.Viper) <-chan copyProxiesStatus {
 }
 
 func sendEmail(ename, logfilepath string, recipients []string) error {
-	if ename == "" && testMode {
+	if ename != "" && testMode {
 		return nil
-	} else {
+	}
+
+	if ename == "" {
 		ename = "all experiments" // Send email for all experiments to admin
 	}
 
