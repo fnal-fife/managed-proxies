@@ -22,8 +22,10 @@ import (
 	gomail "gopkg.in/gomail.v2"
 )
 
-// test mode - IN PROGRESS
-//notifications	// gomail https://godoc.org/gopkg.in/gomail.v2#Message.SetBody  go-slack?  net/http, notifications change!
+// test mode - IN PROGRESS - disable emails to expts here
+// Wait group for all pings, proxy copies, etc.
+//notifications - IN PROGRESS - Formatting
+//Slack   go-slack?  net/http, notifications change!
 // Error handling - break everything!
 
 const (
@@ -37,6 +39,7 @@ const (
 var log = logrus.New()                                       // Global logger
 var emailDialer = gomail.Dialer{Host: "localhost", Port: 25} // gomail dialer to use to send emails
 var rwmux sync.RWMutex
+var testMode = false
 
 type experimentSuccess struct {
 	name    string
@@ -258,7 +261,13 @@ func copyProxies(exptConfig *viper.Viper) <-chan copyProxiesStatus {
 	return c
 }
 
-func sendExperimentEmail(ename, logfilepath string, recipients []string) error {
+func sendEmail(ename, logfilepath string, recipients []string) error {
+	if ename == "" && testMode {
+		return nil
+	} else {
+		ename = "all experiments" // Send email for all experiments to admin
+	}
+
 	data, err := ioutil.ReadFile(logfilepath)
 	if err != nil {
 		return err
@@ -348,9 +357,9 @@ func (expt *experimentSuccess) experimentCleanup(emailSlice []string) error {
 	if !expt.success {
 		// Try to send email, which also deletes expt file, returns error
 		// var err error = nil // Dummy
-		// err := sendExperimentEmail(expt.name, exptlogfilepath, emailSlice)
+		// err := sendEmail(expt.name, exptlogfilepath, emailSlice)
 		// err := errors.New("Dummy error for email") // Take this line out and replace it with
-		if err := sendExperimentEmail(expt.name, exptlogfilepath, emailSlice); err != nil {
+		if err := sendEmail(expt.name, exptlogfilepath, emailSlice); err != nil {
 			// if err != nil {
 			// archiveLogDir := path.Join(dir, "experiment_log_archive")
 			// if _, e = os.Stat(archiveLogDir); os.IsNotExist(e) {
@@ -596,8 +605,9 @@ func cleanup(exptStatus map[string]bool, experiments []string) {
 	log.Infof("Successes: %v\nFailures: %v\n", strings.Join(s, ", "), strings.Join(f, ", "))
 
 	rSlice := []string{viper.GetString("notifications.admin_email")}
-	sendExperimentEmail("All experiments", viper.GetString("logs.errfile"), rSlice)
+	sendEmail("", viper.GetString("logs.errfile"), rSlice)
 	// Slack
+	// Delete err log
 	// Something in here to delete/archive temp log dir if needed
 
 	// tempFiles, err := ioutil.ReadDir()
@@ -629,7 +639,9 @@ func main() {
 
 	// Test flag sets which notifications section from config we want to use.
 	// After this, cfg.Notifications map is the map we want to use later on. -- check this
-	if viper.GetBool("test") {
+	testMode = viper.GetBool("test")
+
+	if testMode {
 		log.Info("Running in test mode")
 		viper.Set("notifications", viper.Get("notifications_test"))
 		// cfg.Notifications = cfg.Notifications_test
