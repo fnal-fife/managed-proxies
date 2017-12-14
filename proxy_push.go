@@ -606,6 +606,7 @@ func sendEmail(exptName, message string) error {
 }
 
 func sendSlackMessage(message string) error {
+	fmt.Println(fmt.Sprintf(`{"text": "%s"}`, message))
 	msg := []byte(fmt.Sprintf(`{"text": "%s"}`, message))
 	req, err := http.NewRequest("POST", viper.GetString("notifications.slack_alerts_url"), bytes.NewBuffer(msg))
 	req.Header.Set("Content-Type", "application/json")
