@@ -26,7 +26,10 @@ import (
 
 // Wait group for all pings, proxy copies, etc.
 //notifications - IN PROGRESS - Formatting
-//Slack   go-slack?  net/http, notifications change!
+// Race condition:  Need to make sure that global cleanup doesn't happen before all
+//		goroutines have FINISHED (including cleanup), not just report on their channel,
+//		which is what we currently do.  This generally doesn't matter, but it does if we're running
+//		a single experiment and it finishes before the goroutine can copy its errors.
 // time parser
 // Error handling - break everything!
 
@@ -367,7 +370,7 @@ func (expt *experimentSuccess) experimentCleanup() error {
 	return nil
 }
 
-func experimentWorker(exptname string) <-chan experimentSuccess {
+func experimentWorker(exptname string, w *sync.WaitGroup) <-chan experimentSuccess {
 	c := make(chan experimentSuccess)
 	expt := experimentSuccess{exptname, true} // Initialize
 	exptLog := exptLogInit(expt.name)
@@ -488,6 +491,7 @@ func experimentWorker(exptname string) <-chan experimentSuccess {
 			log.Error(err)
 		}
 		log.Info("Finished cleaning up ", expt.name)
+		w.Done()
 	}()
 	return c
 }
@@ -525,9 +529,9 @@ func manageExperimentChannels(exptList []string) <-chan experimentSuccess {
 	// Start all of the experiment workers, put their results into the agg channel
 	for _, expt := range exptList {
 		go func(expt string) {
-			c := experimentWorker(expt)
+			c := experimentWorker(expt, &wg)
 			agg <- <-c
-			wg.Done()
+			// wg.Done()
 		}(expt)
 	}
 
@@ -623,9 +627,6 @@ func sendSlackMessage(message string) error {
 		errmsg := fmt.Errorf("Slack Response Status: %s\nSlack Response Headers: %s\nSlack Response Body: %s",
 			resp.Status, resp.Header, string(body))
 		return errmsg
-		// fmt.Println("Slack Response Status:", resp.Status)
-		// fmt.Println("Slack Response Headers:", resp.Header)
-		// fmt.Println("Slack Response Body:", string(body))
 	}
 	fmt.Println("Slack message sent")
 	return nil
