@@ -664,6 +664,11 @@ func cleanup(exptStatus map[string]bool, experiments []string) error {
 
 	log.Infof("Successes: %v\nFailures: %v\n", strings.Join(s, ", "), strings.Join(f, ", "))
 
+	if _, err := os.Stat(viper.GetString("logs.errfile")); os.IsNotExist(err) {
+		log.Info("Proxy Push completed with no errors")
+		return nil
+	}
+
 	data, err := ioutil.ReadFile(viper.GetString("logs.errfile"))
 	if err != nil {
 		return err
