@@ -370,7 +370,7 @@ func (expt *experimentSuccess) experimentCleanup() error {
 	return nil
 }
 
-func experimentWorker(exptname string, w *sync.WaitGroup) <-chan experimentSuccess {
+func experimentWorker(exptname string, w *sync.WaitGroup, done <-chan bool) <-chan experimentSuccess {
 	c := make(chan experimentSuccess)
 	expt := experimentSuccess{exptname, true} // Initialize
 	exptLog := exptLogInit(expt.name)
@@ -379,6 +379,8 @@ func experimentWorker(exptname string, w *sync.WaitGroup) <-chan experimentSucce
 
 	exptLog.Info("Now processing ", expt.name)
 	go func() {
+		// defer w.Done()
+		defer close(c)
 		exptConfig := viper.Sub("experiments." + expt.name)
 
 		badnodes := make(map[string]struct{})
@@ -483,7 +485,7 @@ func experimentWorker(exptname string, w *sync.WaitGroup) <-chan experimentSucce
 		}
 		exptLog.Info("Finished processing ", expt.name)
 		c <- expt
-		close(c)
+		// close(c)
 
 		// We're logging the cleanup in the general log so that we don't create an extraneous
 		// experiment log file
@@ -491,7 +493,16 @@ func experimentWorker(exptname string, w *sync.WaitGroup) <-chan experimentSucce
 			log.Error(err)
 		}
 		log.Info("Finished cleaning up ", expt.name)
-		w.Done()
+		// close(c)
+		// w.Done()
+		timeout := time.After(time.Duration(exptTimeout) * time.Second)
+		select {
+		case <-done:
+			w.Done()
+		case <-timeout:
+			log.Error("Timed out waiting for experiment success info to be put into aggregation channel")
+			w.Done()
+		}
 	}()
 	return c
 }
@@ -525,12 +536,17 @@ func manageExperimentChannels(exptList []string) <-chan experimentSuccess {
 	agg := make(chan experimentSuccess)
 	var wg sync.WaitGroup
 	wg.Add(len(exptList))
+	// Trying to send on agg after the exptWorker has already sent the Done() signal
+	// Maybe have the logic that closes agg channel do something else?
 
 	// Start all of the experiment workers, put their results into the agg channel
 	for _, expt := range exptList {
 		go func(expt string) {
-			c := experimentWorker(expt, &wg)
+			done := make(chan bool)
+			// defer w.Done()
+			c := experimentWorker(expt, &wg, done)
 			agg <- <-c
+			close(done)
 			// wg.Done()
 		}(expt)
 	}
