@@ -26,10 +26,6 @@ import (
 
 // Wait group for all pings, proxy copies, etc.
 //notifications - IN PROGRESS - Formatting
-// Race condition:  Need to make sure that global cleanup doesn't happen before all
-//		goroutines have FINISHED (including cleanup), not just report on their channel,
-//		which is what we currently do.  This generally doesn't matter, but it does if we're running
-//		a single experiment and it finishes before the goroutine can copy its errors.
 // time parser
 // Error handling - break everything!
 
@@ -379,8 +375,6 @@ func experimentWorker(exptname string, w *sync.WaitGroup, done <-chan bool) <-ch
 
 	exptLog.Info("Now processing ", expt.name)
 	go func() {
-		// defer w.Done()
-		defer close(c)
 		exptConfig := viper.Sub("experiments." + expt.name)
 
 		badnodes := make(map[string]struct{})
@@ -485,7 +479,7 @@ func experimentWorker(exptname string, w *sync.WaitGroup, done <-chan bool) <-ch
 		}
 		exptLog.Info("Finished processing ", expt.name)
 		c <- expt
-		// close(c)
+		close(c)
 
 		// We're logging the cleanup in the general log so that we don't create an extraneous
 		// experiment log file
@@ -493,12 +487,12 @@ func experimentWorker(exptname string, w *sync.WaitGroup, done <-chan bool) <-ch
 			log.Error(err)
 		}
 		log.Info("Finished cleaning up ", expt.name)
-		// close(c)
-		// w.Done()
+
 		timeout := time.After(time.Duration(exptTimeout) * time.Second)
 		select {
 		case <-done:
-			w.Done()
+			w.Done() // Decrement WaitGroup here so that expt manager doesn't close agg channel
+			// before expt cleanup is done
 		case <-timeout:
 			log.Error("Timed out waiting for experiment success info to be put into aggregation channel")
 			w.Done()
@@ -536,13 +530,12 @@ func manageExperimentChannels(exptList []string) <-chan experimentSuccess {
 	agg := make(chan experimentSuccess)
 	var wg sync.WaitGroup
 	wg.Add(len(exptList))
-	// Trying to send on agg after the exptWorker has already sent the Done() signal
-	// Maybe have the logic that closes agg channel do something else?
 
 	// Start all of the experiment workers, put their results into the agg channel
 	for _, expt := range exptList {
 		go func(expt string) {
-			done := make(chan bool)
+			done := make(chan bool) // Channel to send signal to expt worker that we've put its
+			// result into agg channel, so it can return after cleanup is done
 			// defer w.Done()
 			c := experimentWorker(expt, &wg, done)
 			agg <- <-c
@@ -551,6 +544,9 @@ func manageExperimentChannels(exptList []string) <-chan experimentSuccess {
 		}(expt)
 	}
 
+	// This will wait until all expt workers have put their values into agg channel, and have finished
+	// cleanup.  This prevents the rare race condition that main() returns before all expt cleanup
+	// is done, since main() waits for the agg channel to close before doing cleanup.
 	go func() {
 		wg.Wait()
 		log.Debug("Closing aggregation channel")
