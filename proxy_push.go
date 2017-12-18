@@ -29,23 +29,24 @@ import (
 // Error handling - break everything!
 
 const (
-	globalTimeout string = "30sec" // Global timeout in seconds
-	exptTimeout   string = "20s"   // Experiment timeout in seconds
-	slackTimeout  string = "15s"
-	pingTimeout   string = "10s"
-	vpiTimeout    string = "5s"
+	globalTimeout string = "30s" // Global timeout
+	exptTimeout   string = "20s" // Experiment timeout
+	slackTimeout  string = "15s" // Slack message timeout
+	pingTimeout   string = "10s" // Ping timeout per node
+	vpiTimeout    string = "5s"  // voms-proxy-init timeout per proxy
 
-	configFile      string = "proxy_push_config_test.yml" // CHANGE ME BEFORE PRODUCTION
-	exptLogFilename string = "golang_proxy_push_%s.log"
-	exptGenFilename string = "golang_proxy_push_general_%s.log"
+	configFile      string = "proxy_push_config_test.yml"       // CHANGE ME BEFORE PRODUCTION
+	exptLogFilename string = "golang_proxy_push_%s.log"         // CHANGE ME BEFORE PRODUCTION - temp file per experiment that will be emailed to experiment
+	exptGenFilename string = "golang_proxy_push_general_%s.log" // CHANGE ME BEFORE PRODUCTION - temp file per experiment that will be copied over to logfile
 )
 
 var globalTimeoutDuration, exptTimeoutDuration, slackTimeoutDuration, pingTimeoutDuration, vpiTimeoutDuration time.Duration
 var log = logrus.New()                                       // Global logger
 var emailDialer = gomail.Dialer{Host: "localhost", Port: 25} // gomail dialer to use to send emails
-var rwmux sync.RWMutex
+var rwmux sync.RWMutex                                       // mutex to be used when copying experiment log into master log
 var testMode = false
 
+// Types to carry information about success and status of various operations over channels
 type experimentSuccess struct {
 	name    string
 	success bool
@@ -514,17 +515,6 @@ func experimentWorker(exptname string, w *sync.WaitGroup, done <-chan bool) <-ch
 
 // Global functions
 
-// func parseFlags() {
-// 	pflag.StringP("experiment", "e", "", "Name of single experiment to push proxies")
-// 	pflag.StringP("configfile", "c", configFile, "Specify alternate config file")
-// 	pflag.BoolP("test", "t", false, "Test mode")
-
-// 	pflag.Parse()
-
-// 	viper.BindPFlags(pflag.CommandLine)
-// 	return
-// }
-
 func checkUser(authuser string) error {
 	cuser, err := user.Current()
 	if err != nil {
@@ -566,37 +556,6 @@ func manageExperimentChannels(exptList []string) <-chan experimentSuccess {
 
 	return agg
 }
-
-// func loginit(logconfig map[string]string) {
-// 	// remove the golang stuff for production
-// 	// logfilename := fmt.Sprintf("golang%s", logconfig["logfile"])
-// 	// errfilename := fmt.Sprintf("golang%s", logconfig["errfile"])
-
-// 	// Set up our global logger
-// 	log.Level = logrus.DebugLevel
-
-// 	logFormatter := logrus.TextFormatter{FullTimestamp: true}
-
-// 	log.Formatter = &logFormatter
-
-// 	// Error log
-// 	log.AddHook(lfshook.NewHook(lfshook.PathMap{
-// 		logrus.ErrorLevel: logconfig["errfile"],
-// 		logrus.FatalLevel: logconfig["errfile"],
-// 		logrus.PanicLevel: logconfig["errfile"],
-// 	}))
-
-// 	// General Log
-// 	log.AddHook(lfshook.NewHook(lfshook.PathMap{
-// 		logrus.DebugLevel: logconfig["logfile"],
-// 		logrus.InfoLevel:  logconfig["logfile"],
-// 		logrus.WarnLevel:  logconfig["logfile"],
-// 		logrus.ErrorLevel: logconfig["logfile"],
-// 		logrus.FatalLevel: logconfig["logfile"],
-// 		logrus.PanicLevel: logconfig["logfile"],
-// 	}))
-
-// }
 
 func sendEmail(exptName, message string) error {
 	var recipients []string
@@ -722,41 +681,53 @@ func init() {
 		// cfg.Notifications = cfg.Notifications_test
 	}
 
-	// Check that we're running as the right user
-	if err = checkUser(viper.GetString("global.should_runuser")); err != nil {
-		log.Error(err)
-		os.Exit(3)
-	}
-
-	// Check our timeouts for proper formatting
-	invalidParseDurationError := func(m string) {
+	// Now that our log is set up and we've got a valid config, handle all init (fatal) errors using the following func
+	// that sends a slack message and an email, logs the error, and then exits.
+	initErrorNotify := func(m string) {
 		sendSlackMessage(m)
 		sendEmail("", m)
 		log.Fatal(m)
 	}
 
+	// Check that we're running as the right user
+	// if err = checkUser(viper.GetString("global.should_runuser")); err != nil {
+	// 	log.Error(err)
+	// 	os.Exit(3)
+	// }
+
+	cuser, err := user.Current()
+	if err != nil {
+		initErrorNotify("Could not lookup current user.  Exiting")
+	}
+	log.Info("Running script as ", cuser.Username)
+	if cuser.Username != viper.GetString("global.should_runuser") {
+		msg := fmt.Sprintf("This must be run as %s.  Trying to run as %s", viper.GetString("global.should_runuser"), cuser.Username)
+		initErrorNotify(msg)
+	}
+
+	// Check our timeouts for proper formatting
 	globalTimeoutDuration, err = time.ParseDuration(globalTimeout)
 	if err != nil {
 		msg := fmt.Sprintf("Invalid global timeout string %s", globalTimeout)
-		invalidParseDurationError(msg)
+		initErrorNotify(msg)
 	}
 
 	exptTimeoutDuration, err = time.ParseDuration(exptTimeout)
 	if err != nil {
 		msg := fmt.Sprintf("Invalid experiment timeout string %s", exptTimeout)
-		invalidParseDurationError(msg)
+		initErrorNotify(msg)
 	}
 
 	pingTimeoutDuration, err = time.ParseDuration(pingTimeout)
 	if err != nil {
 		msg := fmt.Sprintf("Invalid ping timeout string %s", pingTimeout)
-		invalidParseDurationError(msg)
+		initErrorNotify(msg)
 	}
 
 	vpiTimeoutDuration, err = time.ParseDuration(vpiTimeout)
 	if err != nil {
 		msg := fmt.Sprintf("Invalid voms-proxy-init timeout string %s", vpiTimeout)
-		invalidParseDurationError(msg)
+		initErrorNotify(msg)
 	}
 
 }
@@ -823,38 +794,7 @@ func main() {
 	// }()
 	// runtime.SetBlockProfileRate(1)
 
-	exptSuccesses := make(map[string]bool) // map of successful expts
-
-	// parseFlags()
-
-	// // Read the config file
-	// viper.SetConfigFile(viper.GetString("configfile"))
-	// err := viper.ReadInConfig()
-	// if err != nil {
-	// 	panic(fmt.Errorf("Fatal error config file: %s", err))
-	// }
-
-	// // Set up our logger
-	// // From here on out, we're logging to the log file too
-	// loginit(viper.GetStringMapString("logs"))
-	// log.Debugf("Using config file %s", viper.GetString("configfile"))
-
-	// // Test flag sets which notifications section from config we want to use.
-	// // After this, cfg.Notifications map is the map we want to use later on. -- check this
-	// testMode = viper.GetBool("test")
-
-	// if testMode {
-	// 	log.Info("Running in test mode")
-	// 	viper.Set("notifications", viper.Get("notifications_test"))
-	// 	// cfg.Notifications = cfg.Notifications_test
-	// }
-
-	// // Check that we're running as the right user
-	// if err = checkUser(viper.GetString("global.should_runuser")); err != nil {
-	// 	log.Error(err)
-	// 	os.Exit(3)
-	// }
-
+	exptSuccesses := make(map[string]bool)                             // map of successful expts
 	expts := make([]string, 0, len(viper.GetStringMap("experiments"))) // Slice of experiments we will actually process
 
 	// Get our list of experiments from the config file, set exptConfig Name variable
