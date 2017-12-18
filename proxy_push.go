@@ -29,8 +29,8 @@ import (
 // Error handling - break everything!
 
 const (
-	globalTimeout string = "30s" // Global timeout in seconds
-	exptTimeout   string = "20s" // Experiment timeout in seconds
+	globalTimeout string = "30sec" // Global timeout in seconds
+	exptTimeout   string = "20s"   // Experiment timeout in seconds
 	slackTimeout  string = "15s"
 	pingTimeout   string = "10s"
 	vpiTimeout    string = "5s"
