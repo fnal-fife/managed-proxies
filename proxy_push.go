@@ -26,13 +26,12 @@ import (
 
 // Wait group for all pings, proxy copies, etc.
 //notifications - IN PROGRESS - Formatting
-// time parser
 // Error handling - break everything!
 
 const (
-	globalTimeout   uint   = 30 // Global timeout in seconds
-	exptTimeout     uint   = 20 // Experiment timeout in seconds
-	slackTimeout    int    = 15
+	globalTimeout   string = "30s" // Global timeout in seconds
+	exptTimeout     string = "20s" // Experiment timeout in seconds
+	slackTimeout    string = "15s"
 	configFile      string = "proxy_push_config_test.yml" // CHANGE ME BEFORE PRODUCTION
 	exptLogFilename string = "golang_proxy_push_%s.log"
 	exptGenFilename string = "golang_proxy_push_general_%s.log"
@@ -380,6 +379,12 @@ func experimentWorker(exptname string, w *sync.WaitGroup, done <-chan bool) <-ch
 		badnodes := make(map[string]struct{})
 		successfulCopies := make(map[string][]string)
 
+		declareExptFailure := func() {
+			expt.success = false
+			c <- expt
+			close(c)
+		}
+
 		for _, node := range exptConfig.GetStringSlice("nodes") {
 			badnodes[node] = struct{}{}
 		}
@@ -391,9 +396,11 @@ func experimentWorker(exptname string, w *sync.WaitGroup, done <-chan bool) <-ch
 		if !viper.IsSet("global.krb5ccname") {
 			exptLog.Error(`Could not obtain KRB5CCNAME environmental variable from
 				config.  Please check the config file on fifeutilgpvm01.`)
-			expt.success = false
-			c <- expt
-			close(c)
+			// expt.success = false
+			// c <- expt
+			// close(c)
+			// return
+			declareExptFailure()
 			return
 		}
 		krb5ccnameCfg := viper.GetString("global.krb5ccname")
@@ -407,13 +414,18 @@ func experimentWorker(exptname string, w *sync.WaitGroup, done <-chan bool) <-ch
 		// If check of exptConfig keys fails, experiment fails immediately
 		if err := checkKeys(exptConfig); err != nil {
 			exptLog.Error(err)
-			expt.success = false
-			c <- expt
-			close(c)
+			// expt.success = false
+			// c <- expt
+			// close(c)
+			declareExptFailure()
 			return
 		}
 
 		pingChannel := pingAllNodes(exptConfig.GetStringSlice("nodes"))
+		pingTimeout, err := time.ParseDuration("10s")
+		if err != nil {
+			log.Fatal("Invalid time duration for ping timeout")
+		}
 		for _ = range exptConfig.GetStringSlice("nodes") { // Note that we're iterating over the range of nodes so we make sure
 			// that we listen on the channel the right number of times
 			select {
@@ -423,7 +435,7 @@ func experimentWorker(exptname string, w *sync.WaitGroup, done <-chan bool) <-ch
 				} else {
 					exptLog.Error(testnode.err)
 				}
-			case <-time.After(time.Duration(10) * time.Second):
+			case <-time.After(pingTimeout):
 			}
 		}
 
@@ -439,6 +451,10 @@ func experimentWorker(exptname string, w *sync.WaitGroup, done <-chan bool) <-ch
 		// If voms-proxy-init fails, we'll just continue on.  We'll still try to push proxies,
 		// since they're valid for 24 hours
 		vpiChan := getProxies(exptConfig, viper.GetStringMapString("global"), expt.name)
+		vpiTimeout, err := time.ParseDuration("5s")
+		if err != nil {
+			log.Fatal("Invalid time duration for voms-proxy-init timeout")
+		}
 		for _ = range exptConfig.GetStringMapString("accounts") {
 			select {
 			case vpi := <-vpiChan:
@@ -448,14 +464,17 @@ func experimentWorker(exptname string, w *sync.WaitGroup, done <-chan bool) <-ch
 				} else {
 					exptLog.Debug("Generated voms proxy: ", vpi.filename)
 				}
-			case <-time.After(time.Duration(5) * time.Second):
+			case <-time.After(vpiTimeout):
 				exptLog.Errorf("Error obtaining proxy for %s:  timeout.  Check log for details. Continuing to next proxy.\n", expt.name)
 				expt.success = false
 			}
 		}
 
 		copyChan := copyProxies(exptConfig)
-		exptTimeoutChan := time.After(time.Duration(exptTimeout) * time.Second)
+		exptTimeoutDuration, err := time.ParseDuration(exptTimeout)
+		if err != nil {
+			log.Fatalf("Invalid time duration for experiment timeout %s", exptTimeout)
+		}
 		for _ = range exptConfig.GetStringSlice("nodes") {
 			for _ = range exptConfig.GetStringMapString("accounts") {
 				select {
@@ -466,7 +485,7 @@ func experimentWorker(exptname string, w *sync.WaitGroup, done <-chan bool) <-ch
 					} else {
 						successfulCopies[pushproxy.role] = append(successfulCopies[pushproxy.role], pushproxy.node)
 					}
-				case <-exptTimeoutChan:
+				case <-time.After(exptTimeoutDuration):
 					exptLog.Error("Experiment hit the timeout when waiting to push proxy.")
 					expt.success = false
 				}
@@ -488,12 +507,12 @@ func experimentWorker(exptname string, w *sync.WaitGroup, done <-chan bool) <-ch
 		}
 		log.Info("Finished cleaning up ", expt.name)
 
-		timeout := time.After(time.Duration(exptTimeout) * time.Second)
+		// timeout := time.After(time.Duration(exptTimeout) * time.Second)
 		select {
 		case <-done:
 			w.Done() // Decrement WaitGroup here so that expt manager doesn't close agg channel
 			// before expt cleanup is done
-		case <-timeout:
+		case <-time.After(exptTimeoutDuration):
 			log.Error("Timed out waiting for experiment success info to be put into aggregation channel")
 			w.Done()
 		}
@@ -627,7 +646,11 @@ func sendSlackMessage(message string) error {
 	req, err := http.NewRequest("POST", viper.GetString("notifications.slack_alerts_url"), bytes.NewBuffer(msg))
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{Timeout: time.Duration(slackTimeout) * time.Second}
+	slackTimeoutDuration, err := time.ParseDuration(slackTimeout)
+	if err != nil {
+		return errors.New("Invalid duration for slack timeout")
+	}
+	client := &http.Client{Timeout: slackTimeoutDuration}
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
@@ -752,7 +775,11 @@ func main() {
 	// Start up the expt manager
 	c := manageExperimentChannels(expts)
 	// Listen on the manager channel
-	timeout := time.After(time.Duration(globalTimeout) * time.Second)
+	globalTimeoutDuration, err := time.ParseDuration(globalTimeout)
+	if err != nil {
+		log.Fatalf("Invalid global timeout %s", globalTimeout)
+	}
+	gTimeout := time.After(globalTimeoutDuration)
 	for {
 		select {
 		case expt, chanOK := <-c:
@@ -764,7 +791,7 @@ func main() {
 				return
 			}
 			exptSuccesses[expt.name] = expt.success
-		case <-timeout:
+		case <-gTimeout:
 			log.Error("Hit the global timeout!")
 			err := cleanup(exptSuccesses, expts)
 			if err != nil {
