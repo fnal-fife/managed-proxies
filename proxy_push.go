@@ -29,8 +29,8 @@ import (
 // Error handling - break everything!
 
 const (
-	globalTimeout   string = "30s" // Global timeout in seconds
-	exptTimeout     string = "20s" // Experiment timeout in seconds
+	globalTimeout   string = "30sec" // Global timeout in seconds
+	exptTimeout     string = "20s"   // Experiment timeout in seconds
 	slackTimeout    string = "15s"
 	configFile      string = "proxy_push_config_test.yml" // CHANGE ME BEFORE PRODUCTION
 	exptLogFilename string = "golang_proxy_push_%s.log"
