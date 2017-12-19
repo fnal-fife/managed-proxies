@@ -127,7 +127,7 @@ func checkKeys(exptConfig *viper.Viper) error {
 	return nil
 }
 
-func pingAllNodes(nodes []string, wg *sync.WaitGroup, done chan struct{}) <-chan pingNodeStatus {
+func pingAllNodes(nodes []string, wg *sync.WaitGroup) <-chan pingNodeStatus {
 	c := make(chan pingNodeStatus, len(nodes))
 	for _, node := range nodes {
 		go func(node string) {
@@ -143,10 +143,10 @@ func pingAllNodes(nodes []string, wg *sync.WaitGroup, done chan struct{}) <-chan
 		}(node)
 	}
 
-	// Wait for all goroutines to finish, then close channel "done" so that exptWorker can proceed
+	// Wait for all goroutines to finish, then close channel so that exptWorker can proceed
 	go func() {
 		wg.Wait()
-		close(done)
+		close(c)
 	}()
 
 	return c
@@ -392,17 +392,18 @@ func experimentWorker(exptname string, w *sync.WaitGroup, done <-chan struct{}) 
 
 		var pingWG sync.WaitGroup
 		pingWG.Add(len(exptConfig.GetStringSlice("nodes")))
-		pingDone := make(chan struct{})
-		pingChannel := pingAllNodes(exptConfig.GetStringSlice("nodes"), &pingWG, pingDone)
+		pingChannel := pingAllNodes(exptConfig.GetStringSlice("nodes"), &pingWG)
+		timeout := time.After(pingTimeoutDuration)
 	pingLoop:
 		for {
 			select {
-			case <-pingDone: // pingDone is closed
-				break pingLoop
-			case <-time.After(pingTimeoutDuration): // We give pingTimeoutDuration for all pings
+			case <-timeout: // We give timeout for all pings
 				exptLog.Error("Hit the ping timeout!")
 				break pingLoop
-			case testnode := <-pingChannel: // Receive on pingChannel
+			case testnode, chanOpen := <-pingChannel: // Receive on pingChannel
+				if !chanOpen {
+					break pingLoop
+				}
 				if testnode.err == nil {
 					delete(badnodes, testnode.node)
 				} else {
@@ -444,21 +445,6 @@ func experimentWorker(exptname string, w *sync.WaitGroup, done <-chan struct{}) 
 				}
 			}
 		}
-
-		// for _ = range exptConfig.GetStringMapString("accounts") {
-		// 	select {
-		// 	case vpi := <-vpiChan:
-		// 		if vpi.err != nil {
-		// 			exptLog.Error(vpi.err)
-		// 			expt.success = false
-		// 		} else {
-		// 			exptLog.Debug("Generated voms proxy: ", vpi.filename)
-		// 		}
-		// 	case <-time.After(vpiTimeoutDuration):
-		// 		exptLog.Errorf("Error obtaining proxy for %s:  timeout.  Check log for details. Continuing to next proxy.\n", expt.name)
-		// 		expt.success = false
-		// 	}
-		// }
 
 		copyChan := copyProxies(exptConfig)
 		for _ = range exptConfig.GetStringSlice("nodes") {
@@ -783,8 +769,8 @@ func main() {
 	timeout := time.After(globalTimeoutDuration)
 	for {
 		select {
-		case expt, chanOK := <-c:
-			if !chanOK {
+		case expt, chanOpen := <-c:
+			if !chanOpen {
 				err := cleanup(exptSuccesses, expts)
 				if err != nil {
 					log.Error(err)
