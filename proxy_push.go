@@ -30,11 +30,11 @@ import (
 // Error handling - break everything!
 
 const (
-	globalTimeout string = "30s" // Global timeout
-	exptTimeout   string = "20s" // Experiment timeout
+	globalTimeout string = "60s" // Global timeout
+	exptTimeout   string = "30s" // Experiment timeout
 	slackTimeout  string = "15s" // Slack message timeout
-	pingTimeout   string = "10s" // Ping timeout per node
-	vpiTimeout    string = "5s"  // voms-proxy-init timeout per proxy
+	pingTimeout   string = "10s" // Ping timeout (total)
+	vpiTimeout    string = "10s" // voms-proxy-init timeout (total)
 
 	configFile      string = "proxy_push_config_test.yml"       // CHANGE ME BEFORE PRODUCTION
 	exptLogFilename string = "golang_proxy_push_%s.log"         // CHANGE ME BEFORE PRODUCTION - temp file per experiment that will be emailed to experiment
@@ -397,6 +397,8 @@ func experimentWorker(exptname string, w *sync.WaitGroup, done <-chan bool) <-ch
 					exptLog.Error(testnode.err)
 				}
 			case <-time.After(pingTimeoutDuration): // We give pingTimeoutDuration for each receive
+				exptLog.Error("Hit the ping timeout!")
+				break
 			}
 		}
 
