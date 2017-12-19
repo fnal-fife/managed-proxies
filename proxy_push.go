@@ -149,6 +149,7 @@ func pingAllNodes(nodes []string, wg *sync.WaitGroup, done chan struct{}) <-chan
 	go func() {
 		fmt.Println("waiting on waitgroup")
 		wg.Wait()
+		fmt.Println("waitgroup done.  Closing done channel")
 		close(done)
 	}()
 
