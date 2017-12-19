@@ -152,7 +152,7 @@ func pingAllNodes(nodes []string, wg *sync.WaitGroup) <-chan pingNodeStatus {
 	return c
 }
 
-func getProxies(exptConfig *viper.Viper, globalConfig map[string]string, exptname string, wg *sync.WaitGroup, done chan struct{}) <-chan vomsProxyStatus {
+func getProxies(exptConfig *viper.Viper, globalConfig map[string]string, exptname string, wg *sync.WaitGroup) <-chan vomsProxyStatus {
 	c := make(chan vomsProxyStatus, len(exptConfig.GetStringMapString("accounts")))
 	var vomsprefix, certfile, keyfile string
 
@@ -205,7 +205,7 @@ func getProxies(exptConfig *viper.Viper, globalConfig map[string]string, exptnam
 	// Wait for all goroutines to finish, then close channel "done" so that exptWorker can proceed
 	go func() {
 		wg.Wait()
-		close(done)
+		close(c)
 	}()
 
 	return c
@@ -401,7 +401,7 @@ func experimentWorker(exptname string, w *sync.WaitGroup, done <-chan struct{}) 
 				exptLog.Error("Hit the ping timeout!")
 				break pingLoop
 			case testnode, chanOpen := <-pingChannel: // Receive on pingChannel
-				if !chanOpen {
+				if !chanOpen { // Break out of loop and proceed only if channel is not open
 					break pingLoop
 				}
 				if testnode.err == nil {
@@ -425,18 +425,21 @@ func experimentWorker(exptname string, w *sync.WaitGroup, done <-chan struct{}) 
 		// since they're valid for 24 hours
 		var vpiWG sync.WaitGroup
 		vpiWG.Add(len(exptConfig.GetStringMapString("accounts")))
-		vpiDone := make(chan struct{})
-		vpiChan := getProxies(exptConfig, viper.GetStringMapString("global"), expt.name, &vpiWG, vpiDone)
+		// vpiDone := make(chan struct{})
+		vpiChan := getProxies(exptConfig, viper.GetStringMapString("global"), expt.name, &vpiWG)
 	vpiLoop:
 		for {
 			select {
-			case <-vpiDone: // vpiDone is closed
-				break vpiLoop
+			// case <-vpiDone: // vpiDone is closed
+			// 	break vpiLoop
 			case <-time.After(vpiTimeoutDuration): // voms-proxy-init timeout for all operations
 				exptLog.Errorf("Error obtaining proxy for %s:  timeout.  Check log for details. Continuing to next proxy.\n", expt.name)
 				expt.success = false
 				break vpiLoop
-			case vpi := <-vpiChan: // receive on vpiChan
+			case vpi, chanOpen := <-vpiChan: // receive on vpiChan
+				if !chanOpen {
+					break vpiLoop
+				}
 				if vpi.err != nil {
 					exptLog.Error(vpi.err)
 					expt.success = false
