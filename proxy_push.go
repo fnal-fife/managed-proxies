@@ -393,8 +393,10 @@ func experimentWorker(exptname string, w *sync.WaitGroup, done <-chan bool) <-ch
 		for {
 			select {
 			case <-pingDone: // pingDone is closed
+				fmt.Println("pingDone is done.  Breaking out of loop")
 				break
 			case testnode := <-pingChannel: // Receive on pingChannel
+				fmt.Println("Received value on PingChannel")
 				if testnode.err == nil {
 					delete(badnodes, testnode.node)
 				} else {
