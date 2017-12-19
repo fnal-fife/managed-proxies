@@ -25,7 +25,7 @@ import (
 )
 
 // Wait group for all pings, proxy copies, etc.
-// chan bool done channels should be struct{} (best practice)
+// buffered channels for agg channel
 //notifications - IN PROGRESS - Formatting
 // Error handling - break everything!
 
@@ -152,8 +152,8 @@ func pingAllNodes(nodes []string, wg *sync.WaitGroup, done chan struct{}) <-chan
 	return c
 }
 
-func getProxies(exptConfig *viper.Viper, globalConfig map[string]string, exptname string) <-chan vomsProxyStatus {
-	c := make(chan vomsProxyStatus)
+func getProxies(exptConfig *viper.Viper, globalConfig map[string]string, exptname string, wg *sync.WaitGroup, done chan struct{}) <-chan vomsProxyStatus {
+	c := make(chan vomsProxyStatus, len(exptConfig.GetStringMapString("accounts")))
 	var vomsprefix, certfile, keyfile string
 
 	if exptConfig.IsSet("vomsgroup") {
@@ -164,7 +164,7 @@ func getProxies(exptConfig *viper.Viper, globalConfig map[string]string, exptnam
 
 	for account, role := range exptConfig.GetStringMapString("accounts") {
 		go func(account, role string) {
-
+			defer wg.Done()
 			vomsstring := vomsprefix + "Role=" + role
 
 			if exptConfig.IsSet("certfile") {
@@ -201,6 +201,13 @@ func getProxies(exptConfig *viper.Viper, globalConfig map[string]string, exptnam
 			c <- vpi
 		}(account, role)
 	}
+
+	// Wait for all goroutines to finish, then close channel "done" so that exptWorker can proceed
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
 	return c
 }
 
@@ -335,14 +342,14 @@ func (expt *experimentSuccess) experimentCleanup() error {
 	return nil
 }
 
-func experimentWorker(exptname string, w *sync.WaitGroup) <-chan experimentSuccess {
+func experimentWorker(exptname string, w *sync.WaitGroup, done <-chan struct{}) <-chan experimentSuccess {
 	c := make(chan experimentSuccess)
 	expt := experimentSuccess{exptname, true} // Initialize
 	exptLog := exptLogInit(expt.name)
 	exptLog.Info("Now processing ", expt.name)
 
 	go func() {
-		defer w.Done()
+		defer w.Done() // Decrement WaitGroup after cleanup is done or we want to return
 		exptConfig := viper.Sub("experiments." + expt.name)
 
 		badnodes := make(map[string]struct{})
@@ -404,19 +411,6 @@ func experimentWorker(exptname string, w *sync.WaitGroup) <-chan experimentSucce
 			}
 		}
 
-		// for _ = range exptConfig.GetStringSlice("nodes") { // Note that we're iterating over the range of nodes so we make sure
-		// 	// that we listen on the channel the right number of times
-		// 	select {
-		// 	case testnode := <-pingChannel:
-		// 		if testnode.err == nil {
-		// 			delete(badnodes, testnode.node)
-		// 		} else {
-		// 			exptLog.Error(testnode.err)
-		// 		}
-		// 	case <-time.After(pingTimeoutDuration):
-		// 	}
-		// }
-
 		badNodesSlice := make([]string, 0, len(badnodes))
 		for node := range badnodes {
 			badNodesSlice = append(badNodesSlice, node)
@@ -428,21 +422,43 @@ func experimentWorker(exptname string, w *sync.WaitGroup) <-chan experimentSucce
 
 		// If voms-proxy-init fails, we'll just continue on.  We'll still try to push proxies,
 		// since they're valid for 24 hours
-		vpiChan := getProxies(exptConfig, viper.GetStringMapString("global"), expt.name)
-		for _ = range exptConfig.GetStringMapString("accounts") {
+		var vpiWG sync.WaitGroup
+		vpiWG.Add(len(exptConfig.GetStringMapString("accounts")))
+		vpiDone := make(chan struct{})
+		vpiChan := getProxies(exptConfig, viper.GetStringMapString("global"), expt.name, &vpiWG, vpiDone)
+	vpiLoop:
+		for {
 			select {
-			case vpi := <-vpiChan:
+			case <-vpiDone: // vpiDone is closed
+				break vpiLoop
+			case <-time.After(vpiTimeoutDuration): // voms-proxy-init timeout for all operations
+				exptLog.Errorf("Error obtaining proxy for %s:  timeout.  Check log for details. Continuing to next proxy.\n", expt.name)
+				expt.success = false
+				break vpiLoop
+			case vpi := <-vpiChan: // receive on vpiChan
 				if vpi.err != nil {
 					exptLog.Error(vpi.err)
 					expt.success = false
 				} else {
 					exptLog.Debug("Generated voms proxy: ", vpi.filename)
 				}
-			case <-time.After(vpiTimeoutDuration):
-				exptLog.Errorf("Error obtaining proxy for %s:  timeout.  Check log for details. Continuing to next proxy.\n", expt.name)
-				expt.success = false
 			}
 		}
+
+		// for _ = range exptConfig.GetStringMapString("accounts") {
+		// 	select {
+		// 	case vpi := <-vpiChan:
+		// 		if vpi.err != nil {
+		// 			exptLog.Error(vpi.err)
+		// 			expt.success = false
+		// 		} else {
+		// 			exptLog.Debug("Generated voms proxy: ", vpi.filename)
+		// 		}
+		// 	case <-time.After(vpiTimeoutDuration):
+		// 		exptLog.Errorf("Error obtaining proxy for %s:  timeout.  Check log for details. Continuing to next proxy.\n", expt.name)
+		// 		expt.success = false
+		// 	}
+		// }
 
 		copyChan := copyProxies(exptConfig)
 		for _ = range exptConfig.GetStringSlice("nodes") {
@@ -477,14 +493,12 @@ func experimentWorker(exptname string, w *sync.WaitGroup) <-chan experimentSucce
 		}
 		log.Info("Finished cleaning up ", expt.name)
 
-		// // Block until we get go-ahead from expt manager or timeout expires
-		// select {
-		// case <-done:
-		// case <-time.After(exptTimeoutDuration):
-		// 	log.Error("Timed out waiting for experiment success info to be put into aggregation channel")
-		// }
-		// w.Done() // Decrement WaitGroup here so that expt manager doesn't close agg channel
-		// 	// before expt cleanup is done
+		// Block until we get go-ahead from expt manager that it's put message into agg channel or timeout expires
+		select {
+		case <-done:
+		case <-time.After(exptTimeoutDuration):
+			log.Error("Timed out waiting for experiment success info to be put into aggregation channel")
+		}
 	}()
 	return c
 }
@@ -511,28 +525,23 @@ func manageExperimentChannels(exptList []string) <-chan experimentSuccess {
 	// Start all of the experiment workers, put their results into the agg channel
 	for _, expt := range exptList {
 		go func(expt string) {
-			// defer wg.Done()
-			// done := make(chan bool) // Channel to send signal to expt worker that we've put its
-			// result into agg channel, so it can return after cleanup is done
-			// c := experimentWorker(expt, &wg, done)
-			c := experimentWorker(expt, &wg)
-
-			// agg <- <-c
-			// close(done)
+			done := make(chan struct{}) // Channel to send signal to expt worker that we've put its
+			// result into the agg channel, so it can decrement the waitgroup after cleanup is done
+			c := experimentWorker(expt, &wg, done)
 			select {
 			case status := <-c:
 				agg <- status
 			case <-time.After(exptTimeoutDuration):
-				// log.Error("Timed out waiting for experiment success info to be put into aggregation channel")
 				log.Error("Timed out waiting for experiment success info to be reported")
 			}
-			// close(done)
+			close(done)
 		}(expt)
 	}
 
 	// This will wait until all expt workers have put their values into agg channel, and have finished
-	// cleanup.  This prevents the rare race condition that main() returns before all expt cleanup
-	// is done, since main() waits for the agg channel to close before doing cleanup.
+	// cleanup.  This prevents the 2 rare race conditions: 1) that main() returns before all expt cleanup
+	// is done (since main() waits for the agg channel to close before doing cleanup), and 2) we close the
+	// agg channel before all values have been sent into it.
 	go func() {
 		wg.Wait()
 		log.Debug("Closing aggregation channel")
