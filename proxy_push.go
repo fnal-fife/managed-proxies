@@ -131,6 +131,7 @@ func pingAllNodes(nodes []string, wg *sync.WaitGroup, done chan struct{}) <-chan
 	c := make(chan pingNodeStatus, len(nodes))
 	for _, node := range nodes {
 		go func(node string) {
+			fmt.Println("Inside ping goroutine")
 			p := pingNodeStatus{node, nil}
 			pingargs := []string{"-W", "5", "-c", "1", node}
 			cmd := exec.Command("ping", pingargs...)
@@ -139,12 +140,14 @@ func pingAllNodes(nodes []string, wg *sync.WaitGroup, done chan struct{}) <-chan
 				p.err = fmt.Errorf("%s %s", cmdErr, cmdOut)
 			}
 			c <- p
+			fmt.Println("put status in channel")
 			wg.Done()
 		}(node)
 	}
 
 	// Wait for all goroutines to finish, then close channel "done" so that exptWorker can proceed
 	go func() {
+		fmt.Println("waiting on waitgroup")
 		wg.Wait()
 		close(done)
 	}()
