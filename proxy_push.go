@@ -335,13 +335,14 @@ func (expt *experimentSuccess) experimentCleanup() error {
 	return nil
 }
 
-func experimentWorker(exptname string, w *sync.WaitGroup, done <-chan bool) <-chan experimentSuccess {
+func experimentWorker(exptname string, w *sync.WaitGroup) <-chan experimentSuccess {
 	c := make(chan experimentSuccess)
 	expt := experimentSuccess{exptname, true} // Initialize
 	exptLog := exptLogInit(expt.name)
 	exptLog.Info("Now processing ", expt.name)
 
 	go func() {
+		defer w.Done()
 		exptConfig := viper.Sub("experiments." + expt.name)
 
 		badnodes := make(map[string]struct{})
@@ -476,14 +477,14 @@ func experimentWorker(exptname string, w *sync.WaitGroup, done <-chan bool) <-ch
 		}
 		log.Info("Finished cleaning up ", expt.name)
 
-		select {
-		case <-done:
-			w.Done() // Decrement WaitGroup here so that expt manager doesn't close agg channel
-			// before expt cleanup is done
-		case <-time.After(exptTimeoutDuration):
-			log.Error("Timed out waiting for experiment success info to be put into aggregation channel")
-			w.Done()
-		}
+		// // Block until we get go-ahead from expt manager or timeout expires
+		// select {
+		// case <-done:
+		// case <-time.After(exptTimeoutDuration):
+		// 	log.Error("Timed out waiting for experiment success info to be put into aggregation channel")
+		// }
+		// w.Done() // Decrement WaitGroup here so that expt manager doesn't close agg channel
+		// 	// before expt cleanup is done
 	}()
 	return c
 }
@@ -510,11 +511,22 @@ func manageExperimentChannels(exptList []string) <-chan experimentSuccess {
 	// Start all of the experiment workers, put their results into the agg channel
 	for _, expt := range exptList {
 		go func(expt string) {
-			done := make(chan bool) // Channel to send signal to expt worker that we've put its
+			// defer wg.Done()
+			// done := make(chan bool) // Channel to send signal to expt worker that we've put its
 			// result into agg channel, so it can return after cleanup is done
-			c := experimentWorker(expt, &wg, done)
-			agg <- <-c
-			close(done)
+			// c := experimentWorker(expt, &wg, done)
+			c := experimentWorker(expt, &wg)
+
+			// agg <- <-c
+			// close(done)
+			select {
+			case status := <-c:
+				agg <- status
+			case <-time.After(exptTimeoutDuration):
+				// log.Error("Timed out waiting for experiment success info to be put into aggregation channel")
+				log.Error("Timed out waiting for experiment success info to be reported")
+			}
+			// close(done)
 		}(expt)
 	}
 
