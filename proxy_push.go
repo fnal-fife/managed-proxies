@@ -26,7 +26,6 @@ import (
 
 // Wait group for all pings, proxy copies, etc.
 //notifications - IN PROGRESS - Formatting
-// Cleanup in init should delete error file.
 // Error handling - break everything!
 
 const (
@@ -206,7 +205,6 @@ func copyProxies(exptConfig *viper.Viper) <-chan copyProxiesStatus {
 
 			for _, node := range exptConfig.GetStringSlice("nodes") {
 				go func(acct, role, node string) {
-					// fmt.Println("Now trying to copy ", node, acct, role)
 					cps := copyProxiesStatus{node, acct, role, nil}
 					accountNode := acct + "@" + node + ".fnal.gov"
 					newProxyPath := path.Join(exptConfig.GetString("dir"), acct, proxyFile+".new")
@@ -221,7 +219,6 @@ func copyProxies(exptConfig *viper.Viper) <-chan copyProxiesStatus {
 					scpCmd := exec.Command("scp", scpargs...)
 					sshCmd := exec.Command("ssh", sshargs...)
 
-					// fmt.Println("Now trying to copy ", node, acct, role)
 					cmdOut, cmdErr := scpCmd.CombinedOutput()
 					if cmdErr != nil {
 						msg := fmt.Errorf("Copying proxy %s to node %s failed.  The error was %s: %s", proxyFile, node, cmdErr, cmdOut)
@@ -229,17 +226,12 @@ func copyProxies(exptConfig *viper.Viper) <-chan copyProxiesStatus {
 						c <- cps
 						return
 					}
-					// fmt.Println("Succeeded copying proxy ", node, acct, role)
 
-					// fmt.Println("Changing permission of proxy", node, acct, role)
 					cmdOut, cmdErr = sshCmd.CombinedOutput()
 					if cmdErr != nil {
 						msg := fmt.Errorf("Error changing permission of proxy %s to mode 400 on %s.  The error was %s: %s", proxyFile, node, cmdErr, cmdOut)
 						cps.err = msg
-						// c <- cps
-						// return
 					}
-					// fmt.Println("Succeeded Changing permission of proxy", node, acct, role)
 					c <- cps
 				}(acct, role, node)
 			}
@@ -249,7 +241,6 @@ func copyProxies(exptConfig *viper.Viper) <-chan copyProxiesStatus {
 }
 
 func copyLogs(exptSuccess bool, exptlogpath, exptgenlogpath string, logconfig map[string]string) {
-
 	copyLog := func(src, dest string) {
 		data, err := ioutil.ReadFile(src)
 		if err != nil {
@@ -288,7 +279,6 @@ func copyLogs(exptSuccess bool, exptlogpath, exptgenlogpath string, logconfig ma
 }
 
 func (expt *experimentSuccess) experimentCleanup() error {
-	// exptlogfilename := "golang_proxy_push_" + expt.name + ".log" // Remove GOLANG before production
 	exptlogfilename := fmt.Sprintf(exptLogFilename, expt.name)
 
 	dir, err := os.Getwd()
@@ -307,13 +297,6 @@ func (expt *experimentSuccess) experimentCleanup() error {
 		return nil
 	}
 
-	// Successful experiment, but no errors in log file.  Probably the default option
-	// if expt.success {
-	// 	if err := os.Remove(exptlogfilepath); err != nil {
-	// 		return fmt.Errorf("Could not remove successful experiment log %s.  Please clean up manually", exptlogfilepath)
-	// 	}
-	// }
-
 	if !expt.success {
 		// Try to send email, which also deletes expt file, returns error
 		// var err error = nil // Dummy
@@ -325,19 +308,11 @@ func (expt *experimentSuccess) experimentCleanup() error {
 		data, err := ioutil.ReadFile(exptlogfilepath)
 		if err != nil {
 			return err
-			// return errors.New("Couldn't read file to send email")
 		}
 
 		msg := string(data)
 
 		if err := sendEmail(expt.name, msg); err != nil {
-			// if err != nil {
-			// archiveLogDir := path.Join(dir, "experiment_log_archive")
-			// if _, e = os.Stat(archiveLogDir); os.IsNotExist(e) {
-			// 	archiveLogDir = dir
-			// }
-
-			// oldpath := exptlogfile
 			newfilename := fmt.Sprintf("%s-%s", exptlogfilename, time.Now().Format(time.RFC3339))
 			newpath := path.Join(dir, newfilename)
 
@@ -355,10 +330,8 @@ func experimentWorker(exptname string, w *sync.WaitGroup, done <-chan bool) <-ch
 	c := make(chan experimentSuccess)
 	expt := experimentSuccess{exptname, true} // Initialize
 	exptLog := exptLogInit(expt.name)
-
-	// , viper.GetStringMapString("logs")
-
 	exptLog.Info("Now processing ", expt.name)
+
 	go func() {
 		exptConfig := viper.Sub("experiments." + expt.name)
 
@@ -382,10 +355,6 @@ func experimentWorker(exptname string, w *sync.WaitGroup, done <-chan bool) <-ch
 		if !viper.IsSet("global.krb5ccname") {
 			exptLog.Error(`Could not obtain KRB5CCNAME environmental variable from
 				config.  Please check the config file on fifeutilgpvm01.`)
-			// expt.success = false
-			// c <- expt
-			// close(c)
-			// return
 			declareExptFailure()
 			return
 		}
@@ -400,9 +369,6 @@ func experimentWorker(exptname string, w *sync.WaitGroup, done <-chan bool) <-ch
 		// If check of exptConfig keys fails, experiment fails immediately
 		if err := checkKeys(exptConfig); err != nil {
 			exptLog.Error(err)
-			// expt.success = false
-			// c <- expt
-			// close(c)
 			declareExptFailure()
 			return
 		}
@@ -481,7 +447,6 @@ func experimentWorker(exptname string, w *sync.WaitGroup, done <-chan bool) <-ch
 		}
 		log.Info("Finished cleaning up ", expt.name)
 
-		// timeout := time.After(time.Duration(exptTimeout) * time.Second)
 		select {
 		case <-done:
 			w.Done() // Decrement WaitGroup here so that expt manager doesn't close agg channel
@@ -518,11 +483,9 @@ func manageExperimentChannels(exptList []string) <-chan experimentSuccess {
 		go func(expt string) {
 			done := make(chan bool) // Channel to send signal to expt worker that we've put its
 			// result into agg channel, so it can return after cleanup is done
-			// defer w.Done()
 			c := experimentWorker(expt, &wg, done)
 			agg <- <-c
 			close(done)
-			// wg.Done()
 		}(expt)
 	}
 
@@ -540,9 +503,6 @@ func manageExperimentChannels(exptList []string) <-chan experimentSuccess {
 
 func sendEmail(exptName, message string) error {
 	var recipients []string
-	// if exptName != "" && testMode {
-	// 	return nil
-	// }
 
 	if exptName == "" {
 		exptName = "all experiments" // Send email for all experiments to admin
@@ -552,13 +512,6 @@ func sendEmail(exptName, message string) error {
 		recipients = viper.GetStringSlice(emailsKeyLookup)
 	}
 
-	// data, err := ioutil.ReadFile(logfilepath)
-	// if err != nil {
-	// 	return err
-	// 	// return errors.New("Couldn't read file to send email")
-	// }
-
-	// msg := string(data)
 	subject := "Managed Proxy Push errors for " + exptName
 
 	m := gomail.NewMessage()
@@ -573,7 +526,6 @@ func sendEmail(exptName, message string) error {
 }
 
 func sendSlackMessage(message string) error {
-	// fmt.Println(strings.Replace(fmt.Sprintf(`{"text": "%s"}`, message), "\"", "\\\"", -1))
 	msg := []byte(fmt.Sprintf(`{"text": "%s"}`, strings.Replace(message, "\"", "\\\"", -1)))
 	req, err := http.NewRequest("POST", viper.GetString("notifications.slack_alerts_url"), bytes.NewBuffer(msg))
 	req.Header.Set("Content-Type", "application/json")
@@ -600,15 +552,12 @@ func sendSlackMessage(message string) error {
 }
 
 func init() {
-
-	// parseFlags()
 	// Parse our command-line arguments
 	pflag.StringP("experiment", "e", "", "Name of single experiment to push proxies")
 	pflag.StringP("configfile", "c", configFile, "Specify alternate config file")
 	pflag.BoolP("test", "t", false, "Test mode")
 
 	pflag.Parse()
-
 	viper.BindPFlags(pflag.CommandLine)
 
 	// Read the config file
@@ -621,9 +570,7 @@ func init() {
 	// From here on out, we're logging to the log file too
 	// Set up our global logger
 	log.Level = logrus.DebugLevel
-
 	logFormatter := logrus.TextFormatter{FullTimestamp: true}
-
 	log.Formatter = &logFormatter
 
 	// Error log
@@ -653,7 +600,7 @@ func init() {
 	}
 
 	// Now that our log is set up and we've got a valid config, handle all init (fatal) errors using the following func
-	// that sends a slack message and an email, logs the error, and then exits.
+	// that logs the error, sends a slack message and an email, cleans up, and then exits.
 	initErrorNotify := func(m string) {
 		log.Error(m)
 		sendSlackMessage(m)
