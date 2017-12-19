@@ -25,6 +25,7 @@ import (
 )
 
 // Wait group for all pings, proxy copies, etc.
+// chan bool done channels should be struct{} (best practice)
 //notifications - IN PROGRESS - Formatting
 // Error handling - break everything!
 
@@ -126,7 +127,7 @@ func checkKeys(exptConfig *viper.Viper) error {
 	return nil
 }
 
-func pingAllNodes(nodes []string) <-chan pingNodeStatus {
+func pingAllNodes(nodes []string, wg *sync.WaitGroup, done chan struct{}) <-chan pingNodeStatus {
 	c := make(chan pingNodeStatus, len(nodes))
 	for _, node := range nodes {
 		go func(node string) {
@@ -138,8 +139,16 @@ func pingAllNodes(nodes []string) <-chan pingNodeStatus {
 				p.err = fmt.Errorf("%s %s", cmdErr, cmdOut)
 			}
 			c <- p
+			wg.Done()
 		}(node)
 	}
+
+	// Wait for all goroutines to finish, then close channel "done" so that exptWorker can proceed
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
 	return c
 }
 
@@ -373,19 +382,36 @@ func experimentWorker(exptname string, w *sync.WaitGroup, done <-chan bool) <-ch
 			return
 		}
 
-		pingChannel := pingAllNodes(exptConfig.GetStringSlice("nodes"))
-		for _ = range exptConfig.GetStringSlice("nodes") { // Note that we're iterating over the range of nodes so we make sure
-			// that we listen on the channel the right number of times
+		var pingWG sync.WaitGroup
+		pingWG.Add(len(exptConfig.GetStringSlice("nodes")))
+		pingDone := make(chan struct{})
+		pingChannel := pingAllNodes(exptConfig.GetStringSlice("nodes"), &pingWG, pingDone)
+		for {
 			select {
-			case testnode := <-pingChannel:
+			case <-pingDone: // pingDone is closed
+				break
+			case testnode := <-pingChannel: // Receive on pingChannel
 				if testnode.err == nil {
 					delete(badnodes, testnode.node)
 				} else {
 					exptLog.Error(testnode.err)
 				}
-			case <-time.After(pingTimeoutDuration):
+			case <-time.After(pingTimeoutDuration): // We give pingTimeoutDuration for each receive
 			}
 		}
+
+		// for _ = range exptConfig.GetStringSlice("nodes") { // Note that we're iterating over the range of nodes so we make sure
+		// 	// that we listen on the channel the right number of times
+		// 	select {
+		// 	case testnode := <-pingChannel:
+		// 		if testnode.err == nil {
+		// 			delete(badnodes, testnode.node)
+		// 		} else {
+		// 			exptLog.Error(testnode.err)
+		// 		}
+		// 	case <-time.After(pingTimeoutDuration):
+		// 	}
+		// }
 
 		badNodesSlice := make([]string, 0, len(badnodes))
 		for node := range badnodes {
