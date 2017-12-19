@@ -26,6 +26,7 @@ import (
 
 // Wait group for all pings, proxy copies, etc.
 //notifications - IN PROGRESS - Formatting
+// Cleanup in init should delete error file.
 // Error handling - break everything!
 
 const (
@@ -73,21 +74,12 @@ type copyProxiesStatus struct {
 
 func exptLogInit(ename string) *logrus.Entry {
 	var Log = logrus.New()
-
-	// exptlogfilename := "golang_proxy_push_" + ename + ".log" // Remove GOLANG before production
 	exptlog := fmt.Sprintf(exptLogFilename, ename)
 	genlog := fmt.Sprintf(exptGenFilename, ename)
-	// logfilename, err := ioutil.TempFile(pwd, "golang_genlog"+ename)
-	// if err != nil {
-	// 	return nil, errors.New("Could not create temp log file for logging within experiment " + ename)
-	// }
-	// remove the golang stuff for production
-	// logfilename := fmt.Sprintf("golang%s", logconfig["logfile"])
-	// errfilename := fmt.Sprintf("golang%s", logconfig["errfile"])
 
 	Log.SetLevel(logrus.DebugLevel)
 
-	// General Log
+	// General Log that gets copied to master log
 	Log.AddHook(lfshook.NewHook(lfshook.PathMap{
 		logrus.DebugLevel: genlog,
 		logrus.InfoLevel:  genlog,
@@ -97,25 +89,14 @@ func exptLogInit(ename string) *logrus.Entry {
 		logrus.PanicLevel: genlog,
 	}))
 
-	// // Error log
-	// Log.AddHook(lfshook.NewHook(lfshook.PathMap{
-	// 	logrus.ErrorLevel: errfilename,
-	// 	logrus.FatalLevel: errfilename,
-	// 	logrus.PanicLevel: errfilename,
-	// }))
-
-	// Experiment-specific log
-	Log.AddHook(lfshook.NewHook(lfshook.PathMap{ // For production, take out all until ErrorLevel
-		// logrus.DebugLevel: exptlog,
-		// logrus.InfoLevel:  exptlog,
-		// logrus.WarnLevel:  exptlog,
+	// Experiment-specific error log that gets emailed if populated
+	Log.AddHook(lfshook.NewHook(lfshook.PathMap{
 		logrus.ErrorLevel: exptlog,
 		logrus.FatalLevel: exptlog,
 		logrus.PanicLevel: exptlog,
 	}))
 
 	exptlogger := Log.WithFields(logrus.Fields{"experiment": ename})
-
 	exptlogger.Info("Set up experiment logger")
 
 	return exptlogger
@@ -141,7 +122,7 @@ func checkKeys(exptConfig *viper.Viper) error {
 	if !exptConfig.IsSet("nodes") || !exptConfig.IsSet("accounts") {
 		return errors.New(`Input file improperly formatted for %s (accounts or nodes don't 
 			exist for this experiment). Please check the config file on fifeutilgpvm01.
-			 I will skip this experiment for now.`)
+			 I will skip this experiment for now`)
 	}
 	return nil
 }
@@ -637,14 +618,7 @@ func init() {
 		panic(fmt.Errorf("Fatal error config file: %s", err))
 	}
 
-	// Set up our logger
 	// From here on out, we're logging to the log file too
-	// loginit(viper.GetStringMapString("logs"))
-
-	// remove the golang stuff for production
-	// logfilename := fmt.Sprintf("golang%s", logconfig["logfile"])
-	// errfilename := fmt.Sprintf("golang%s", logconfig["errfile"])
-
 	// Set up our global logger
 	log.Level = logrus.DebugLevel
 
@@ -659,7 +633,7 @@ func init() {
 		logrus.PanicLevel: viper.GetString("logs.errfile"),
 	}))
 
-	// General Log
+	// Master Log
 	log.AddHook(lfshook.NewHook(lfshook.PathMap{
 		logrus.DebugLevel: viper.GetString("logs.logfile"),
 		logrus.InfoLevel:  viper.GetString("logs.logfile"),
@@ -672,29 +646,29 @@ func init() {
 	log.Debugf("Using config file %s", viper.GetString("configfile"))
 
 	// Test flag sets which notifications section from config we want to use.
-	// After this, cfg.Notifications map is the map we want to use later on. -- check this
 	testMode = viper.GetBool("test")
-
 	if testMode {
 		log.Info("Running in test mode")
 		viper.Set("notifications", viper.Get("notifications_test"))
-		// cfg.Notifications = cfg.Notifications_test
 	}
 
 	// Now that our log is set up and we've got a valid config, handle all init (fatal) errors using the following func
 	// that sends a slack message and an email, logs the error, and then exits.
 	initErrorNotify := func(m string) {
+		log.Error(m)
 		sendSlackMessage(m)
 		sendEmail("", m)
-		log.Fatal(m)
+
+		if _, err := os.Stat(viper.GetString("logs.errfile")); !os.IsNotExist(err) {
+			if e := os.Remove(viper.GetString("logs.errfile")); e != nil {
+				log.Warn("Could not remove error file.  Please remove manually")
+			}
+		}
+
+		os.Exit(1)
 	}
 
 	// Check that we're running as the right user
-	// if err = checkUser(viper.GetString("global.should_runuser")); err != nil {
-	// 	log.Error(err)
-	// 	os.Exit(3)
-	// }
-
 	cuser, err := user.Current()
 	if err != nil {
 		initErrorNotify("Could not lookup current user.  Exiting")
