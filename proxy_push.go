@@ -30,11 +30,11 @@ import (
 // Error handling - break everything!
 
 const (
-	globalTimeout string = "30ssec" // Global timeout
-	exptTimeout   string = "20s"    // Experiment timeout
-	slackTimeout  string = "15s"    // Slack message timeout
-	pingTimeout   string = "10s"    // Ping timeout per node
-	vpiTimeout    string = "5s"     // voms-proxy-init timeout per proxy
+	globalTimeout string = "30s" // Global timeout
+	exptTimeout   string = "20s" // Experiment timeout
+	slackTimeout  string = "15s" // Slack message timeout
+	pingTimeout   string = "10s" // Ping timeout per node
+	vpiTimeout    string = "5s"  // voms-proxy-init timeout per proxy
 
 	configFile      string = "proxy_push_config_test.yml"       // CHANGE ME BEFORE PRODUCTION
 	exptLogFilename string = "golang_proxy_push_%s.log"         // CHANGE ME BEFORE PRODUCTION - temp file per experiment that will be emailed to experiment
