@@ -131,7 +131,7 @@ func pingAllNodes(nodes []string, wg *sync.WaitGroup, done chan struct{}) <-chan
 	c := make(chan pingNodeStatus, len(nodes))
 	for _, node := range nodes {
 		go func(node string) {
-			fmt.Println("Inside ping goroutine")
+			defer wg.Done()
 			p := pingNodeStatus{node, nil}
 			pingargs := []string{"-W", "5", "-c", "1", node}
 			cmd := exec.Command("ping", pingargs...)
@@ -140,16 +140,12 @@ func pingAllNodes(nodes []string, wg *sync.WaitGroup, done chan struct{}) <-chan
 				p.err = fmt.Errorf("%s %s", cmdErr, cmdOut)
 			}
 			c <- p
-			fmt.Println("put status in channel")
-			wg.Done()
 		}(node)
 	}
 
 	// Wait for all goroutines to finish, then close channel "done" so that exptWorker can proceed
 	go func() {
-		fmt.Println("waiting on waitgroup")
 		wg.Wait()
-		fmt.Println("waitgroup done.  Closing done channel")
 		close(done)
 	}()
 
@@ -390,18 +386,15 @@ func experimentWorker(exptname string, w *sync.WaitGroup, done <-chan bool) <-ch
 		pingWG.Add(len(exptConfig.GetStringSlice("nodes")))
 		pingDone := make(chan struct{})
 		pingChannel := pingAllNodes(exptConfig.GetStringSlice("nodes"), &pingWG, pingDone)
-
 	pingLoop:
 		for {
 			select {
 			case <-pingDone: // pingDone is closed
-				fmt.Println("pingDone is done.  Breaking out of loop")
 				break pingLoop
 			case <-time.After(pingTimeoutDuration): // We give pingTimeoutDuration for all pings
 				exptLog.Error("Hit the ping timeout!")
 				break pingLoop
 			case testnode := <-pingChannel: // Receive on pingChannel
-				fmt.Println("Received value on PingChannel")
 				if testnode.err == nil {
 					delete(badnodes, testnode.node)
 				} else {
