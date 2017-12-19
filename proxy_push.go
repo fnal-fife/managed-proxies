@@ -390,11 +390,16 @@ func experimentWorker(exptname string, w *sync.WaitGroup, done <-chan bool) <-ch
 		pingWG.Add(len(exptConfig.GetStringSlice("nodes")))
 		pingDone := make(chan struct{})
 		pingChannel := pingAllNodes(exptConfig.GetStringSlice("nodes"), &pingWG, pingDone)
+
+	pingLoop:
 		for {
 			select {
 			case <-pingDone: // pingDone is closed
 				fmt.Println("pingDone is done.  Breaking out of loop")
-				break
+				break pingLoop
+			case <-time.After(pingTimeoutDuration): // We give pingTimeoutDuration for all pings
+				exptLog.Error("Hit the ping timeout!")
+				break pingLoop
 			case testnode := <-pingChannel: // Receive on pingChannel
 				fmt.Println("Received value on PingChannel")
 				if testnode.err == nil {
@@ -402,9 +407,6 @@ func experimentWorker(exptname string, w *sync.WaitGroup, done <-chan bool) <-ch
 				} else {
 					exptLog.Error(testnode.err)
 				}
-			case <-time.After(pingTimeoutDuration): // We give pingTimeoutDuration for each receive
-				exptLog.Error("Hit the ping timeout!")
-				break
 			}
 		}
 
