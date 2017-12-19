@@ -211,8 +211,9 @@ func getProxies(exptConfig *viper.Viper, globalConfig map[string]string, exptnam
 	return c
 }
 
-func copyProxies(exptConfig *viper.Viper) <-chan copyProxiesStatus {
-	c := make(chan copyProxiesStatus)
+func copyProxies(exptConfig *viper.Viper, wg *sync.WaitGroup) <-chan copyProxiesStatus {
+	numSlots := len(exptConfig.GetStringMapString("accounts")) * len(exptConfig.GetStringSlice("nodes"))
+	c := make(chan copyProxiesStatus, numSlots)
 	// One copy per node and role
 	for acct, role := range exptConfig.GetStringMapString("accounts") {
 		go func(acct, role string) {
@@ -220,7 +221,8 @@ func copyProxies(exptConfig *viper.Viper) <-chan copyProxiesStatus {
 			proxyFilePath := path.Join("proxies", proxyFile)
 
 			for _, node := range exptConfig.GetStringSlice("nodes") {
-				go func(acct, role, node string) {
+				go func(node string) {
+					defer wg.Done()
 					cps := copyProxiesStatus{node, acct, role, nil}
 					accountNode := acct + "@" + node + ".fnal.gov"
 					newProxyPath := path.Join(exptConfig.GetString("dir"), acct, proxyFile+".new")
@@ -249,10 +251,17 @@ func copyProxies(exptConfig *viper.Viper) <-chan copyProxiesStatus {
 						cps.err = msg
 					}
 					c <- cps
-				}(acct, role, node)
+				}(node)
 			}
 		}(acct, role)
 	}
+
+	// Wait for all goroutines to finish, then close channel so that exptWorker can proceed
+	go func() {
+		wg.Wait()
+		close(c)
+	}()
+
 	return c
 }
 
@@ -397,9 +406,6 @@ func experimentWorker(exptname string, w *sync.WaitGroup, done <-chan struct{}) 
 	pingLoop:
 		for {
 			select {
-			case <-timeout: // We give timeout for all pings
-				exptLog.Error("Hit the ping timeout!")
-				break pingLoop
 			case testnode, chanOpen := <-pingChannel: // Receive on pingChannel
 				if !chanOpen { // Break out of loop and proceed only if channel is not open
 					break pingLoop
@@ -409,6 +415,9 @@ func experimentWorker(exptname string, w *sync.WaitGroup, done <-chan struct{}) 
 				} else {
 					exptLog.Error(testnode.err)
 				}
+			case <-timeout: // We give timeout for all pings
+				exptLog.Error("Hit the ping timeout!")
+				break pingLoop
 			}
 		}
 
@@ -425,17 +434,11 @@ func experimentWorker(exptname string, w *sync.WaitGroup, done <-chan struct{}) 
 		// since they're valid for 24 hours
 		var vpiWG sync.WaitGroup
 		vpiWG.Add(len(exptConfig.GetStringMapString("accounts")))
-		// vpiDone := make(chan struct{})
 		vpiChan := getProxies(exptConfig, viper.GetStringMapString("global"), expt.name, &vpiWG)
+		timeout = time.After(vpiTimeoutDuration)
 	vpiLoop:
 		for {
 			select {
-			// case <-vpiDone: // vpiDone is closed
-			// 	break vpiLoop
-			case <-time.After(vpiTimeoutDuration): // voms-proxy-init timeout for all operations
-				exptLog.Errorf("Error obtaining proxy for %s:  timeout.  Check log for details. Continuing to next proxy.\n", expt.name)
-				expt.success = false
-				break vpiLoop
 			case vpi, chanOpen := <-vpiChan: // receive on vpiChan
 				if !chanOpen {
 					break vpiLoop
@@ -446,24 +449,34 @@ func experimentWorker(exptname string, w *sync.WaitGroup, done <-chan struct{}) 
 				} else {
 					exptLog.Debug("Generated voms proxy: ", vpi.filename)
 				}
+			case <-timeout: // voms-proxy-init timeout for all operations
+				exptLog.Errorf("Error obtaining proxy for %s:  timeout.  Check log for details. Continuing to next proxy.\n", expt.name)
+				expt.success = false
+				break vpiLoop
 			}
 		}
 
-		copyChan := copyProxies(exptConfig)
-		for _ = range exptConfig.GetStringSlice("nodes") {
-			for _ = range exptConfig.GetStringMapString("accounts") {
-				select {
-				case pushproxy := <-copyChan:
-					if pushproxy.err != nil {
-						exptLog.Error(pushproxy.err)
-						expt.success = false
-					} else {
-						successfulCopies[pushproxy.role] = append(successfulCopies[pushproxy.role], pushproxy.node)
-					}
-				case <-time.After(exptTimeoutDuration):
-					exptLog.Error("Experiment hit the timeout when waiting to push proxy.")
-					expt.success = false
+		var copyWG sync.WaitGroup
+		copyWG.Add(len(exptConfig.GetStringMapString("accounts")) * len(exptConfig.GetStringSlice("nodes")))
+		copyChan := copyProxies(exptConfig, &copyWG)
+		timeout = time.After(exptTimeoutDuration)
+	copyLoop:
+		for {
+			select {
+			case pushproxy, chanOpen := <-copyChan:
+				if !chanOpen {
+					break copyLoop
 				}
+				if pushproxy.err != nil {
+					exptLog.Error(pushproxy.err)
+					expt.success = false
+				} else {
+					successfulCopies[pushproxy.role] = append(successfulCopies[pushproxy.role], pushproxy.node)
+				}
+			case <-timeout: // Copy proxy timeout for all proxies
+				exptLog.Error("Experiment hit the timeout when waiting to push proxy.")
+				expt.success = false
+				break copyLoop
 			}
 		}
 
@@ -483,6 +496,7 @@ func experimentWorker(exptname string, w *sync.WaitGroup, done <-chan struct{}) 
 		log.Info("Finished cleaning up ", expt.name)
 
 		// Block until we get go-ahead from expt manager that it's put message into agg channel or timeout expires
+		// Note that after this select runs, we will call w.Done()
 		select {
 		case <-done:
 		case <-time.After(exptTimeoutDuration):
