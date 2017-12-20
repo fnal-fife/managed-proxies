@@ -24,7 +24,7 @@ import (
 	gomail "gopkg.in/gomail.v2"
 )
 
-// buffered channels for agg channel
+// ping solution:  we should really close ping channel  or revert to other of doing it
 //notifications - IN PROGRESS - Formatting
 // Error handling - break everything!
 
@@ -129,9 +129,12 @@ func checkKeys(exptConfig *viper.Viper) error {
 // func pingAllNodes(nodes []string, wg *sync.WaitGroup) <-chan pingNodeStatus {
 func pingAllNodes(nodes []string) <-chan pingNodeStatus {
 	c := make(chan pingNodeStatus, len(nodes))
+	var wg sync.WaitGroup
+	wg.Add(len(nodes))
+
 	for _, node := range nodes {
 		go func(node string) {
-			// defer wg.Done()
+			defer wg.Done()
 			p := pingNodeStatus{node, nil}
 			pingargs := []string{"-W", "5", "-c", "1", node}
 			cmd := exec.Command("ping", pingargs...)
@@ -143,11 +146,11 @@ func pingAllNodes(nodes []string) <-chan pingNodeStatus {
 		}(node)
 	}
 
-	// // Wait for all goroutines to finish, then close channel so that exptWorker can proceed
-	// go func() {
-	// 	defer close(c)
-	// 	wg.Wait()
-	// }()
+	// Wait for all goroutines to finish, then close channel so that exptWorker can proceed
+	go func() {
+		defer close(c)
+		wg.Wait()
+	}()
 
 	return c
 }
@@ -372,20 +375,20 @@ func experimentWorker(exptname string, w *sync.WaitGroup, done <-chan struct{}) 
 			// close(c)
 		}
 
-		waitTimeout := func(wg *sync.WaitGroup, timeout time.Duration) bool {
-			c := make(chan struct{})
-			go func() {
-				defer close(c)
-				wg.Wait()
-			}()
+		// waitTimeout := func(wg *sync.WaitGroup, timeout time.Duration) bool {
+		// 	c := make(chan struct{})
+		// 	go func() {
+		// 		defer close(c)
+		// 		wg.Wait()
+		// 	}()
 
-			select {
-			case <-c:
-				return false // Did not time out
-			case <-time.After(timeout):
-				return true // Timed out
-			}
-		}
+		// 	select {
+		// 	case <-c:
+		// 		return false // Did not time out
+		// 	case <-time.After(timeout):
+		// 		return true // Timed out
+		// 	}
+		// }
 
 		for _, node := range exptConfig.GetStringSlice("nodes") {
 			badnodes[node] = struct{}{}
@@ -416,43 +419,45 @@ func experimentWorker(exptname string, w *sync.WaitGroup, done <-chan struct{}) 
 			return
 		}
 
-		var pingWG sync.WaitGroup
-		pingWG.Add(len(exptConfig.GetStringSlice("nodes")))
+		// var pingWG sync.WaitGroup
+		// pingWG.Add(len(exptConfig.GetStringSlice("nodes")))
 		pingChannel := pingAllNodes(exptConfig.GetStringSlice("nodes"))
-		// timeout := time.After(pingTimeoutDuration)
-		// pingLoop:
-		// 	for {
-		// 		select {
-		// 		case testnode, chanOpen := <-pingChannel: // Receive on pingChannel
-		// 			if !chanOpen { // Break out of loop and proceed only if channel is not open
-		// 				break pingLoop
-		// 			}
-		// 			if testnode.err == nil {
-		// 				delete(badnodes, testnode.node)
-		// 			} else {
-		// 				exptLog.Error(testnode.err)
-		// 			}
-		// 		case <-timeout: // We give timeout for all pings
-		// 			exptLog.Error("Hit the ping timeout!")
-		// 			break pingLoop
-		// 		}
-		// 	}
+		timeout := time.After(pingTimeoutDuration)
 
-		for i := 0; i < len(exptConfig.GetStringSlice("nodes")); i++ {
-			go func() {
-				defer pingWG.Done()
-				testnode := <-pingChannel
+		// Listen until we either timeout or the pingChannel is closed
+	pingLoop:
+		for {
+			select {
+			case testnode, chanOpen := <-pingChannel: // Receive on pingChannel
+				if !chanOpen { // Break out of loop and proceed only if channel is not open
+					break pingLoop
+				}
 				if testnode.err == nil {
 					delete(badnodes, testnode.node)
 				} else {
 					exptLog.Error(testnode.err)
 				}
-			}()
+			case <-timeout: // We give timeout for all pings
+				exptLog.Error("Hit the ping timeout!")
+				break pingLoop
+			}
 		}
 
-		if waitTimeout(&pingWG, pingTimeoutDuration) {
-			exptLog.Error("Hit the ping timeout!")
-		}
+		// // for i := 0; i < len(exptConfig.GetStringSlice("nodes")); i++ {
+		// // 	go func() {
+		// // 		defer pingWG.Done()
+		// // 		testnode := <-pingChannel
+		// // 		if testnode.err == nil {
+		// // 			delete(badnodes, testnode.node)
+		// // 		} else {
+		// // 			exptLog.Error(testnode.err)
+		// // 		}
+		// // 	}()
+		// // }
+
+		// if waitTimeout(&pingWG, pingTimeoutDuration) {
+		// 	exptLog.Error("Hit the ping timeout!")
+		// }
 
 		badNodesSlice := make([]string, 0, len(badnodes))
 		for node := range badnodes {
@@ -468,7 +473,7 @@ func experimentWorker(exptname string, w *sync.WaitGroup, done <-chan struct{}) 
 		var vpiWG sync.WaitGroup
 		vpiWG.Add(len(exptConfig.GetStringMapString("accounts")))
 		vpiChan := getProxies(exptConfig, viper.GetStringMapString("global"), expt.name, &vpiWG)
-		timeout := time.After(vpiTimeoutDuration)
+		timeout = time.After(vpiTimeoutDuration)
 	vpiLoop:
 		for {
 			select {
