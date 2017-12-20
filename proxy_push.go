@@ -305,8 +305,8 @@ func copyLogs(exptSuccess bool, exptlogpath, exptgenlogpath string, logconfig ma
 		}
 	}
 
-	copyLog(exptgenlogpath, viper.GetString("logs.logfile"))
-	copyLog(exptlogpath, viper.GetString("logs.errfile"))
+	go copyLog(exptgenlogpath, viper.GetString("logs.logfile"))
+	go copyLog(exptlogpath, viper.GetString("logs.errfile"))
 
 }
 
