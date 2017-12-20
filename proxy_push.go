@@ -43,7 +43,7 @@ const (
 var globalTimeoutDuration, exptTimeoutDuration, slackTimeoutDuration, pingTimeoutDuration, vpiTimeoutDuration time.Duration
 var log = logrus.New()                                       // Global logger
 var emailDialer = gomail.Dialer{Host: "localhost", Port: 25} // gomail dialer to use to send emails
-var rwmux sync.RWMutex                                       // mutex to be used when copying experiment log into master log
+var rwmuxErr, rwmuxLog sync.RWMutex                          // mutex to be used when copying experiment log into master log
 var testMode = false
 
 // Types to carry information about success and status of various operations over channels
@@ -273,7 +273,7 @@ func copyProxies(exptConfig *viper.Viper) <-chan copyProxiesStatus {
 }
 
 func copyLogs(exptSuccess bool, exptlogpath, exptgenlogpath string, logconfig map[string]string) {
-	copyLog := func(src, dest string) {
+	copyLog := func(src, dest string, rwmux *sync.RWMutex) {
 		data, err := ioutil.ReadFile(src)
 		if err != nil {
 			if exptSuccess { // If the experiment was successful, there would be no error logfile, so we're not worried
@@ -305,8 +305,8 @@ func copyLogs(exptSuccess bool, exptlogpath, exptgenlogpath string, logconfig ma
 		}
 	}
 
-	go copyLog(exptgenlogpath, viper.GetString("logs.logfile"))
-	go copyLog(exptlogpath, viper.GetString("logs.errfile"))
+	go copyLog(exptgenlogpath, viper.GetString("logs.logfile"), &rwmuxLog)
+	go copyLog(exptlogpath, viper.GetString("logs.errfile"), &rwmuxErr)
 
 }
 
