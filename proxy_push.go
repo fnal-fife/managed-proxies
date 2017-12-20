@@ -272,7 +272,10 @@ func copyProxies(exptConfig *viper.Viper) <-chan copyProxiesStatus {
 }
 
 func copyLogs(exptSuccess bool, exptlogpath, exptgenlogpath string, logconfig map[string]string) {
+	var wg sync.WaitGroup
+	wg.Add(2)
 	copyLog := func(src, dest string, rwmux *sync.RWMutex) {
+		defer wg.Done()
 		data, err := ioutil.ReadFile(src)
 		if err != nil {
 			if exptSuccess { // If the experiment was successful, there would be no error logfile, so we're not worried
@@ -306,7 +309,7 @@ func copyLogs(exptSuccess bool, exptlogpath, exptgenlogpath string, logconfig ma
 
 	go copyLog(exptgenlogpath, viper.GetString("logs.logfile"), &rwmuxLog)
 	go copyLog(exptlogpath, viper.GetString("logs.errfile"), &rwmuxErr)
-
+	wg.Wait()
 }
 
 func (expt *experimentSuccess) experimentCleanup() error {
