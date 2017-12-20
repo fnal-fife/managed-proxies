@@ -126,7 +126,6 @@ func checkKeys(exptConfig *viper.Viper) error {
 	return nil
 }
 
-// func pingAllNodes(nodes []string, wg *sync.WaitGroup) <-chan pingNodeStatus {
 func pingAllNodes(nodes []string) <-chan pingNodeStatus {
 	c := make(chan pingNodeStatus, len(nodes))
 	var wg sync.WaitGroup
@@ -155,9 +154,11 @@ func pingAllNodes(nodes []string) <-chan pingNodeStatus {
 	return c
 }
 
-func getProxies(exptConfig *viper.Viper, globalConfig map[string]string, exptname string, wg *sync.WaitGroup) <-chan vomsProxyStatus {
+func getProxies(exptConfig *viper.Viper, globalConfig map[string]string, exptname string) <-chan vomsProxyStatus {
 	c := make(chan vomsProxyStatus, len(exptConfig.GetStringMapString("accounts")))
 	var vomsprefix, certfile, keyfile string
+	var wg sync.WaitGroup
+	wg.Add(len(exptConfig.GetStringMapString("accounts")))
 
 	if exptConfig.IsSet("vomsgroup") {
 		vomsprefix = exptConfig.GetString("vomsgroup")
@@ -205,7 +206,7 @@ func getProxies(exptConfig *viper.Viper, globalConfig map[string]string, exptnam
 		}(account, role)
 	}
 
-	// Wait for all goroutines to finish, then close channel "done" so that exptWorker can proceed
+	// Wait for all goroutines to finish, then close channel so that exptWorker can proceed
 	go func() {
 		defer close(c)
 		wg.Wait()
@@ -214,9 +215,12 @@ func getProxies(exptConfig *viper.Viper, globalConfig map[string]string, exptnam
 	return c
 }
 
-func copyProxies(exptConfig *viper.Viper, wg *sync.WaitGroup) <-chan copyProxiesStatus {
+func copyProxies(exptConfig *viper.Viper) <-chan copyProxiesStatus {
 	numSlots := len(exptConfig.GetStringMapString("accounts")) * len(exptConfig.GetStringSlice("nodes"))
 	c := make(chan copyProxiesStatus, numSlots)
+	var wg sync.WaitGroup
+	wg.Add(numSlots)
+
 	// One copy per node and role
 	for acct, role := range exptConfig.GetStringMapString("accounts") {
 		go func(acct, role string) {
@@ -375,21 +379,6 @@ func experimentWorker(exptname string, w *sync.WaitGroup, done <-chan struct{}) 
 			// close(c)
 		}
 
-		// waitTimeout := func(wg *sync.WaitGroup, timeout time.Duration) bool {
-		// 	c := make(chan struct{})
-		// 	go func() {
-		// 		defer close(c)
-		// 		wg.Wait()
-		// 	}()
-
-		// 	select {
-		// 	case <-c:
-		// 		return false // Did not time out
-		// 	case <-time.After(timeout):
-		// 		return true // Timed out
-		// 	}
-		// }
-
 		for _, node := range exptConfig.GetStringSlice("nodes") {
 			badnodes[node] = struct{}{}
 		}
@@ -419,11 +408,8 @@ func experimentWorker(exptname string, w *sync.WaitGroup, done <-chan struct{}) 
 			return
 		}
 
-		// var pingWG sync.WaitGroup
-		// pingWG.Add(len(exptConfig.GetStringSlice("nodes")))
 		pingChannel := pingAllNodes(exptConfig.GetStringSlice("nodes"))
 		timeout := time.After(pingTimeoutDuration)
-
 		// Listen until we either timeout or the pingChannel is closed
 	pingLoop:
 		for {
@@ -443,22 +429,6 @@ func experimentWorker(exptname string, w *sync.WaitGroup, done <-chan struct{}) 
 			}
 		}
 
-		// // for i := 0; i < len(exptConfig.GetStringSlice("nodes")); i++ {
-		// // 	go func() {
-		// // 		defer pingWG.Done()
-		// // 		testnode := <-pingChannel
-		// // 		if testnode.err == nil {
-		// // 			delete(badnodes, testnode.node)
-		// // 		} else {
-		// // 			exptLog.Error(testnode.err)
-		// // 		}
-		// // 	}()
-		// // }
-
-		// if waitTimeout(&pingWG, pingTimeoutDuration) {
-		// 	exptLog.Error("Hit the ping timeout!")
-		// }
-
 		badNodesSlice := make([]string, 0, len(badnodes))
 		for node := range badnodes {
 			badNodesSlice = append(badNodesSlice, node)
@@ -470,10 +440,9 @@ func experimentWorker(exptname string, w *sync.WaitGroup, done <-chan struct{}) 
 
 		// If voms-proxy-init fails, we'll just continue on.  We'll still try to push proxies,
 		// since they're valid for 24 hours
-		var vpiWG sync.WaitGroup
-		vpiWG.Add(len(exptConfig.GetStringMapString("accounts")))
-		vpiChan := getProxies(exptConfig, viper.GetStringMapString("global"), expt.name, &vpiWG)
+		vpiChan := getProxies(exptConfig, viper.GetStringMapString("global"), expt.name)
 		timeout = time.After(vpiTimeoutDuration)
+		// Listen until we either timeout or vpiChan is closed
 	vpiLoop:
 		for {
 			select {
@@ -494,10 +463,9 @@ func experimentWorker(exptname string, w *sync.WaitGroup, done <-chan struct{}) 
 			}
 		}
 
-		var copyWG sync.WaitGroup
-		copyWG.Add(len(exptConfig.GetStringMapString("accounts")) * len(exptConfig.GetStringSlice("nodes")))
-		copyChan := copyProxies(exptConfig, &copyWG)
+		copyChan := copyProxies(exptConfig)
 		timeout = time.After(exptTimeoutDuration)
+		// Listen until we either timeout or the copyChan is closed
 	copyLoop:
 		for {
 			select {
