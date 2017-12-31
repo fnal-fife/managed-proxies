@@ -37,7 +37,7 @@ const (
 	exptTimeout   string = "30s" // Experiment timeout
 	slackTimeout  string = "15s" // Slack message timeout
 	pingTimeout   string = "10s" // Ping timeout (for all pings per experiment)
-	vpiTimeout    string = "10s" // voms-proxy-init timeout (total for vpi's per experiment)
+	vpiTimeout    string = "10s" // voms-proxy-init timeout (total for vpis per experiment)
 
 	configFile      string = "proxy_push_config_test.yml"       // CHANGE ME BEFORE PRODUCTION
 	exptLogFilename string = "golang_proxy_push_%s.log"         // CHANGE ME BEFORE PRODUCTION - temp file per experiment that will be emailed to experiment
@@ -166,8 +166,9 @@ func pingAllNodes(ctx context.Context, nodes []string) <-chan pingNodeStatus {
 			if cmdOut, cmdErr := cmd.CombinedOutput(); cmdErr != nil {
 				if e := ctx.Err(); e != nil {
 					p.err = e
+				} else {
+					p.err = fmt.Errorf("%s %s", cmdErr, cmdOut)
 				}
-				p.err = fmt.Errorf("%s %s", cmdErr, cmdOut)
 			}
 			c <- p
 		}(node)
@@ -182,7 +183,7 @@ func pingAllNodes(ctx context.Context, nodes []string) <-chan pingNodeStatus {
 	return c
 }
 
-func getProxies(exptConfig *viper.Viper, globalConfig map[string]string, exptname string) <-chan vomsProxyStatus {
+func getProxies(ctx context.Context, exptConfig *viper.Viper, globalConfig map[string]string, exptname string) <-chan vomsProxyStatus {
 	c := make(chan vomsProxyStatus, len(exptConfig.GetStringMapString("accounts")))
 	var vomsprefix, certfile, keyfile string
 	var wg sync.WaitGroup
@@ -219,12 +220,15 @@ func getProxies(exptConfig *viper.Viper, globalConfig map[string]string, exptnam
 				vomsstring, "-cert", certfile,
 				"-key", keyfile, "-out", outfilePath}
 
-			cmd := exec.Command("/usr/bin/voms-proxy-init", vpiargs...)
-			cmdErr := cmd.Run()
-			if cmdErr != nil {
-				err := fmt.Sprintf(`Error obtaining %s.  Please check the cert on 
-				  fifeutilgpvm01. \n%s Continuing on to next role.`, outfile, cmdErr)
-				vpi.err = errors.New(err)
+			cmd := exec.CommandContext(ctx, "/usr/bin/voms-proxy-init", vpiargs...)
+			if cmdErr := cmd.Run(); cmdErr != nil {
+				if e := ctx.Err(); e != nil {
+					vpi.err = e
+				} else {
+					err := fmt.Sprintf(`Error obtaining %s.  Please check the cert on 
+					fifeutilgpvm01. \n%s Continuing on to next role.`, outfile, cmdErr)
+					vpi.err = errors.New(err)
+				}
 			}
 			// if e == "darkside" {
 			// 	time.Sleep(time.Duration(10) * time.Second)
@@ -484,14 +488,16 @@ func experimentWorker(ctx context.Context, exptname string) <-chan experimentSuc
 
 		// If voms-proxy-init fails, we'll just continue on.  We'll still try to push proxies,
 		// since they're valid for 24 hours
-		vpiChan := getProxies(exptConfig, viper.GetStringMapString("global"), expt.name)
-		timeout := time.After(vpiTimeoutDuration)
+		vpiCtx, vpiCancel := context.WithTimeout(ctx, vpiTimeoutDuration)
+		vpiChan := getProxies(vpiCtx, exptConfig, viper.GetStringMapString("global"), expt.name)
+		// timeout := time.After(vpiTimeoutDuration)
 		// Listen until we either timeout or vpiChan is closed
 	vpiLoop:
 		for {
 			select {
 			case vpi, chanOpen := <-vpiChan: // receive on vpiChan
 				if !chanOpen {
+					vpiCancel()
 					break vpiLoop
 				}
 				if vpi.err != nil {
@@ -500,15 +506,23 @@ func experimentWorker(ctx context.Context, exptname string) <-chan experimentSuc
 				} else {
 					exptLog.Debug("Generated voms proxy: ", vpi.filename)
 				}
-			case <-timeout: // voms-proxy-init timeout for all operations
-				exptLog.Errorf("Error obtaining proxy for %s:  timeout.  Check log for details. Continuing to next proxy.\n", expt.name)
-				expt.success = false
+			case <-vpiCtx.Done():
+				if e := vpiCtx.Err(); e == context.DeadlineExceeded {
+					exptLog.Errorf("Hit the voms-proxy-init timeout for %s: %s.  Check log for details.  Continuing to next proxy.\n", expt.name, e)
+				} else {
+					exptLog.Error(e)
+				}
+				vpiCancel()
 				break vpiLoop
+				// case <-timeout: // voms-proxy-init timeout for all operations
+				// 	exptLog.Errorf("Error obtaining proxy for %s:  timeout.  Check log for details. Continuing to next proxy.\n", expt.name)
+				// 	expt.success = false
+				// 	break vpiLoop
 			}
 		}
 
 		copyChan := copyProxies(exptConfig)
-		timeout = time.After(exptTimeoutDuration)
+		timeout := time.After(exptTimeoutDuration)
 		// Listen until we either timeout or the copyChan is closed
 	copyLoop:
 		for {
