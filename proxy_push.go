@@ -2,19 +2,18 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
-	"sync"
-	// _ "net/http/pprof"
 	"os"
 	"os/exec"
 	"os/user"
 	"path"
-	// "runtime"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/rifflock/lfshook"
@@ -26,41 +25,56 @@ import (
 
 //notifications - IN PROGRESS - Formatting
 // Error handling - break everything!
+// parent context with globalTimeout, from it generate child timeout, at each select within
+// NOte that when any process is run outside of golang (without a context), we need to
+// make sure that we run it asynchronously, can capture the pid and kill it if it runs
+// over time.  example here:  http://www.darrencoxall.com/golang/executing-commands-in-go/
+// experimentWorker, select from operation reporting channel, child context
 
+// Timeouts, defaults, and format strings
 const (
 	globalTimeout string = "60s" // Global timeout
 	exptTimeout   string = "30s" // Experiment timeout
 	slackTimeout  string = "15s" // Slack message timeout
-	pingTimeout   string = "10s" // Ping timeout (total)
-	vpiTimeout    string = "10s" // voms-proxy-init timeout (total)
+	pingTimeout   string = "10s" // Ping timeout (for all pings per experiment)
+	vpiTimeout    string = "10s" // voms-proxy-init timeout (total for vpi's per experiment)
 
 	configFile      string = "proxy_push_config_test.yml"       // CHANGE ME BEFORE PRODUCTION
 	exptLogFilename string = "golang_proxy_push_%s.log"         // CHANGE ME BEFORE PRODUCTION - temp file per experiment that will be emailed to experiment
 	exptGenFilename string = "golang_proxy_push_general_%s.log" // CHANGE ME BEFORE PRODUCTION - temp file per experiment that will be copied over to logfile
 )
 
-var globalTimeoutDuration, exptTimeoutDuration, slackTimeoutDuration, pingTimeoutDuration, vpiTimeoutDuration time.Duration
-var log = logrus.New()                                       // Global logger
-var emailDialer = gomail.Dialer{Host: "localhost", Port: 25} // gomail dialer to use to send emails
-var rwmuxErr, rwmuxLog sync.RWMutex                          // mutex to be used when copying experiment log into master log
+var globalTimeoutDuration, exptTimeoutDuration, slackTimeoutDuration, pingTimeoutDuration, vpiTimeoutDuration time.Duration // Timeouts we will populate later
+var log = logrus.New()                                                                                                      // Global logger
+var emailDialer = gomail.Dialer{Host: "localhost", Port: 25}                                                                // gomail dialer to use to send emails
+var rwmuxErr, rwmuxLog sync.RWMutex                                                                                         // mutexes to be used when copying experiment logs into master and error log
+// if testMode is true:  send only general emails to notifications_test.admin_email in config file, send Slack notification to test channel. Do not send experiment-specific email
 var testMode = false
 
 // Types to carry information about success and status of various operations over channels
+
+// experimentSuccess stores information on whether all the processes involved in generating, copying, and changing permissions on all proxies for
+// an experiment were successful.
 type experimentSuccess struct {
 	name    string
 	success bool
 }
 
+// pingNodeStatus stores information about an attempt to ping a node.  If there was an error, it's stored in err.
 type pingNodeStatus struct {
 	node string
 	err  error
 }
 
+// vomsProxyStatus stores information about an attempt to run voms-proxy-init to generate a VOMS proxy.
+// If there was an error, it's stored in err.
 type vomsProxyStatus struct {
 	filename string
 	err      error
 }
 
+// copyProxiesStatus stores information that uniquely identifies a VOMS proxy within an experiment (account, role) and the node
+// to which it was attempted to be copied.  If there was an error doing so, it's stored in err.
 type copyProxiesStatus struct {
 	node    string
 	account string
@@ -70,6 +84,8 @@ type copyProxiesStatus struct {
 
 // Experiment worker-specific functions
 
+// exptLogInit sets up the logrus instance for the experiment worker
+// It returns a pointer to a logrus.Entry object that can be used to log events.
 func exptLogInit(ename string) *logrus.Entry {
 	var Log = logrus.New()
 	exptlog := fmt.Sprintf(exptLogFilename, ename)
@@ -100,23 +116,30 @@ func exptLogInit(ename string) *logrus.Entry {
 	return exptlogger
 }
 
-func getKerbTicket(krb5ccname string) error {
+// getKerbTicket runs kinit to get a kerberos ticket
+func getKerbTicket(ctx context.Context, krb5ccname string) error {
 	os.Setenv("KRB5CCNAME", krb5ccname)
 
 	kerbcmdargs := []string{"-k", "-t",
 		"/opt/gen_keytabs/config/gcso_monitor.keytab",
 		"monitor/gcso/fermigrid.fnal.gov@FNAL.GOV"}
 
-	cmd := exec.Command("/usr/krb5/bin/kinit", kerbcmdargs...)
-	cmdOut, cmdErr := cmd.CombinedOutput()
-	if cmdErr != nil {
+	cmd := exec.CommandContext(ctx, "/usr/krb5/bin/kinit", kerbcmdargs...)
+	if cmdOut, cmdErr := cmd.CombinedOutput(); cmdErr != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return ctx.Err()
+		}
 		return fmt.Errorf("Initializing a kerb ticket failed.  The error was %s: %s", cmdErr, cmdOut)
 	}
 	return nil
 }
 
-func checkKeys(exptConfig *viper.Viper) error {
-	// Nodes and Roles
+// checkKeys looks at the portion of the configuration passed in and makes sure the required keys are present
+func checkKeys(ctx context.Context, exptConfig *viper.Viper) error {
+	if e := ctx.Err(); e != nil {
+		return e
+	}
+
 	if !exptConfig.IsSet("nodes") || !exptConfig.IsSet("accounts") {
 		return errors.New(`Input file improperly formatted for %s (accounts or nodes don't 
 			exist for this experiment). Please check the config file on fifeutilgpvm01.
@@ -125,8 +148,12 @@ func checkKeys(exptConfig *viper.Viper) error {
 	return nil
 }
 
-func pingAllNodes(nodes []string) <-chan pingNodeStatus {
+// pingAllNodes will launch goroutines, which each ping a node in the slice nodes.  It returns a channel,
+// on which it reports the pingNodeStatuses signifying success or error
+func pingAllNodes(ctx context.Context, nodes []string) <-chan pingNodeStatus {
+	// Buffered Channel to report on
 	c := make(chan pingNodeStatus, len(nodes))
+
 	var wg sync.WaitGroup
 	wg.Add(len(nodes))
 
@@ -135,9 +162,11 @@ func pingAllNodes(nodes []string) <-chan pingNodeStatus {
 			defer wg.Done()
 			p := pingNodeStatus{node, nil}
 			pingargs := []string{"-W", "5", "-c", "1", node}
-			cmd := exec.Command("ping", pingargs...)
-			cmdOut, cmdErr := cmd.CombinedOutput()
-			if cmdErr != nil {
+			cmd := exec.CommandContext(ctx, "ping", pingargs...)
+			if cmdOut, cmdErr := cmd.CombinedOutput(); cmdErr != nil {
+				if e := ctx.Err(); e != nil {
+					p.err = e
+				}
 				p.err = fmt.Errorf("%s %s", cmdErr, cmdOut)
 			}
 			c <- p
@@ -360,7 +389,7 @@ func (expt *experimentSuccess) experimentCleanup() error {
 	return nil
 }
 
-func experimentWorker(exptname string) <-chan experimentSuccess {
+func experimentWorker(ctx context.Context, exptname string) <-chan experimentSuccess {
 	c := make(chan experimentSuccess)
 	expt := experimentSuccess{exptname, true} // Initialize
 	exptLog := exptLogInit(expt.name)
@@ -400,25 +429,27 @@ func experimentWorker(exptname string) <-chan experimentSuccess {
 
 		// If we can't get a kerb ticket, log error and keep going.
 		// We might have an old one that's still valid.
-		if err := getKerbTicket(krb5ccnameCfg); err != nil {
+		if err := getKerbTicket(ctx, krb5ccnameCfg); err != nil {
 			exptLog.Error(err)
 		}
 
 		// If check of exptConfig keys fails, experiment fails immediately
-		if err := checkKeys(exptConfig); err != nil {
+		if err := checkKeys(ctx, exptConfig); err != nil {
 			exptLog.Error(err)
 			declareExptFailure()
 			return
 		}
 
-		pingChannel := pingAllNodes(exptConfig.GetStringSlice("nodes"))
-		timeout := time.After(pingTimeoutDuration)
+		pingCtx, pingCancel := context.WithTimeout(ctx, pingTimeoutDuration)
+		pingChannel := pingAllNodes(pingCtx, exptConfig.GetStringSlice("nodes"))
+		// timeout := time.After(pingTimeoutDuration)
 		// Listen until we either timeout or the pingChannel is closed
 	pingLoop:
 		for {
 			select {
 			case testnode, chanOpen := <-pingChannel: // Receive on pingChannel
 				if !chanOpen { // Break out of loop and proceed only if channel is not open
+					pingCancel()
 					break pingLoop
 				}
 				if testnode.err == nil {
@@ -426,10 +457,20 @@ func experimentWorker(exptname string) <-chan experimentSuccess {
 				} else {
 					exptLog.Error(testnode.err)
 				}
-			case <-timeout: // We give timeout for all pings
-				exptLog.Error("Hit the ping timeout!")
+			case <-pingCtx.Done():
+				if e := pingCtx.Err(); e == context.DeadlineExceeded {
+					exptLog.Errorf("Hit the ping timeout: %s", e)
+
+				} else {
+					exptLog.Error(e)
+				}
+				pingCancel()
 				break pingLoop
 			}
+			// case <-timeout: // We give timeout for all pings
+			// 	exptLog.Error("Hit the ping timeout!")
+			// 	break pingLoop
+			// }
 		}
 
 		badNodesSlice := make([]string, 0, len(badnodes))
@@ -444,7 +485,7 @@ func experimentWorker(exptname string) <-chan experimentSuccess {
 		// If voms-proxy-init fails, we'll just continue on.  We'll still try to push proxies,
 		// since they're valid for 24 hours
 		vpiChan := getProxies(exptConfig, viper.GetStringMapString("global"), expt.name)
-		timeout = time.After(vpiTimeoutDuration)
+		timeout := time.After(vpiTimeoutDuration)
 		// Listen until we either timeout or vpiChan is closed
 	vpiLoop:
 		for {
@@ -529,7 +570,7 @@ func checkUser(authuser string) error {
 }
 
 //
-func manageExperimentChannels(exptList []string) <-chan experimentSuccess {
+func manageExperimentChannels(ctx context.Context, exptList []string) <-chan experimentSuccess {
 	agg := make(chan experimentSuccess, len(exptList))
 	var wg sync.WaitGroup
 	wg.Add(len(exptList))
@@ -537,20 +578,24 @@ func manageExperimentChannels(exptList []string) <-chan experimentSuccess {
 	// Start all of the experiment workers, put their results into the agg channel
 	for _, expt := range exptList {
 		go func(expt string) {
-			// done := make(chan struct{}) // Channel to send signal to expt worker that we've put its
-			// result into the agg channel, so it can decrement the waitgroup after cleanup is done
-			// defer close(done)
+			exptContext, exptCancel := context.WithTimeout(ctx, exptTimeoutDuration)
 			defer wg.Done()
-			c := experimentWorker(expt)
+			defer exptCancel()
+
+			c := experimentWorker(exptContext, expt)
 			select {
 			case status := <-c: // Grab status from channel
 				agg <- status
-				// close(done)
-			case <-time.After(exptTimeoutDuration):
-				log.Error("Timed out waiting for experiment success info to be reported")
+			// case <-time.After(exptTimeoutDuration):
+			// 	log.Error("Timed out waiting for experiment success info to be reported")
+			case <-exptContext.Done():
+				if err := exptContext.Err(); err == context.DeadlineExceeded {
+					log.Error("Timed out waiting for experiment success info to be reported")
+				} else {
+					log.Error(err)
+				}
 			}
 			<-c // Block until channel closes, which means experiment worker is done
-			// close(done)
 		}(expt)
 	}
 
@@ -780,7 +825,6 @@ func main() {
 	// 	log.Println(http.ListenAndServe("localhost:6060", nil))
 	// }()
 	// runtime.SetBlockProfileRate(1)
-
 	exptSuccesses := make(map[string]bool)                             // map of successful expts
 	expts := make([]string, 0, len(viper.GetStringMap("experiments"))) // Slice of experiments we will actually process
 
@@ -794,9 +838,11 @@ func main() {
 	}
 
 	// Start up the expt manager
-	c := manageExperimentChannels(expts)
+	ctx, cancel := context.WithTimeout(context.Background(), globalTimeoutDuration)
+	defer cancel()
+	c := manageExperimentChannels(ctx, expts)
 	// Listen on the manager channel
-	timeout := time.After(globalTimeoutDuration)
+	// timeout := time.After(globalTimeoutDuration)
 	for {
 		select {
 		case expt, chanOpen := <-c:
@@ -808,10 +854,14 @@ func main() {
 				return
 			}
 			exptSuccesses[expt.name] = expt.success
-		case <-timeout:
-			log.Error("Hit the global timeout!")
-			err := cleanup(exptSuccesses, expts)
-			if err != nil {
+		case <-ctx.Done():
+			if e := ctx.Err(); e == context.DeadlineExceeded {
+				log.Error("Hit the global timeout!")
+			} else {
+				log.Error(e)
+			}
+
+			if err := cleanup(exptSuccesses, expts); err != nil {
 				log.Error(err)
 			}
 			return
