@@ -25,12 +25,6 @@ import (
 
 //notifications - IN PROGRESS - Formatting
 
-// parent context with globalTimeout, from it generate child timeout, at each select within
-// NOte that when any process is run outside of golang (without a context), we need to
-// make sure that we run it asynchronously, can capture the pid and kill it if it runs
-// over time.  example here:  http://www.darrencoxall.com/golang/executing-commands-in-go/
-// experimentWorker, select from operation reporting channel, child context
-
 // Documentation
 // Error handling - break everything!
 
@@ -43,21 +37,20 @@ const (
 )
 
 var timeoutStrings = map[string]string{
-	"globalTimeout": "60s", // Global timeout
-	"exptTimeout":   "30s", // Experiment timeout
-	"pingTimeout":   "10s", // Ping timeout (for all pings per experiment)
-	"vpiTimeout":    "10s", // voms-proxy-init timeout (total for vpis per experiment)
-	"copyTimeout":   "30s", // copy proxy timeout (total for all copies per experiment)
-	"slackTimeout":  "15s", // Slack message timeout
-	"emailTimeout":  "30s"} // Email timeout
-var timeoutDurationMap map[string]time.Duration
+						"globalTimeout": "60s", // Global timeout
+						"exptTimeout":   "30s", // Experiment timeout
+						"pingTimeout":   "10s", // Ping timeout (for all pings per experiment)
+						"vpiTimeout":    "10s", // voms-proxy-init timeout (total for vpis per experiment)
+						"copyTimeout":   "30s", // copy proxy timeout (total for all copies per experiment)
+						"slackTimeout":  "15s", // Slack message timeout
+						"emailTimeout":  "30s"} // Email timeout (per email)
+var timeoutDurationMap map[string]time.Duration // Hold the durations for code to use
 
-// var globalTimeoutDuration, exptTimeoutDuration, pingTimeoutDuration, vpiTimeoutDuration, copyTimeoutDuration, slackTimeoutDuration, emailTimeoutDuration time.Duration // Timeouts we will populate later
 var log = logrus.New()                                       // Global logger
 var emailDialer = gomail.Dialer{Host: "localhost", Port: 25} // gomail dialer to use to send emails
 var rwmuxErr, rwmuxLog sync.RWMutex                          // mutexes to be used when copying experiment logs into master and error log
 // if testMode is true:  send only general emails to notifications_test.admin_email in config file, send Slack notification to test channel. Do not send experiment-specific email
-var testMode = false
+var testMode bool
 
 // Types to carry information about success and status of various operations over channels
 
@@ -196,6 +189,9 @@ func pingAllNodes(ctx context.Context, nodes []string) <-chan pingNodeStatus {
 	return c
 }
 
+// getProxies launches goroutines that run voms-proxy-init to generate the appropriate proxies on the local machine.
+// Calling getProxies will generate all of the proxies per experiment according to the viper configuration.  It returns
+// a channel, on which it reports the status of each attempt
 func getProxies(ctx context.Context, exptConfig *viper.Viper, globalConfig map[string]string, exptname string) <-chan vomsProxyStatus {
 	c := make(chan vomsProxyStatus, len(exptConfig.GetStringMapString("accounts")))
 	var vomsprefix, certfile, keyfile string
@@ -260,6 +256,9 @@ func getProxies(ctx context.Context, exptConfig *viper.Viper, globalConfig map[s
 	return c
 }
 
+// copyProxies copies the proxies from the local machine to the experiment nodes as specified by the configuration and changes their permissions.
+// It returns a channel on which it reports the status of those operations.  The copy and change permission operations share a context that
+// dictates their deadline.
 func copyProxies(ctx context.Context, exptConfig *viper.Viper) <-chan copyProxiesStatus {
 	numSlots := len(exptConfig.GetStringMapString("accounts")) * len(exptConfig.GetStringSlice("nodes"))
 	c := make(chan copyProxiesStatus, numSlots)
@@ -321,6 +320,7 @@ func copyProxies(ctx context.Context, exptConfig *viper.Viper) <-chan copyProxie
 	return c
 }
 
+// copyLogs copies the experiment-specific logs to the general and error logs.
 func copyLogs(ctx context.Context, exptSuccess bool, exptlogpath, exptgenlogpath string, logconfig map[string]string) {
 	if e := ctx.Err(); e != nil {
 		log.Error(e)
@@ -374,6 +374,7 @@ func copyLogs(ctx context.Context, exptSuccess bool, exptlogpath, exptgenlogpath
 	wg.Wait()
 }
 
+// experimentCleanup manages the cleanup operations for an experiment, such as sending emails if necessary, and copying, removing or archiving the logs
 func (expt *experimentSuccess) experimentCleanup(ctx context.Context) error {
 	if e := ctx.Err(); e != nil {
 		return e
@@ -428,9 +429,11 @@ func (expt *experimentSuccess) experimentCleanup(ctx context.Context) error {
 	return nil
 }
 
+// experimentWorker is the main func that manages the processes involved in generating and copying VOMS proxies to an experiment's nodes.  It returns a channel
+// on which it reports the status of that experiment's proxy push
 func experimentWorker(ctx context.Context, exptname string) <-chan experimentSuccess {
 	var exptLog *logrus.Entry
-	c := make(chan experimentSuccess)
+	c := make(chan experimentSuccess, 2)
 	expt := experimentSuccess{exptname, true} // Initialize
 
 	exptLog, err := exptLogInit(ctx, expt.name)
@@ -442,7 +445,7 @@ func experimentWorker(ctx context.Context, exptname string) <-chan experimentSuc
 
 	go func() {
 		// defer w.Done() // Decrement WaitGroup after cleanup is done or we want to return
-		defer close(c) // All expt operations are done (either successful or at error)
+		defer close(c) // All expt operations are done (either successful including cleanup or at error)
 		exptConfig := viper.Sub("experiments." + expt.name)
 
 		badnodes := make(map[string]struct{})
@@ -450,7 +453,7 @@ func experimentWorker(ctx context.Context, exptname string) <-chan experimentSuc
 
 		// Helper functions
 		declareExptFailure := func() {
-			defer close(c)
+			// defer close(c)
 			expt.success = false
 			c <- expt
 			// close(c)
@@ -623,6 +626,7 @@ func experimentWorker(ctx context.Context, exptname string) <-chan experimentSuc
 
 // Global functions
 
+// checkUser makes sure that the user running the proxy push is the authorized user
 func checkUser(authuser string) error {
 	cuser, err := user.Current()
 	if err != nil {
@@ -635,7 +639,7 @@ func checkUser(authuser string) error {
 	return nil
 }
 
-//
+// manageExperimentChannels starts up the various experimentWorkers and listens for their response.  It puts these statuses into an aggregate channel.
 func manageExperimentChannels(ctx context.Context, exptList []string) <-chan experimentSuccess {
 	agg := make(chan experimentSuccess, len(exptList))
 	var wg sync.WaitGroup
@@ -648,10 +652,13 @@ func manageExperimentChannels(ctx context.Context, exptList []string) <-chan exp
 			defer wg.Done()
 			defer exptCancel()
 
+			// If all goes well, each experimentWorker channel will be ready to be received on twice:  once when the
+			// successful status is sent, and when the channel closes after cleanup.  If we timeout, just move on
 			c := experimentWorker(exptContext, expt)
 			select {
 			case status := <-c: // Grab status from channel
 				agg <- status
+				<-c // Block until channel closes, which means experiment worker is done with everything
 			// case <-time.After(exptTimeoutDuration):
 			// 	log.Error("Timed out waiting for experiment success info to be reported")
 			case <-exptContext.Done():
@@ -661,7 +668,6 @@ func manageExperimentChannels(ctx context.Context, exptList []string) <-chan exp
 					log.Error(err)
 				}
 			}
-			<-c // Block until channel closes, which means experiment worker is done
 		}(expt)
 	}
 
