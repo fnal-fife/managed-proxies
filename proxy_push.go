@@ -35,23 +35,27 @@ import (
 // Error handling - break everything!
 
 // Timeouts, defaults, and format strings
-const (
-	globalTimeout string = "60s" // Global timeout
-	exptTimeout   string = "30s" // Experiment timeout
-	pingTimeout   string = "10s" // Ping timeout (for all pings per experiment)
-	vpiTimeout    string = "10s" // voms-proxy-init timeout (total for vpis per experiment)
-	copyTimeout   string = "30s" // copy proxy timeout (total for all copies per experiment)
-	slackTimeout  string = "15s" // Slack message timeout
 
+const (
 	configFile      string = "proxy_push_config_test.yml"       // CHANGE ME BEFORE PRODUCTION
 	exptLogFilename string = "golang_proxy_push_%s.log"         // CHANGE ME BEFORE PRODUCTION - temp file per experiment that will be emailed to experiment
 	exptGenFilename string = "golang_proxy_push_general_%s.log" // CHANGE ME BEFORE PRODUCTION - temp file per experiment that will be copied over to logfile
 )
 
-var globalTimeoutDuration, exptTimeoutDuration, pingTimeoutDuration, vpiTimeoutDuration, copyTimeoutDuration, slackTimeoutDuration time.Duration // Timeouts we will populate later
-var log = logrus.New()                                                                                                                           // Global logger
-var emailDialer = gomail.Dialer{Host: "localhost", Port: 25}                                                                                     // gomail dialer to use to send emails
-var rwmuxErr, rwmuxLog sync.RWMutex                                                                                                              // mutexes to be used when copying experiment logs into master and error log
+var timeoutStrings = map[string]string{
+	"globalTimeout": "60s", // Global timeout
+	"exptTimeout":   "30s", // Experiment timeout
+	"pingTimeout":   "10s", // Ping timeout (for all pings per experiment)
+	"vpiTimeout":    "10s", // voms-proxy-init timeout (total for vpis per experiment)
+	"copyTimeout":   "30s", // copy proxy timeout (total for all copies per experiment)
+	"slackTimeout":  "15s", // Slack message timeout
+	"emailTimeout":  "30s"} // Email timeout
+var timeoutDurationMap map[string]time.Duration
+
+// var globalTimeoutDuration, exptTimeoutDuration, pingTimeoutDuration, vpiTimeoutDuration, copyTimeoutDuration, slackTimeoutDuration, emailTimeoutDuration time.Duration // Timeouts we will populate later
+var log = logrus.New()                                       // Global logger
+var emailDialer = gomail.Dialer{Host: "localhost", Port: 25} // gomail dialer to use to send emails
+var rwmuxErr, rwmuxLog sync.RWMutex                          // mutexes to be used when copying experiment logs into master and error log
 // if testMode is true:  send only general emails to notifications_test.admin_email in config file, send Slack notification to test channel. Do not send experiment-specific email
 var testMode = false
 
@@ -91,7 +95,6 @@ type copyProxiesStatus struct {
 // exptLogInit sets up the logrus instance for the experiment worker
 // It returns a pointer to a logrus.Entry object that can be used to log events.
 func exptLogInit(ctx context.Context, ename string) (*logrus.Entry, error) {
-
 	if e := ctx.Err(); e != nil {
 		return nil, e
 	}
@@ -318,11 +321,23 @@ func copyProxies(ctx context.Context, exptConfig *viper.Viper) <-chan copyProxie
 	return c
 }
 
-func copyLogs(exptSuccess bool, exptlogpath, exptgenlogpath string, logconfig map[string]string) {
+func copyLogs(ctx context.Context, exptSuccess bool, exptlogpath, exptgenlogpath string, logconfig map[string]string) {
+	if e := ctx.Err(); e != nil {
+		log.Error(e)
+		return
+	}
+
 	var wg sync.WaitGroup
 	wg.Add(2)
+
 	copyLog := func(src, dest string, rwmux *sync.RWMutex) {
 		defer wg.Done()
+
+		if e := ctx.Err(); e != nil {
+			log.Error(e)
+			return
+		}
+
 		data, err := ioutil.ReadFile(src)
 		if err != nil {
 			if exptSuccess { // If the experiment was successful, there would be no error logfile, so we're not worried
@@ -359,7 +374,11 @@ func copyLogs(exptSuccess bool, exptlogpath, exptgenlogpath string, logconfig ma
 	wg.Wait()
 }
 
-func (expt *experimentSuccess) experimentCleanup() error {
+func (expt *experimentSuccess) experimentCleanup(ctx context.Context) error {
+	if e := ctx.Err(); e != nil {
+		return e
+	}
+
 	exptlogfilename := fmt.Sprintf(exptLogFilename, expt.name)
 
 	dir, err := os.Getwd()
@@ -371,7 +390,7 @@ func (expt *experimentSuccess) experimentCleanup() error {
 	exptlogfilepath := path.Join(dir, fmt.Sprintf(exptLogFilename, expt.name))
 	exptgenlogfilepath := path.Join(dir, fmt.Sprintf(exptGenFilename, expt.name))
 
-	defer copyLogs(expt.success, exptlogfilepath, exptgenlogfilepath, viper.GetStringMapString("logs"))
+	defer copyLogs(ctx, expt.success, exptlogfilepath, exptgenlogfilepath, viper.GetStringMapString("logs"))
 
 	// No experiment logfile
 	if _, err = os.Stat(exptlogfilepath); os.IsNotExist(err) {
@@ -393,14 +412,16 @@ func (expt *experimentSuccess) experimentCleanup() error {
 
 		msg := string(data)
 
-		if err := sendEmail(expt.name, msg); err != nil {
+		emailCtx, emailCancel := context.WithTimeout(ctx, timeoutDurationMap["emailTimeout"])
+		defer emailCancel()
+		if err := sendEmail(emailCtx, expt.name, msg); err != nil {
 			newfilename := fmt.Sprintf("%s-%s", exptlogfilename, time.Now().Format(time.RFC3339))
 			newpath := path.Join(dir, newfilename)
 
 			if err := os.Rename(exptlogfilepath, newpath); err != nil {
 				return fmt.Errorf("Could not move file %s to %s.  The error was %v", exptlogfilepath, newpath, err)
 			}
-			return fmt.Errorf("Could not send email for experiment %s.  Archived error file at %s", expt.name, newpath)
+			return fmt.Errorf("Could not send email for experiment %s.  Archived error file at %s.  The error was %v", expt.name, newpath, err)
 		}
 	}
 
@@ -464,7 +485,7 @@ func experimentWorker(ctx context.Context, exptname string) <-chan experimentSuc
 			return
 		}
 
-		pingCtx, pingCancel := context.WithTimeout(ctx, pingTimeoutDuration)
+		pingCtx, pingCancel := context.WithTimeout(ctx, timeoutDurationMap["pingTimeout"])
 		pingChannel := pingAllNodes(pingCtx, exptConfig.GetStringSlice("nodes"))
 		// timeout := time.After(pingTimeoutDuration)
 		// Listen until we either timeout or the pingChannel is closed
@@ -508,7 +529,7 @@ func experimentWorker(ctx context.Context, exptname string) <-chan experimentSuc
 
 		// If voms-proxy-init fails, we'll just continue on.  We'll still try to push proxies,
 		// since they're valid for 24 hours
-		vpiCtx, vpiCancel := context.WithTimeout(ctx, vpiTimeoutDuration)
+		vpiCtx, vpiCancel := context.WithTimeout(ctx, timeoutDurationMap["vpiTimeout"])
 		vpiChan := getProxies(vpiCtx, exptConfig, viper.GetStringMapString("global"), expt.name)
 		// timeout := time.After(vpiTimeoutDuration)
 		// Listen until we either timeout or vpiChan is closed
@@ -541,7 +562,7 @@ func experimentWorker(ctx context.Context, exptname string) <-chan experimentSuc
 			}
 		}
 
-		copyCtx, copyCancel := context.WithTimeout(ctx, copyTimeoutDuration)
+		copyCtx, copyCancel := context.WithTimeout(ctx, timeoutDurationMap["copyTimeout"])
 		copyChan := copyProxies(copyCtx, exptConfig)
 		// timeout := time.After(exptTimeoutDuration)
 		// Listen until we either timeout or the copyChan is closed
@@ -585,7 +606,7 @@ func experimentWorker(ctx context.Context, exptname string) <-chan experimentSuc
 
 		// We're logging the cleanup in the general log so that we don't create an extraneous
 		// experiment log file
-		if err := expt.experimentCleanup(); err != nil {
+		if err := expt.experimentCleanup(ctx); err != nil {
 			log.Error(err)
 		}
 		log.Info("Finished cleaning up ", expt.name)
@@ -623,7 +644,7 @@ func manageExperimentChannels(ctx context.Context, exptList []string) <-chan exp
 	// Start all of the experiment workers, put their results into the agg channel
 	for _, expt := range exptList {
 		go func(expt string) {
-			exptContext, exptCancel := context.WithTimeout(ctx, exptTimeoutDuration)
+			exptContext, exptCancel := context.WithTimeout(ctx, timeoutDurationMap["exptTimeout"])
 			defer wg.Done()
 			defer exptCancel()
 
@@ -657,7 +678,7 @@ func manageExperimentChannels(ctx context.Context, exptList []string) <-chan exp
 	return agg
 }
 
-func sendEmail(exptName, message string) error {
+func sendEmail(ctx context.Context, exptName, message string) error {
 	var recipients []string
 
 	if exptName == "" {
@@ -676,25 +697,54 @@ func sendEmail(exptName, message string) error {
 	m.SetHeader("Subject", subject)
 	m.SetBody("text/plain", message)
 
-	err := emailDialer.DialAndSend(m)
-	return err
+	c := make(chan error)
+	go func() {
+		defer close(c)
+		err := emailDialer.DialAndSend(m)
+		c <- err
+	}()
 
+	select {
+	case e := <-c:
+		return e
+	case <-ctx.Done():
+		e := ctx.Err()
+		if e != context.DeadlineExceeded {
+			return fmt.Errorf("Hit timeout attempting to send email to %s", exptName)
+		}
+		return e
+	}
 }
 
-func sendSlackMessage(message string) error {
+func sendSlackMessage(ctx context.Context, message string) error {
+	if e := ctx.Err(); e != nil {
+		return e
+	}
+
 	msg := []byte(fmt.Sprintf(`{"text": "%s"}`, strings.Replace(message, "\"", "\\\"", -1)))
 	req, err := http.NewRequest("POST", viper.GetString("notifications.slack_alerts_url"), bytes.NewBuffer(msg))
+	if err != nil {
+		return err
+	}
+
 	req.Header.Set("Content-Type", "application/json")
 
-	slackTimeoutDuration, err := time.ParseDuration(slackTimeout)
-	if err != nil {
-		return errors.New("Invalid slack timeout string")
-	}
-	client := &http.Client{Timeout: slackTimeoutDuration}
+	// slackTimeoutDuration, err := time.ParseDuration(slackTimeout)
+	// if err != nil {
+	// 	return errors.New("Invalid slack timeout string")
+	// }
+
+	client := &http.Client{Timeout: timeoutDurationMap["slackTimeout"]}
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}
+
+	// This should be redundant, but just in case the timeout before didn't trigger.
+	if e := ctx.Err(); e != nil {
+		return e
+	}
+
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
@@ -759,8 +809,14 @@ func init() {
 	// that logs the error, sends a slack message and an email, cleans up, and then exits.
 	initErrorNotify := func(m string) {
 		log.Error(m)
-		sendSlackMessage(m)
-		sendEmail("", m)
+
+		slackInitCtx, slackInitCancel := context.WithTimeout(context.Background(), time.Duration(15*time.Second))
+		sendSlackMessage(slackInitCtx, m)
+		slackInitCancel()
+
+		emailInitCtx, emailInitCancel := context.WithTimeout(context.Background(), time.Duration(30*time.Second))
+		sendEmail(emailInitCtx, "", m) // The one place we can't use the emailTimeoutDuration bit.
+		emailInitCancel()
 
 		if _, err := os.Stat(viper.GetString("logs.errfile")); !os.IsNotExist(err) {
 			if e := os.Remove(viper.GetString("logs.errfile")); e != nil {
@@ -787,35 +843,59 @@ func init() {
 	// }
 
 	// Check our timeouts for proper formatting
-	globalTimeoutDuration, err = time.ParseDuration(globalTimeout)
-	if err != nil {
-		msg := fmt.Sprintf("Invalid global timeout string %s", globalTimeout)
-		initErrorNotify(msg)
+
+	timeoutDurationMap = make(map[string]time.Duration)
+
+	for timeoutName, timeoutString := range timeoutStrings {
+		value, err := time.ParseDuration(timeoutString)
+		if err != nil {
+			msg := fmt.Sprintf("Invalid %s value: %s", timeoutName, timeoutString)
+			initErrorNotify(msg)
+		}
+		timeoutDurationMap[timeoutName] = value
 	}
 
-	exptTimeoutDuration, err = time.ParseDuration(exptTimeout)
-	if err != nil {
-		msg := fmt.Sprintf("Invalid experiment timeout string %s", exptTimeout)
-		initErrorNotify(msg)
-	}
+	// globalTimeoutDuration, err = time.ParseDuration(globalTimeout)
+	// if err != nil {
+	// 	msg := fmt.Sprintf("Invalid global timeout string %s", globalTimeout)
+	// 	initErrorNotify(msg)
+	// }
 
-	pingTimeoutDuration, err = time.ParseDuration(pingTimeout)
-	if err != nil {
-		msg := fmt.Sprintf("Invalid ping timeout string %s", pingTimeout)
-		initErrorNotify(msg)
-	}
+	// exptTimeoutDuration, err = time.ParseDuration(exptTimeout)
+	// if err != nil {
+	// 	msg := fmt.Sprintf("Invalid experiment timeout string %s", exptTimeout)
+	// 	initErrorNotify(msg)
+	// }
 
-	vpiTimeoutDuration, err = time.ParseDuration(vpiTimeout)
-	if err != nil {
-		msg := fmt.Sprintf("Invalid voms-proxy-init timeout string %s", vpiTimeout)
-		initErrorNotify(msg)
-	}
+	// pingTimeoutDuration, err = time.ParseDuration(pingTimeout)
+	// if err != nil {
+	// 	msg := fmt.Sprintf("Invalid ping timeout string %s", pingTimeout)
+	// 	initErrorNotify(msg)
+	// }
 
-	copyTimeoutDuration, err = time.ParseDuration(copyTimeout)
-	if err != nil {
-		msg := fmt.Sprintf("Invalid copy proxy timeout string %s", copyTimeout)
-		initErrorNotify(msg)
-	}
+	// vpiTimeoutDuration, err = time.ParseDuration(vpiTimeout)
+	// if err != nil {
+	// 	msg := fmt.Sprintf("Invalid voms-proxy-init timeout string %s", vpiTimeout)
+	// 	initErrorNotify(msg)
+	// }
+
+	// copyTimeoutDuration, err = time.ParseDuration(copyTimeout)
+	// if err != nil {
+	// 	msg := fmt.Sprintf("Invalid copy proxy timeout string %s", copyTimeout)
+	// 	initErrorNotify(msg)
+	// }
+
+	// emailTimeoutDuration, err = time.ParseDuration(emailTimeout)
+	// if err != nil {
+	// 	msg := fmt.Sprintf("Invalid email timeout string %s", emailTimeout)
+	// 	initErrorNotify(msg)
+	// }
+
+	// slackTimeoutDuration, err = time.ParseDuration(slackTimeout)
+	// if err != nil {
+	// 	msg := fmt.Sprintf("Invalid slack timeout string %s", slackTimeout)
+	// 	initErrorNotify(msg)
+	// }
 
 	// exptLogInitTimeoutDuration, err = time.ParseDuration(exptLogInitTimeout)
 	// if err != nil {
@@ -826,6 +906,7 @@ func init() {
 }
 
 func cleanup(exptStatus map[string]bool, experiments []string) error {
+	var finalCleanupSuccess bool
 	s := make([]string, 0, len(experiments))
 	f := make([]string, 0, len(experiments))
 
@@ -857,17 +938,17 @@ func cleanup(exptStatus map[string]bool, experiments []string) error {
 
 	msg := string(data)
 
-	finalCleanupSuccess := true
-	err = sendEmail("", msg)
-	if err != nil {
+	emailCtx, emailCancel := context.WithTimeout(context.Background(), timeoutDurationMap["emailTimeout"])
+	if err = sendEmail(emailCtx, "", msg); err != nil {
 		log.Error(err)
-		finalCleanupSuccess = false
 	}
-	err = sendSlackMessage(msg)
-	if err != nil {
+	emailCancel()
+
+	slackCtx, slackCancel := context.WithTimeout(context.Background(), timeoutDurationMap["slackTimeout"])
+	if err = sendSlackMessage(slackCtx, msg); err != nil {
 		log.Error(err)
-		finalCleanupSuccess = false
 	}
+	slackCancel()
 
 	if err = os.Remove(viper.GetString("logs.errfile")); err != nil {
 		log.Error("Could not remove general error logfile.  Please clean up manually")
@@ -899,7 +980,7 @@ func main() {
 	}
 
 	// Start up the expt manager
-	ctx, cancel := context.WithTimeout(context.Background(), globalTimeoutDuration)
+	ctx, cancel := context.WithTimeout(context.Background(), timeoutDurationMap["globalTimeout"])
 	defer cancel()
 	c := manageExperimentChannels(ctx, expts)
 	// Listen on the manager channel
