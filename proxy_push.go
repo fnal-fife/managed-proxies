@@ -653,14 +653,14 @@ func manageExperimentChannels(ctx context.Context, exptList []string) <-chan exp
 			defer exptCancel()
 
 			// If all goes well, each experimentWorker channel will be ready to be received on twice:  once when the
-			// successful status is sent, and when the channel closes after cleanup.  If we timeout, just move on
+			// successful status is sent, and when the channel closes after cleanup.  If we timeout, just move on.  Expt channel
+			// is buffered anyway, so if the worker tries to send later and there's no receiver, garbage collection
+			// will take care of it
 			c := experimentWorker(exptContext, expt)
 			select {
 			case status := <-c: // Grab status from channel
 				agg <- status
 				<-c // Block until channel closes, which means experiment worker is done with everything
-			// case <-time.After(exptTimeoutDuration):
-			// 	log.Error("Timed out waiting for experiment success info to be reported")
 			case <-exptContext.Done():
 				if err := exptContext.Err(); err == context.DeadlineExceeded {
 					log.Error("Timed out waiting for experiment success info to be reported")
@@ -684,6 +684,7 @@ func manageExperimentChannels(ctx context.Context, exptList []string) <-chan exp
 	return agg
 }
 
+// sendEmail sends emails to both experiments and admins, depending on the input (exptName = "" gives admin email).
 func sendEmail(ctx context.Context, exptName, message string) error {
 	var recipients []string
 
@@ -722,6 +723,7 @@ func sendEmail(ctx context.Context, exptName, message string) error {
 	}
 }
 
+// sendSlackMessage sends an HTTP POST request to a URL specified in the config file.
 func sendSlackMessage(ctx context.Context, message string) error {
 	if e := ctx.Err(); e != nil {
 		return e
@@ -734,11 +736,6 @@ func sendSlackMessage(ctx context.Context, message string) error {
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-
-	// slackTimeoutDuration, err := time.ParseDuration(slackTimeout)
-	// if err != nil {
-	// 	return errors.New("Invalid slack timeout string")
-	// }
 
 	client := &http.Client{Timeout: timeoutDurationMap["slackTimeout"]}
 	resp, err := client.Do(req)
@@ -816,12 +813,13 @@ func init() {
 	initErrorNotify := func(m string) {
 		log.Error(m)
 
+		// Durations are hard-coded here since we haven't parsed them out yet
 		slackInitCtx, slackInitCancel := context.WithTimeout(context.Background(), time.Duration(15*time.Second))
 		sendSlackMessage(slackInitCtx, m)
 		slackInitCancel()
 
 		emailInitCtx, emailInitCancel := context.WithTimeout(context.Background(), time.Duration(30*time.Second))
-		sendEmail(emailInitCtx, "", m) // The one place we can't use the emailTimeoutDuration bit.
+		sendEmail(emailInitCtx, "", m)
 		emailInitCancel()
 
 		if _, err := os.Stat(viper.GetString("logs.errfile")); !os.IsNotExist(err) {
@@ -844,12 +842,7 @@ func init() {
 		initErrorNotify(msg)
 	}
 
-	// timeoutMap := make(map(string)time.Duration) {
-	// 	globalTimeout: global
-	// }
-
-	// Check our timeouts for proper formatting
-
+	// Parse our timeouts, store them into timeoutDurationMap for later use
 	timeoutDurationMap = make(map[string]time.Duration)
 
 	for timeoutName, timeoutString := range timeoutStrings {
@@ -860,61 +853,13 @@ func init() {
 		}
 		timeoutDurationMap[timeoutName] = value
 	}
-
-	// globalTimeoutDuration, err = time.ParseDuration(globalTimeout)
-	// if err != nil {
-	// 	msg := fmt.Sprintf("Invalid global timeout string %s", globalTimeout)
-	// 	initErrorNotify(msg)
-	// }
-
-	// exptTimeoutDuration, err = time.ParseDuration(exptTimeout)
-	// if err != nil {
-	// 	msg := fmt.Sprintf("Invalid experiment timeout string %s", exptTimeout)
-	// 	initErrorNotify(msg)
-	// }
-
-	// pingTimeoutDuration, err = time.ParseDuration(pingTimeout)
-	// if err != nil {
-	// 	msg := fmt.Sprintf("Invalid ping timeout string %s", pingTimeout)
-	// 	initErrorNotify(msg)
-	// }
-
-	// vpiTimeoutDuration, err = time.ParseDuration(vpiTimeout)
-	// if err != nil {
-	// 	msg := fmt.Sprintf("Invalid voms-proxy-init timeout string %s", vpiTimeout)
-	// 	initErrorNotify(msg)
-	// }
-
-	// copyTimeoutDuration, err = time.ParseDuration(copyTimeout)
-	// if err != nil {
-	// 	msg := fmt.Sprintf("Invalid copy proxy timeout string %s", copyTimeout)
-	// 	initErrorNotify(msg)
-	// }
-
-	// emailTimeoutDuration, err = time.ParseDuration(emailTimeout)
-	// if err != nil {
-	// 	msg := fmt.Sprintf("Invalid email timeout string %s", emailTimeout)
-	// 	initErrorNotify(msg)
-	// }
-
-	// slackTimeoutDuration, err = time.ParseDuration(slackTimeout)
-	// if err != nil {
-	// 	msg := fmt.Sprintf("Invalid slack timeout string %s", slackTimeout)
-	// 	initErrorNotify(msg)
-	// }
-
-	// exptLogInitTimeoutDuration, err = time.ParseDuration(exptLogInitTimeout)
-	// if err != nil {
-	// 	msg := fmt.Sprintf("Invalid experiment log intiialization timeout string %s", exptLogInitTimeout)
-	// 	initErrorNotify(msg)
-	// }
-
 }
 
 func cleanup(exptStatus map[string]bool, experiments []string) error {
 	s := make([]string, 0, len(experiments))
 	f := make([]string, 0, len(experiments))
 
+	// Compile list of successes and failures
 	for _, expt := range experiments {
 		if _, ok := exptStatus[expt]; !ok {
 			f = append(f, expt)
@@ -936,6 +881,7 @@ func cleanup(exptStatus map[string]bool, experiments []string) error {
 		return nil
 	}
 
+	// We have an error file, so presumably we have errors.  Read the errorfile and send notifications
 	data, err := ioutil.ReadFile(viper.GetString("logs.errfile"))
 	if err != nil {
 		return err
@@ -971,10 +917,6 @@ func cleanup(exptStatus map[string]bool, experiments []string) error {
 }
 
 func main() {
-	// go func() {
-	// 	log.Println(http.ListenAndServe("localhost:6060", nil))
-	// }()
-	// runtime.SetBlockProfileRate(1)
 	exptSuccesses := make(map[string]bool)                             // map of successful expts
 	expts := make([]string, 0, len(viper.GetStringMap("experiments"))) // Slice of experiments we will actually process
 
@@ -992,10 +934,10 @@ func main() {
 	defer cancel()
 	c := manageExperimentChannels(ctx, expts)
 	// Listen on the manager channel
-	// timeout := time.After(globalTimeoutDuration)
 	for {
 		select {
 		case expt, chanOpen := <-c:
+			// Manager channel is closed, so cleanup.
 			if !chanOpen {
 				err := cleanup(exptSuccesses, expts)
 				if err != nil {
@@ -1003,8 +945,10 @@ func main() {
 				}
 				return
 			}
+			// Otherwise, add the information coming in to the map.
 			exptSuccesses[expt.name] = expt.success
 		case <-ctx.Done():
+			// Timeout
 			if e := ctx.Err(); e == context.DeadlineExceeded {
 				log.Error("Hit the global timeout!")
 			} else {
