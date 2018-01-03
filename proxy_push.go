@@ -24,31 +24,35 @@ import (
 )
 
 //notifications - IN PROGRESS - Formatting
-// Error handling - break everything!
+
 // parent context with globalTimeout, from it generate child timeout, at each select within
 // NOte that when any process is run outside of golang (without a context), we need to
 // make sure that we run it asynchronously, can capture the pid and kill it if it runs
 // over time.  example here:  http://www.darrencoxall.com/golang/executing-commands-in-go/
 // experimentWorker, select from operation reporting channel, child context
 
+// Documentation
+// Error handling - break everything!
+
 // Timeouts, defaults, and format strings
 const (
-	globalTimeout string = "60s" // Global timeout
-	exptTimeout   string = "30s" // Experiment timeout
-	slackTimeout  string = "15s" // Slack message timeout
-	pingTimeout   string = "10s" // Ping timeout (for all pings per experiment)
-	vpiTimeout    string = "10s" // voms-proxy-init timeout (total for vpis per experiment)
-	copyTimeout   string = "30s" // copy proxy timeout (total for all copies per experiment)
+	globalTimeout      string = "60s" // Global timeout
+	exptTimeout        string = "30s" // Experiment timeout
+	exptLogInitTimeout string = "10s" // Timeout for expt log to get initialized
+	pingTimeout        string = "10s" // Ping timeout (for all pings per experiment)
+	vpiTimeout         string = "10s" // voms-proxy-init timeout (total for vpis per experiment)
+	copyTimeout        string = "30s" // copy proxy timeout (total for all copies per experiment)
+	slackTimeout       string = "15s" // Slack message timeout
 
 	configFile      string = "proxy_push_config_test.yml"       // CHANGE ME BEFORE PRODUCTION
 	exptLogFilename string = "golang_proxy_push_%s.log"         // CHANGE ME BEFORE PRODUCTION - temp file per experiment that will be emailed to experiment
 	exptGenFilename string = "golang_proxy_push_general_%s.log" // CHANGE ME BEFORE PRODUCTION - temp file per experiment that will be copied over to logfile
 )
 
-var globalTimeoutDuration, exptTimeoutDuration, slackTimeoutDuration, pingTimeoutDuration, vpiTimeoutDuration, copyTimeoutDuration time.Duration // Timeouts we will populate later
-var log = logrus.New()                                                                                                                           // Global logger
-var emailDialer = gomail.Dialer{Host: "localhost", Port: 25}                                                                                     // gomail dialer to use to send emails
-var rwmuxErr, rwmuxLog sync.RWMutex                                                                                                              // mutexes to be used when copying experiment logs into master and error log
+var globalTimeoutDuration, exptTimeoutDuration, exptLogInitTimeoutDuration, pingTimeoutDuration, vpiTimeoutDuration, copyTimeoutDuration, slackTimeoutDuration time.Duration // Timeouts we will populate later
+var log = logrus.New()                                                                                                                                                       // Global logger
+var emailDialer = gomail.Dialer{Host: "localhost", Port: 25}                                                                                                                 // gomail dialer to use to send emails
+var rwmuxErr, rwmuxLog sync.RWMutex                                                                                                                                          // mutexes to be used when copying experiment logs into master and error log
 // if testMode is true:  send only general emails to notifications_test.admin_email in config file, send Slack notification to test channel. Do not send experiment-specific email
 var testMode = false
 
@@ -87,34 +91,41 @@ type copyProxiesStatus struct {
 
 // exptLogInit sets up the logrus instance for the experiment worker
 // It returns a pointer to a logrus.Entry object that can be used to log events.
-func exptLogInit(ename string) *logrus.Entry {
-	var Log = logrus.New()
-	exptlog := fmt.Sprintf(exptLogFilename, ename)
-	genlog := fmt.Sprintf(exptGenFilename, ename)
+func exptLogInit(ctx context.Context, ename string) <-chan *logrus.Entry {
+	c := make(chan *logrus.Entry)
 
-	Log.SetLevel(logrus.DebugLevel)
+	go func() {
+		defer close(c)
+		var Log = logrus.New()
+		exptlog := fmt.Sprintf(exptLogFilename, ename)
+		genlog := fmt.Sprintf(exptGenFilename, ename)
 
-	// General Log that gets copied to master log
-	Log.AddHook(lfshook.NewHook(lfshook.PathMap{
-		logrus.DebugLevel: genlog,
-		logrus.InfoLevel:  genlog,
-		logrus.WarnLevel:  genlog,
-		logrus.ErrorLevel: genlog,
-		logrus.FatalLevel: genlog,
-		logrus.PanicLevel: genlog,
-	}))
+		Log.SetLevel(logrus.DebugLevel)
 
-	// Experiment-specific error log that gets emailed if populated
-	Log.AddHook(lfshook.NewHook(lfshook.PathMap{
-		logrus.ErrorLevel: exptlog,
-		logrus.FatalLevel: exptlog,
-		logrus.PanicLevel: exptlog,
-	}))
+		// General Log that gets copied to master log
+		Log.AddHook(lfshook.NewHook(lfshook.PathMap{
+			logrus.DebugLevel: genlog,
+			logrus.InfoLevel:  genlog,
+			logrus.WarnLevel:  genlog,
+			logrus.ErrorLevel: genlog,
+			logrus.FatalLevel: genlog,
+			logrus.PanicLevel: genlog,
+		}))
 
-	exptlogger := Log.WithFields(logrus.Fields{"experiment": ename})
-	exptlogger.Info("Set up experiment logger")
+		// Experiment-specific error log that gets emailed if populated
+		Log.AddHook(lfshook.NewHook(lfshook.PathMap{
+			logrus.ErrorLevel: exptlog,
+			logrus.FatalLevel: exptlog,
+			logrus.PanicLevel: exptlog,
+		}))
 
-	return exptlogger
+		exptlogger := Log.WithField("experiment", ename)
+		exptlogger.Info("Set up experiment logger")
+
+		c <- exptlogger
+	}()
+
+	return c
 }
 
 // getKerbTicket runs kinit to get a kerberos ticket
@@ -399,9 +410,26 @@ func (expt *experimentSuccess) experimentCleanup() error {
 }
 
 func experimentWorker(ctx context.Context, exptname string) <-chan experimentSuccess {
+	var exptLog *logrus.Entry
 	c := make(chan experimentSuccess)
 	expt := experimentSuccess{exptname, true} // Initialize
-	exptLog := exptLogInit(expt.name)
+
+	exptLogInitCtx, exptLogInitCancel := context.WithTimeout(ctx, exptLogInitTimeoutDuration)
+	// exptLog := exptLogInit(expt.name)
+
+	select {
+	case logger := <-exptLogInit(exptLogInitCtx, expt.name):
+		exptLog = logger
+	case <-exptLogInitCtx.Done():
+		if e := exptLogInitCtx.Err(); e == context.DeadlineExceeded {
+			log.Errorf("Hit the timeout for initializing experiment log: %s", e)
+		} else {
+			log.Error(e)
+		}
+		exptLog = log.WithField("experiment", exptname)
+	}
+	exptLogInitCancel()
+
 	exptLog.Info("Now processing ", expt.name)
 
 	go func() {
@@ -798,7 +826,13 @@ func init() {
 
 	copyTimeoutDuration, err = time.ParseDuration(copyTimeout)
 	if err != nil {
-		msg := fmt.Sprintf("Invalid voms-proxy-init timeout string %s", vpiTimeout)
+		msg := fmt.Sprintf("Invalid copy proxy timeout string %s", copyTimeout)
+		initErrorNotify(msg)
+	}
+
+	exptLogInitTimeoutDuration, err = time.ParseDuration(exptLogInitTimeout)
+	if err != nil {
+		msg := fmt.Sprintf("Invalid experiment log intiialization timeout string %s", exptLogInitTimeout)
 		initErrorNotify(msg)
 	}
 
