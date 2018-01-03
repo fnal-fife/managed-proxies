@@ -25,7 +25,6 @@ import (
 
 //notifications - IN PROGRESS - Formatting
 
-// Documentation
 // Error handling - break everything!
 
 // Timeouts, defaults, and format strings
@@ -448,7 +447,7 @@ func experimentWorker(ctx context.Context, exptname string) <-chan experimentSuc
 		defer close(c) // All expt operations are done (either successful including cleanup or at error)
 		exptConfig := viper.Sub("experiments." + expt.name)
 
-		badnodes := make(map[string]struct{})
+		// badnodes := make(map[string]struct{})
 		successfulCopies := make(map[string][]string)
 
 		// Helper functions
@@ -459,9 +458,10 @@ func experimentWorker(ctx context.Context, exptname string) <-chan experimentSuc
 			// close(c)
 		}
 
-		for _, node := range exptConfig.GetStringSlice("nodes") {
-			badnodes[node] = struct{}{}
-		}
+		// for _, node := range exptConfig.GetStringSlice("nodes") {
+		// 	badnodes[node] = struct{}{}
+		// }
+		badNodesSlice := make([]string, 0, len(exptConfig.GetStringSlice("nodes")))
 
 		// if e == "darkside" {
 		// 	time.Sleep(20 * time.Second)
@@ -500,11 +500,18 @@ func experimentWorker(ctx context.Context, exptname string) <-chan experimentSuc
 					pingCancel()
 					break pingLoop
 				}
-				if testnode.err == nil {
-					delete(badnodes, testnode.node)
-				} else {
+				if testnode.err != nil {
+					badNodesSlice = append(badNodesSlice, testnode.node)
+					// 	// delete(badnodes, testnode.node)
+					// } else {
 					exptLog.Error(testnode.err)
 				}
+
+				// if testnode.err == nil {
+				// 	delete(badnodes, testnode.node)
+				// } else {
+				// 	exptLog.Error(testnode.err)
+				// }
 			case <-pingCtx.Done():
 				if e := pingCtx.Err(); e == context.DeadlineExceeded {
 					exptLog.Errorf("Hit the ping timeout: %s", e)
@@ -521,10 +528,10 @@ func experimentWorker(ctx context.Context, exptname string) <-chan experimentSuc
 			// }
 		}
 
-		badNodesSlice := make([]string, 0, len(badnodes))
-		for node := range badnodes {
-			badNodesSlice = append(badNodesSlice, node)
-		}
+		// badNodesSlice := make([]string, 0, len(badnodes))
+		// for node := range badnodes {
+		// 	badNodesSlice = append(badNodesSlice, node)
+		// }
 
 		if len(badNodesSlice) > 0 {
 			exptLog.Warn("Bad nodes are: ", badNodesSlice)
