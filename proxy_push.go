@@ -906,7 +906,6 @@ func init() {
 }
 
 func cleanup(exptStatus map[string]bool, experiments []string) error {
-	var finalCleanupSuccess bool
 	s := make([]string, 0, len(experiments))
 	f := make([]string, 0, len(experiments))
 
@@ -936,17 +935,20 @@ func cleanup(exptStatus map[string]bool, experiments []string) error {
 		return err
 	}
 
+	finalCleanupSuccess := true
 	msg := string(data)
 
 	emailCtx, emailCancel := context.WithTimeout(context.Background(), timeoutDurationMap["emailTimeout"])
 	if err = sendEmail(emailCtx, "", msg); err != nil {
 		log.Error(err)
+		finalCleanupSuccess = false
 	}
 	emailCancel()
 
 	slackCtx, slackCancel := context.WithTimeout(context.Background(), timeoutDurationMap["slackTimeout"])
 	if err = sendSlackMessage(slackCtx, msg); err != nil {
 		log.Error(err)
+		finalCleanupSuccess = false
 	}
 	slackCancel()
 
