@@ -38,16 +38,17 @@ const (
 	slackTimeout  string = "15s" // Slack message timeout
 	pingTimeout   string = "10s" // Ping timeout (for all pings per experiment)
 	vpiTimeout    string = "10s" // voms-proxy-init timeout (total for vpis per experiment)
+	copyTimeout   string = "30s" // copy proxy timeout (total for all copies per experiment)
 
 	configFile      string = "proxy_push_config_test.yml"       // CHANGE ME BEFORE PRODUCTION
 	exptLogFilename string = "golang_proxy_push_%s.log"         // CHANGE ME BEFORE PRODUCTION - temp file per experiment that will be emailed to experiment
 	exptGenFilename string = "golang_proxy_push_general_%s.log" // CHANGE ME BEFORE PRODUCTION - temp file per experiment that will be copied over to logfile
 )
 
-var globalTimeoutDuration, exptTimeoutDuration, slackTimeoutDuration, pingTimeoutDuration, vpiTimeoutDuration time.Duration // Timeouts we will populate later
-var log = logrus.New()                                                                                                      // Global logger
-var emailDialer = gomail.Dialer{Host: "localhost", Port: 25}                                                                // gomail dialer to use to send emails
-var rwmuxErr, rwmuxLog sync.RWMutex                                                                                         // mutexes to be used when copying experiment logs into master and error log
+var globalTimeoutDuration, exptTimeoutDuration, slackTimeoutDuration, pingTimeoutDuration, vpiTimeoutDuration, copyTimeoutDuration time.Duration // Timeouts we will populate later
+var log = logrus.New()                                                                                                                           // Global logger
+var emailDialer = gomail.Dialer{Host: "localhost", Port: 25}                                                                                     // gomail dialer to use to send emails
+var rwmuxErr, rwmuxLog sync.RWMutex                                                                                                              // mutexes to be used when copying experiment logs into master and error log
 // if testMode is true:  send only general emails to notifications_test.admin_email in config file, send Slack notification to test channel. Do not send experiment-specific email
 var testMode = false
 
@@ -247,7 +248,7 @@ func getProxies(ctx context.Context, exptConfig *viper.Viper, globalConfig map[s
 	return c
 }
 
-func copyProxies(exptConfig *viper.Viper) <-chan copyProxiesStatus {
+func copyProxies(ctx context.Context, exptConfig *viper.Viper) <-chan copyProxiesStatus {
 	numSlots := len(exptConfig.GetStringMapString("accounts")) * len(exptConfig.GetStringSlice("nodes"))
 	c := make(chan copyProxiesStatus, numSlots)
 	var wg sync.WaitGroup
@@ -273,21 +274,25 @@ func copyProxies(exptConfig *viper.Viper) <-chan copyProxiesStatus {
 
 					scpargs := append(sshopts, proxyFilePath, accountNode+":"+newProxyPath)
 					sshargs := append(sshopts, accountNode, "chmod 400 "+newProxyPath+" ; mv -f "+newProxyPath+" "+finalProxyPath)
-					scpCmd := exec.Command("scp", scpargs...)
-					sshCmd := exec.Command("ssh", sshargs...)
+					scpCmd := exec.CommandContext(ctx, "scp", scpargs...)
+					sshCmd := exec.CommandContext(ctx, "ssh", sshargs...)
 
-					cmdOut, cmdErr := scpCmd.CombinedOutput()
-					if cmdErr != nil {
-						msg := fmt.Errorf("Copying proxy %s to node %s failed.  The error was %s: %s", proxyFile, node, cmdErr, cmdOut)
-						cps.err = msg
+					if cmdOut, cmdErr := scpCmd.CombinedOutput(); cmdErr != nil {
+						if e := ctx.Err(); e != nil {
+							cps.err = e
+						} else {
+							cps.err = fmt.Errorf("Copying proxy %s to node %s failed.  The error was %s: %s", proxyFile, node, cmdErr, cmdOut)
+						}
 						c <- cps
 						return
 					}
 
-					cmdOut, cmdErr = sshCmd.CombinedOutput()
-					if cmdErr != nil {
-						msg := fmt.Errorf("Error changing permission of proxy %s to mode 400 on %s.  The error was %s: %s", proxyFile, node, cmdErr, cmdOut)
-						cps.err = msg
+					if cmdOut, cmdErr := sshCmd.CombinedOutput(); cmdErr != nil {
+						if e := ctx.Err(); e != nil {
+							cps.err = e
+						} else {
+							cps.err = fmt.Errorf("Error changing permission of proxy %s to mode 400 on %s.  The error was %s: %s", proxyFile, node, cmdErr, cmdOut)
+						}
 					}
 					c <- cps
 				}(node)
@@ -521,14 +526,16 @@ func experimentWorker(ctx context.Context, exptname string) <-chan experimentSuc
 			}
 		}
 
-		copyChan := copyProxies(exptConfig)
-		timeout := time.After(exptTimeoutDuration)
+		copyCtx, copyCancel := context.WithTimeout(ctx, copyTimeoutDuration)
+		copyChan := copyProxies(copyCtx, exptConfig)
+		// timeout := time.After(exptTimeoutDuration)
 		// Listen until we either timeout or the copyChan is closed
 	copyLoop:
 		for {
 			select {
 			case pushproxy, chanOpen := <-copyChan:
 				if !chanOpen {
+					copyCancel()
 					break copyLoop
 				}
 				if pushproxy.err != nil {
@@ -537,10 +544,19 @@ func experimentWorker(ctx context.Context, exptname string) <-chan experimentSuc
 				} else {
 					successfulCopies[pushproxy.role] = append(successfulCopies[pushproxy.role], pushproxy.node)
 				}
-			case <-timeout: // Copy proxy timeout for all proxies
-				exptLog.Error("Experiment hit the timeout when waiting to push proxy.")
+			case <-copyCtx.Done():
+				if e := copyCtx.Err(); e == context.DeadlineExceeded {
+					exptLog.Error("Experiment hit the timeout when waiting to push proxy.")
+				} else {
+					exptLog.Error(e)
+				}
 				expt.success = false
+				copyCancel()
 				break copyLoop
+				// case <-timeout: // Copy proxy timeout for all proxies
+				// 	exptLog.Error("Experiment hit the timeout when waiting to push proxy.")
+				// 	expt.success = false
+				// 	break copyLoop
 			}
 		}
 
@@ -751,6 +767,10 @@ func init() {
 		initErrorNotify(msg)
 	}
 
+	// timeoutMap := make(map(string)time.Duration) {
+	// 	globalTimeout: global
+	// }
+
 	// Check our timeouts for proper formatting
 	globalTimeoutDuration, err = time.ParseDuration(globalTimeout)
 	if err != nil {
@@ -771,6 +791,12 @@ func init() {
 	}
 
 	vpiTimeoutDuration, err = time.ParseDuration(vpiTimeout)
+	if err != nil {
+		msg := fmt.Sprintf("Invalid voms-proxy-init timeout string %s", vpiTimeout)
+		initErrorNotify(msg)
+	}
+
+	copyTimeoutDuration, err = time.ParseDuration(copyTimeout)
 	if err != nil {
 		msg := fmt.Sprintf("Invalid voms-proxy-init timeout string %s", vpiTimeout)
 		initErrorNotify(msg)
