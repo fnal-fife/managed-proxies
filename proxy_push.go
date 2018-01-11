@@ -23,8 +23,6 @@ import (
 	gomail "gopkg.in/gomail.v2"
 )
 
-//notifications - IN PROGRESS - Formatting
-
 // Error handling - break everything!
 
 // Timeouts, defaults, and format strings
@@ -436,32 +434,23 @@ func experimentWorker(ctx context.Context, exptname string) <-chan experimentSuc
 	expt := experimentSuccess{exptname, true} // Initialize
 
 	exptLog, err := exptLogInit(ctx, expt.name)
-	if err != nil { // We either have panicked or it's a context error.  If it's the latter, we really don't care
+	if err != nil { // We either have panicked or it's a context error.  If it's the latter, we really don't care here
 		exptLog = log.WithField("experiment", exptname)
 	}
 
 	exptLog.Info("Now processing ", expt.name)
 
 	go func() {
-		// defer w.Done() // Decrement WaitGroup after cleanup is done or we want to return
 		defer close(c) // All expt operations are done (either successful including cleanup or at error)
 		exptConfig := viper.Sub("experiments." + expt.name)
-
-		// badnodes := make(map[string]struct{})
 		successfulCopies := make(map[string][]string)
+		badNodesSlice := make([]string, 0, len(exptConfig.GetStringSlice("nodes")))
 
 		// Helper functions
 		declareExptFailure := func() {
-			// defer close(c)
 			expt.success = false
 			c <- expt
-			// close(c)
 		}
-
-		// for _, node := range exptConfig.GetStringSlice("nodes") {
-		// 	badnodes[node] = struct{}{}
-		// }
-		badNodesSlice := make([]string, 0, len(exptConfig.GetStringSlice("nodes")))
 
 		// if e == "darkside" {
 		// 	time.Sleep(20 * time.Second)
@@ -490,7 +479,6 @@ func experimentWorker(ctx context.Context, exptname string) <-chan experimentSuc
 
 		pingCtx, pingCancel := context.WithTimeout(ctx, timeoutDurationMap["pingTimeout"])
 		pingChannel := pingAllNodes(pingCtx, exptConfig.GetStringSlice("nodes"))
-		// timeout := time.After(pingTimeoutDuration)
 		// Listen until we either timeout or the pingChannel is closed
 	pingLoop:
 		for {
@@ -502,16 +490,8 @@ func experimentWorker(ctx context.Context, exptname string) <-chan experimentSuc
 				}
 				if testnode.err != nil {
 					badNodesSlice = append(badNodesSlice, testnode.node)
-					// 	// delete(badnodes, testnode.node)
-					// } else {
 					exptLog.Error(testnode.err)
 				}
-
-				// if testnode.err == nil {
-				// 	delete(badnodes, testnode.node)
-				// } else {
-				// 	exptLog.Error(testnode.err)
-				// }
 			case <-pingCtx.Done():
 				if e := pingCtx.Err(); e == context.DeadlineExceeded {
 					exptLog.Errorf("Hit the ping timeout: %s", e)
@@ -522,16 +502,7 @@ func experimentWorker(ctx context.Context, exptname string) <-chan experimentSuc
 				pingCancel()
 				break pingLoop
 			}
-			// case <-timeout: // We give timeout for all pings
-			// 	exptLog.Error("Hit the ping timeout!")
-			// 	break pingLoop
-			// }
 		}
-
-		// badNodesSlice := make([]string, 0, len(badnodes))
-		// for node := range badnodes {
-		// 	badNodesSlice = append(badNodesSlice, node)
-		// }
 
 		if len(badNodesSlice) > 0 {
 			exptLog.Warn("Bad nodes are: ", badNodesSlice)
@@ -541,7 +512,6 @@ func experimentWorker(ctx context.Context, exptname string) <-chan experimentSuc
 		// since they're valid for 24 hours
 		vpiCtx, vpiCancel := context.WithTimeout(ctx, timeoutDurationMap["vpiTimeout"])
 		vpiChan := getProxies(vpiCtx, exptConfig, viper.GetStringMapString("global"), expt.name)
-		// timeout := time.After(vpiTimeoutDuration)
 		// Listen until we either timeout or vpiChan is closed
 	vpiLoop:
 		for {
@@ -565,16 +535,11 @@ func experimentWorker(ctx context.Context, exptname string) <-chan experimentSuc
 				}
 				vpiCancel()
 				break vpiLoop
-				// case <-timeout: // voms-proxy-init timeout for all operations
-				// 	exptLog.Errorf("Error obtaining proxy for %s:  timeout.  Check log for details. Continuing to next proxy.\n", expt.name)
-				// 	expt.success = false
-				// 	break vpiLoop
 			}
 		}
 
 		copyCtx, copyCancel := context.WithTimeout(ctx, timeoutDurationMap["copyTimeout"])
 		copyChan := copyProxies(copyCtx, exptConfig)
-		// timeout := time.After(exptTimeoutDuration)
 		// Listen until we either timeout or the copyChan is closed
 	copyLoop:
 		for {
@@ -599,10 +564,6 @@ func experimentWorker(ctx context.Context, exptname string) <-chan experimentSuc
 				expt.success = false
 				copyCancel()
 				break copyLoop
-				// case <-timeout: // Copy proxy timeout for all proxies
-				// 	exptLog.Error("Experiment hit the timeout when waiting to push proxy.")
-				// 	expt.success = false
-				// 	break copyLoop
 			}
 		}
 
@@ -612,7 +573,6 @@ func experimentWorker(ctx context.Context, exptname string) <-chan experimentSuc
 		}
 		exptLog.Info("Finished processing ", expt.name)
 		c <- expt
-		// close(c)
 
 		// We're logging the cleanup in the general log so that we don't create an extraneous
 		// experiment log file
@@ -620,13 +580,6 @@ func experimentWorker(ctx context.Context, exptname string) <-chan experimentSuc
 			log.Error(err)
 		}
 		log.Info("Finished cleaning up ", expt.name)
-
-		// // Block until we get go-ahead from expt manager that it's put message into agg channel or timeout expires
-		// select {
-		// case <-done:
-		// case <-time.After(exptTimeoutDuration):
-		// 	log.Error("Timed out waiting for experiment success info to be put into aggregation channel")
-		// }
 	}()
 	return c
 }
@@ -744,6 +697,7 @@ func sendSlackMessage(ctx context.Context, message string) error {
 
 	req.Header.Set("Content-Type", "application/json")
 
+	// Actually send the request
 	client := &http.Client{Timeout: timeoutDurationMap["slackTimeout"]}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -757,6 +711,7 @@ func sendSlackMessage(ctx context.Context, message string) error {
 
 	defer resp.Body.Close()
 
+	// Parse the response to make sure we're good
 	if resp.StatusCode != http.StatusOK {
 		body, _ := ioutil.ReadAll(resp.Body)
 		errmsg := fmt.Errorf("Slack Response Status: %s\nSlack Response Headers: %s\nSlack Response Body: %s",
