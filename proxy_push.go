@@ -20,10 +20,6 @@ import (
 )
 
 // Error handling - break everything!
-// Email stuff needs to be called from here, though it's also in expt utils
-// Timeouts to config file
-
-// Timeouts, defaults, and format strings
 
 const (
 	configFile      string = "proxy_push_config_test.yml"       // CHANGE ME BEFORE PRODUCTION
@@ -31,29 +27,7 @@ const (
 	exptGenFilename string = "golang_proxy_push_general_%s.log" // CHANGE ME BEFORE PRODUCTION - temp file per experiment that will be copied over to logfile
 )
 
-// var timeoutStrings = map[string]string{
-// 						"globalTimeout": "60s", // Global timeout
-// 						"exptTimeout":   "30s", // Experiment timeout
-// 						"pingTimeout":   "10s", // Ping timeout (for all pings per experiment)
-// 						"vpiTimeout":    "10s", // voms-proxy-init timeout (total for vpis per experiment)
-// 						"copyTimeout":   "30s", // copy proxy timeout (total for all copies per experiment)
-// 						"slackTimeout":  "15s", // Slack message timeout
-// 						"emailTimeout":  "30s"} // Email timeout (per email)
-// var timeoutDurationMap map[string]time.Duration // Hold the durations for code to use
-
 var log = logrus.New() // Global logger
-// var rwmuxErr, rwmuxLog sync.RWMutex                          // mutexes to be used when copying experiment logs into master and error log
-// if testMode is true:  send only general emails to notifications_test.admin_email in config file, send Slack notification to test channel. Do not send experiment-specific email
-// var testMode bool
-
-// // experimentutil.ExperimentSuccess stores information on whether all the processes involved in generating, copying, and changing permissions on all proxies for
-// // an experiment were successful.
-// type experimentutil.ExperimentSuccess struct {
-// 	name    string
-// 	success bool
-// }
-
-// Global functions
 
 // checkUser makes sure that the user running the proxy push is the authorized user
 func checkUser(authuser string) error {
@@ -121,84 +95,6 @@ func manageExperimentChannels(ctx context.Context, exptList []string) <-chan exp
 	return agg
 }
 
-// sendEmail sends emails to both experiments and admins, depending on the input (exptName = "" gives admin email).
-// func sendEmail(ctx context.Context, exptName, message string) error {
-// var recipients []string
-
-// if exptName == "" {
-// 	exptName = "all experiments" // Send email for all experiments to admin
-// 	recipients = viper.GetStringSlice("notifications.admin_email")
-// } else {
-// 	emailsKeyLookup := "experiments." + exptName + ".emails"
-// 	recipients = viper.GetStringSlice(emailsKeyLookup)
-// }
-
-// subject := "Managed Proxy Push errors for " + exptName
-
-// m := gomail.NewMessage()
-// m.SetHeader("From", "fife-group@fnal.gov")
-// m.SetHeader("To", recipients...)
-// m.SetHeader("Subject", subject)
-// m.SetBody("text/plain", message)
-
-// c := make(chan error)
-// go func() {
-// 	defer close(c)
-// 	err := emailDialer.DialAndSend(m)
-// 	c <- err
-// }()
-
-// select {
-// case e := <-c:
-// 	return e
-// case <-ctx.Done():
-// 	e := ctx.Err()
-// 	if e != context.DeadlineExceeded {
-// 		return fmt.Errorf("Hit timeout attempting to send email to %s", exptName)
-// 	}
-// 	return e
-// }
-// }
-
-// // sendSlackMessage sends an HTTP POST request to a URL specified in the config file.
-// func sendSlackMessage(ctx context.Context, message string) error {
-// 	if e := ctx.Err(); e != nil {
-// 		return e
-// 	}
-
-// 	msg := []byte(fmt.Sprintf(`{"text": "%s"}`, strings.Replace(message, "\"", "\\\"", -1)))
-// 	req, err := http.NewRequest("POST", viper.GetString("notifications.slack_alerts_url"), bytes.NewBuffer(msg))
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	req.Header.Set("Content-Type", "application/json")
-
-// 	// Actually send the request
-// 	client := &http.Client{Timeout: viper.Get("slackTimeoutDuration")}
-// 	resp, err := client.Do(req)
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	// This should be redundant, but just in case the timeout before didn't trigger.
-// 	if e := ctx.Err(); e != nil {
-// 		return e
-// 	}
-
-// 	defer resp.Body.Close()
-
-// 	// Parse the response to make sure we're good
-// 	if resp.StatusCode != http.StatusOK {
-// 		body, _ := ioutil.ReadAll(resp.Body)
-// 		errmsg := fmt.Errorf("Slack Response Status: %s\nSlack Response Headers: %s\nSlack Response Body: %s",
-// 			resp.Status, resp.Header, string(body))
-// 		return errmsg
-// 	}
-// 	fmt.Println("Slack message sent")
-// 	return nil
-// }
-
 func init() {
 	// Defaults
 	viper.SetDefault("notifications.admin_email", "fife-group@fnal.gov")
@@ -244,7 +140,6 @@ func init() {
 	log.Debugf("Using config file %s", viper.GetString("configfile"))
 
 	// Test flag sets which notifications section from config we want to use.
-	// testMode =
 	if viper.GetBool("test") {
 		log.Info("Running in test mode")
 		viper.Set("notifications", viper.Get("notifications_test"))
@@ -285,7 +180,6 @@ func init() {
 	}
 
 	// Parse our timeouts, store them into timeoutDurationMap for later use
-	// timeoutDurationMap = make(map[string]time.Duration)
 	for timeoutName, timeoutString := range viper.GetStringMapString("timeout") {
 		value, err := time.ParseDuration(timeoutString)
 		if err != nil {
@@ -294,7 +188,6 @@ func init() {
 		}
 		newName := timeoutName + "Duration"
 		viper.Set(newName, value)
-		// timeoutDurationMap[timeoutName] = value
 	}
 }
 

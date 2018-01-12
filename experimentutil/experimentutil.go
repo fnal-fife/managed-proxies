@@ -19,16 +19,12 @@ import (
 )
 
 const (
-	// configFile      string = "proxy_push_config_test.yml"       // CHANGE ME BEFORE PRODUCTION
 	exptLogFilename string = "golang_proxy_push_%s.log"         // CHANGE ME BEFORE PRODUCTION - temp file per experiment that will be emailed to experiment
 	exptGenFilename string = "golang_proxy_push_general_%s.log" // CHANGE ME BEFORE PRODUCTION - temp file per experiment that will be copied over to logfile
 )
 
-// var emailDialer = gomail.Dialer{Host: "localhost", Port: 25} // gomail dialer to use to send emails
 var genLog *logrus.Logger
 var rwmuxErr, rwmuxLog sync.RWMutex // mutexes to be used when copying experiment logs into master and error log
-// if testMode is true:  send only general emails to notifications_test.admin_email in config file, send Slack notification to test channel. Do not send experiment-specific email
-// var testMode bool
 
 // Types to carry information about success and status of various operations over channels
 
