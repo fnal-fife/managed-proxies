@@ -69,6 +69,12 @@ experiments:
     nodes: [gm2gpvm01, gm2gpvm02, gm2gpvm03, gm2gpvm04, gm2samgpvm01]
     roles:
       - Production: gm2pro
+  icarus:
+    dir: /opt
+    emails: [wketchum@fnal.gov]
+    nodes: [icarusgpvm01]
+    roles:
+      - Production: icaruspro
   lariat:
     dir: /opt
     emails: [wenzel@fnal.gov]
