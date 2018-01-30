@@ -113,7 +113,7 @@ experiments:
   sbnd:
     dir: /opt
     emails: [petrillo@fnal.gov]
-    nodes: [sbndgpvm01, sbndgpvm02, sbndgpvm03]
+    nodes: [sbndgpvm01, sbndgpvm02, sbndgpvm03, sbndsamgpvm01]
     roles:
       - Production: sbndpro
   uboone:
