@@ -21,11 +21,7 @@ import (
 
 // Error handling - break everything!
 
-const (
-	configFile string = "proxy_push_config_test.yml" // CHANGE ME BEFORE PRODUCTION
-//	exptLogFilename string = "golang_proxy_push_%s.log"         // CHANGE ME BEFORE PRODUCTION - temp file per experiment that will be emailed to experiment
-//	exptGenFilename string = "golang_proxy_push_general_%s.log" // CHANGE ME BEFORE PRODUCTION - temp file per experiment that will be copied over to logfile
-)
+const configFile string = "proxy_push_config_test.yml" // CHANGE ME BEFORE PRODUCTION
 
 var log = logrus.New() // Global logger
 
