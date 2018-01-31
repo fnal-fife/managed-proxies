@@ -22,9 +22,9 @@ import (
 // Error handling - break everything!
 
 const (
-	configFile      string = "proxy_push_config_test.yml"       // CHANGE ME BEFORE PRODUCTION
-	exptLogFilename string = "golang_proxy_push_%s.log"         // CHANGE ME BEFORE PRODUCTION - temp file per experiment that will be emailed to experiment
-	exptGenFilename string = "golang_proxy_push_general_%s.log" // CHANGE ME BEFORE PRODUCTION - temp file per experiment that will be copied over to logfile
+	configFile string = "proxy_push_config_test.yml" // CHANGE ME BEFORE PRODUCTION
+//	exptLogFilename string = "golang_proxy_push_%s.log"         // CHANGE ME BEFORE PRODUCTION - temp file per experiment that will be emailed to experiment
+//	exptGenFilename string = "golang_proxy_push_general_%s.log" // CHANGE ME BEFORE PRODUCTION - temp file per experiment that will be copied over to logfile
 )
 
 var log = logrus.New() // Global logger
@@ -266,8 +266,10 @@ func main() {
 
 	// Get our list of experiments from the config file, set exptConfig Name variable
 	if viper.GetString("experiment") != "" {
+		// If experiment is passed in on command line
 		expts = append(expts, viper.GetString("experiment"))
 	} else {
+		// No experiment on command line, so use all expts in config file
 		for k := range viper.GetStringMap("experiments") {
 			expts = append(expts, k)
 		}
