@@ -57,6 +57,28 @@ type copyProxiesStatus struct {
 	err     error
 }
 
+type ExptErrorFormatter struct {
+}
+
+func (f *ExptErrorFormatter) Format(entry *logrus.Entry) ([]byte, error) {
+	// Note this doesn't include Time, Level and Message which are available on
+	// the Entry. Consult `godoc` on information about those fields or read the
+	// source of the official loggers.
+	var expt string
+	if val, ok := entry.Data["experiment"]; ok {
+		if expt, ok = val.(string); !ok {
+			return nil, errors.New("entry.Data[\"experiment\"] Failed type assertion")
+		}
+	} else {
+		expt = "No Experiment"
+	}
+
+	logLine := fmt.Sprintf("[%s] [%s] [%s]: %s", entry.Time, expt, entry.Level, entry.Message)
+	// fmt.Println(logLine)
+	logByte := []byte(logLine)
+	return append(logByte, '\n'), nil
+}
+
 // Experiment worker-specific functions
 
 // exptLogInit sets up the logrus instance for the experiment worker
@@ -71,8 +93,8 @@ func exptLogInit(ctx context.Context, ename string) (*logrus.Entry, error) {
 	genlog := fmt.Sprintf(exptGenFilename, ename)
 
 	Log.SetLevel(logrus.DebugLevel)
-	logFormatter := logrus.TextFormatter{FullTimestamp: true}
-	Log.Formatter = &logFormatter
+	// logFormatter := logrus.TextFormatter{FullTimestamp: true}
+	// Log.Formatter = &logFormatter
 
 	// General Log that gets copied to master log
 	Log.AddHook(lfshook.NewHook(lfshook.PathMap{
@@ -82,14 +104,14 @@ func exptLogInit(ctx context.Context, ename string) (*logrus.Entry, error) {
 		logrus.ErrorLevel: genlog,
 		logrus.FatalLevel: genlog,
 		logrus.PanicLevel: genlog,
-	}))
+	}, &logrus.TextFormatter{FullTimestamp: true}))
 
 	// Experiment-specific error log that gets emailed if populated
 	Log.AddHook(lfshook.NewHook(lfshook.PathMap{
 		logrus.ErrorLevel: exptlog,
 		logrus.FatalLevel: exptlog,
 		logrus.PanicLevel: exptlog,
-	}))
+	}, new(ExptErrorFormatter)))
 
 	exptlogger := Log.WithField("experiment", ename)
 	exptlogger.Info("Set up experiment logger")
