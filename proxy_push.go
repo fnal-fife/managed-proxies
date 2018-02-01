@@ -113,15 +113,15 @@ func init() {
 	// From here on out, we're logging to the log file too
 	// Set up our global logger
 	log.Level = logrus.DebugLevel
-	logFormatter := logrus.TextFormatter{FullTimestamp: true}
-	log.Formatter = &logFormatter
+	// logFormatter := logrus.TextFormatter{FullTimestamp: true}
+	// log.Formatter = &logFormatter
 
 	// Error log
 	log.AddHook(lfshook.NewHook(lfshook.PathMap{
 		logrus.ErrorLevel: viper.GetString("logs.errfile"),
 		logrus.FatalLevel: viper.GetString("logs.errfile"),
 		logrus.PanicLevel: viper.GetString("logs.errfile"),
-	}))
+	}, new(experimentutil.ExptErrorFormatter)))
 
 	// Master Log
 	log.AddHook(lfshook.NewHook(lfshook.PathMap{
@@ -131,7 +131,7 @@ func init() {
 		logrus.ErrorLevel: viper.GetString("logs.logfile"),
 		logrus.FatalLevel: viper.GetString("logs.logfile"),
 		logrus.PanicLevel: viper.GetString("logs.logfile"),
-	}))
+	}, &logrus.TextFormatter{FullTimestamp: true}))
 
 	log.Debugf("Using config file %s", viper.GetString("configfile"))
 
