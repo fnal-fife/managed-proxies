@@ -71,6 +71,8 @@ func exptLogInit(ctx context.Context, ename string) (*logrus.Entry, error) {
 	genlog := fmt.Sprintf(exptGenFilename, ename)
 
 	Log.SetLevel(logrus.DebugLevel)
+	logFormatter := logrus.TextFormatter{FullTimestamp: true}
+	Log.Formatter = &logFormatter
 
 	// General Log that gets copied to master log
 	Log.AddHook(lfshook.NewHook(lfshook.PathMap{
