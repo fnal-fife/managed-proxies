@@ -313,7 +313,7 @@ func copyProxies(ctx context.Context, exptConfig *viper.Viper, badNodesSlice []s
 						if e := ctx.Err(); e != nil {
 							cps.err = e
 						} else {
-							e := fmt.Sprintf("Copying proxy %s to node %s failed.  The error was %s: %s.%s",
+							e := fmt.Sprintf("Copying proxy %s to node %s failed.  The error was %s: %s%s",
 								proxyFile, node, cmdErr, cmdOut, badNodeMsg)
 							cps.err = errors.New(e)
 						}
