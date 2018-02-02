@@ -15,6 +15,7 @@ timeout:
 logs:
   logfile:  golang_proxy_push.log
   errfile:  golang_proxy_push.err      # Set the temporary output file for errors.  
+  debugfile: golang_proxy_push.debug.log
 
 
 # Global email and slack notification parameters
