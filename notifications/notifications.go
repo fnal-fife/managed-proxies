@@ -16,9 +16,25 @@ import (
 
 var emailDialer = gomail.Dialer{Host: "localhost", Port: 25} // gomail dialer to use to send emails
 
+// addHelperMessage tacks on the help text we want experiments to get.
+func addHelperMessage(msg, expt string) string {
+	help := "\n\nWe've compiled a list of common errors here: " +
+		"https://cdcvs.fnal.gov/redmine/projects/fife/wiki/Common_errors_with_Managed_Proxies_Service. " +
+		"\n\nIf you have any questions or comments about these emails, " +
+		"please open a Service Desk ticket to the Distributed Computing " +
+		"Support group."
+
+	if expt == "" {
+		return msg
+	} else {
+		return msg + help
+	}
+}
+
 // SendEmail sends emails to both experiments and admins, depending on the input (exptName = "" gives admin email).
-func SendEmail(ctx context.Context, exptName, message string) error {
+func SendEmail(ctx context.Context, exptName, msg string) error {
 	var recipients []string
+	message := addHelperMessage(msg, exptName)
 
 	if exptName == "" {
 		exptName = "all experiments" // Send email for all experiments to admin
@@ -45,6 +61,9 @@ func SendEmail(ctx context.Context, exptName, message string) error {
 
 	select {
 	case e := <-c:
+		if e == nil {
+			fmt.Printf("Sent emails to %s", strings.Join(recipients, ", "))
+		}
 		return e
 	case <-ctx.Done():
 		e := ctx.Err()
@@ -90,7 +109,8 @@ func SendSlackMessage(ctx context.Context, message string) error {
 	// Parse the response to make sure we're good
 	if resp.StatusCode != http.StatusOK {
 		body, _ := ioutil.ReadAll(resp.Body)
-		errmsg := fmt.Errorf("Slack Response Status: %s\nSlack Response Headers: %s\nSlack Response Body: %s",
+		errmsg := fmt.Errorf("Could not send Slack message. "+
+			"Slack Response Status: %s\nSlack Response Headers: %s\nSlack Response Body: %s",
 			resp.Status, resp.Header, string(body))
 		return errmsg
 	}

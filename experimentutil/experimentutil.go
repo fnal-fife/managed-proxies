@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -28,8 +29,8 @@ var rwmuxErr, rwmuxLog sync.RWMutex // mutexes to be used when copying experimen
 
 // Types to carry information about success and status of various operations over channels
 
-// ExperimentSuccess stores information on whether all the processes involved in generating, copying, and changing permissions on all proxies for
-// an experiment were successful.
+// ExperimentSuccess stores information on whether all the processes involved in generating, copying, and changing
+// permissions on all proxies for an experiment were successful.
 type ExperimentSuccess struct {
 	Name    string
 	Success bool
@@ -48,8 +49,8 @@ type vomsProxyStatus struct {
 	err      error
 }
 
-// copyProxiesStatus stores information that uniquely identifies a VOMS proxy within an experiment (account, role) and the node
-// to which it was attempted to be copied.  If there was an error doing so, it's stored in err.
+// copyProxiesStatus stores information that uniquely identifies a VOMS proxy within an experiment (account, role) and
+// the node to which it was attempted to be copied.  If there was an error doing so, it's stored in err.
 type copyProxiesStatus struct {
 	node    string
 	account string
@@ -57,13 +58,15 @@ type copyProxiesStatus struct {
 	err     error
 }
 
+// ExptErrorFormatter is a custom formatter that is intended to be used for the
+// experiment error logs that will be sent out to experiments and to the admins.
+// The default logrus.TextFormatter seems a little tougher to parse for a human.
 type ExptErrorFormatter struct {
 }
 
+// Format defines how any logger using the ExptErrorFormatter should emit its
+// log records.  We expect to see [date] [experiment] [level] [message]
 func (f *ExptErrorFormatter) Format(entry *logrus.Entry) ([]byte, error) {
-	// Note this doesn't include Time, Level and Message which are available on
-	// the Entry. Consult `godoc` on information about those fields or read the
-	// source of the official loggers.
 	var expt string
 	if val, ok := entry.Data["experiment"]; ok {
 		if expt, ok = val.(string); !ok {
@@ -74,7 +77,6 @@ func (f *ExptErrorFormatter) Format(entry *logrus.Entry) ([]byte, error) {
 	}
 
 	logLine := fmt.Sprintf("[%s] [%s] [%s]: %s", entry.Time, expt, entry.Level, entry.Message)
-	// fmt.Println(logLine)
 	logByte := []byte(logLine)
 	return append(logByte, '\n'), nil
 }
@@ -133,7 +135,8 @@ func getKerbTicket(ctx context.Context, krb5ccname string) error {
 		if ctx.Err() == context.DeadlineExceeded {
 			return ctx.Err()
 		}
-		return fmt.Errorf("Initializing a kerb ticket failed.  The error was %s: %s", cmdErr, cmdOut)
+		return fmt.Errorf("Obtaining a kerberos ticket failed.  May be unable to "+
+			"push proxies.  The error was %s: %s", cmdErr, cmdOut)
 	}
 	return nil
 }
@@ -190,7 +193,9 @@ func pingAllNodes(ctx context.Context, nodes []string) <-chan pingNodeStatus {
 // getProxies launches goroutines that run voms-proxy-init to generate the appropriate proxies on the local machine.
 // Calling getProxies will generate all of the proxies per experiment according to the viper configuration.  It returns
 // a channel, on which it reports the status of each attempt
-func getProxies(ctx context.Context, exptConfig *viper.Viper, globalConfig map[string]string, exptname string) <-chan vomsProxyStatus {
+func getProxies(ctx context.Context, exptConfig *viper.Viper, globalConfig map[string]string,
+	exptname string) <-chan vomsProxyStatus {
+
 	c := make(chan vomsProxyStatus, len(exptConfig.GetStringMapString("accounts")))
 	var vomsprefix, certfile, keyfile string
 	var wg sync.WaitGroup
@@ -254,13 +259,19 @@ func getProxies(ctx context.Context, exptConfig *viper.Viper, globalConfig map[s
 	return c
 }
 
-// copyProxies copies the proxies from the local machine to the experiment nodes as specified by the configuration and changes their permissions.
-// It returns a channel on which it reports the status of those operations.  The copy and change permission operations share a context that
-// dictates their deadline.
-func copyProxies(ctx context.Context, exptConfig *viper.Viper) <-chan copyProxiesStatus {
+// copyProxies copies the proxies from the local machine to the experiment nodes as specified by the configuration and
+// changes their permissions. It returns a channel on which it reports the status of those operations.  The copy and
+// change permission operations share a context that  dictates their deadline.
+func copyProxies(ctx context.Context, exptConfig *viper.Viper, badNodesSlice []string) <-chan copyProxiesStatus {
 	numSlots := len(exptConfig.GetStringMapString("accounts")) * len(exptConfig.GetStringSlice("nodes"))
+	badNodesMap := make(map[string]struct{})
 	c := make(chan copyProxiesStatus, numSlots)
 	var wg sync.WaitGroup
+
+	for _, node := range badNodesSlice {
+		badNodesMap[node] = struct{}{}
+	}
+
 	wg.Add(numSlots)
 
 	// One copy per node and role
@@ -271,18 +282,30 @@ func copyProxies(ctx context.Context, exptConfig *viper.Viper) <-chan copyProxie
 
 			for _, node := range exptConfig.GetStringSlice("nodes") {
 				go func(node string) {
+					var badNodeMsg string
 					defer wg.Done()
 					cps := copyProxiesStatus{node, acct, role, nil}
 					accountNode := acct + "@" + node + ".fnal.gov"
 					newProxyPath := path.Join(exptConfig.GetString("dir"), acct, proxyFile+".new")
 					finalProxyPath := path.Join(exptConfig.GetString("dir"), acct, proxyFile)
 
+					if _, ok := badNodesMap[node]; ok {
+						badNodeMsg = "\n" + fmt.Sprintf("Node %s didn't respond to pings earlier - "+
+							"so it's expected that copying there would fail. "+
+							"It may be necessary for the experiment to request via a "+
+							"ServiceNow ticket that the Scientific Server Infrastructure "+
+							"group reboot the node.", node)
+					} else {
+						badNodeMsg = ""
+					}
+
 					sshopts := []string{"-o", "ConnectTimeout=30",
 						"-o", "ServerAliveInterval=30",
 						"-o", "ServerAliveCountMax=1"}
 
 					scpargs := append(sshopts, proxyFilePath, accountNode+":"+newProxyPath)
-					sshargs := append(sshopts, accountNode, "chmod 400 "+newProxyPath+" ; mv -f "+newProxyPath+" "+finalProxyPath)
+					sshargs := append(sshopts, accountNode,
+						"chmod 400 "+newProxyPath+" ; mv -f "+newProxyPath+" "+finalProxyPath)
 					scpCmd := exec.CommandContext(ctx, "scp", scpargs...)
 					sshCmd := exec.CommandContext(ctx, "ssh", sshargs...)
 
@@ -290,7 +313,9 @@ func copyProxies(ctx context.Context, exptConfig *viper.Viper) <-chan copyProxie
 						if e := ctx.Err(); e != nil {
 							cps.err = e
 						} else {
-							cps.err = fmt.Errorf("Copying proxy %s to node %s failed.  The error was %s: %s", proxyFile, node, cmdErr, cmdOut)
+							e := fmt.Sprintf("Copying proxy %s to node %s failed.  The error was %s: %s.%s",
+								proxyFile, node, cmdErr, cmdOut, badNodeMsg)
+							cps.err = errors.New(e)
 						}
 						c <- cps
 						return
@@ -300,7 +325,8 @@ func copyProxies(ctx context.Context, exptConfig *viper.Viper) <-chan copyProxie
 						if e := ctx.Err(); e != nil {
 							cps.err = e
 						} else {
-							cps.err = fmt.Errorf("Error changing permission of proxy %s to mode 400 on %s.  The error was %s: %s", proxyFile, node, cmdErr, cmdOut)
+							cps.err = fmt.Errorf("Error changing permission of proxy %s to mode 400 on %s. "+
+								"The error was %s: %s.%s", proxyFile, node, cmdErr, cmdOut, badNodeMsg)
 						}
 					}
 					c <- cps
@@ -372,7 +398,8 @@ func copyLogs(ctx context.Context, exptSuccess bool, exptlogpath, exptgenlogpath
 	wg.Wait()
 }
 
-// experimentCleanup manages the cleanup operations for an experiment, such as sending emails if necessary, and copying, removing or archiving the logs
+// experimentCleanup manages the cleanup operations for an experiment, such as sending emails if necessary,
+// and copying, removing or archiving the logs
 func (expt *ExperimentSuccess) experimentCleanup(ctx context.Context) error {
 	if e := ctx.Err(); e != nil {
 		return e
@@ -424,16 +451,17 @@ func (expt *ExperimentSuccess) experimentCleanup(ctx context.Context) error {
 			if err := os.Rename(exptlogfilepath, newpath); err != nil {
 				return fmt.Errorf("Could not move file %s to %s.  The error was %v", exptlogfilepath, newpath, err)
 			}
-			return fmt.Errorf("Could not send email for experiment %s.  Archived error file at %s.  The error was %v", expt.Name, newpath, err)
+			return fmt.Errorf("Could not send email for experiment %s.  Archived error file at %s. "+
+				"The error was %v", expt.Name, newpath, err)
 		}
 	}
-
 	return nil
 }
 
-// ExperimentWorker is the main func that manages the processes involved in generating and copying VOMS proxies to an experiment's nodes.  It returns a channel
-// on which it reports the status of that experiment's proxy push.  genlog is the logrus.logger that gets passed in
-// that's meant to capture the non-experiment specific messages that might be printed from this module
+// ExperimentWorker is the main func that manages the processes involved in generating and copying VOMS proxies to
+// an experiment's nodes.  It returns a channel on which it reports the status of that experiment's proxy push.
+// genlog is the logrus.logger that gets passed in that's meant to capture the non-experiment specific messages
+// that might be printed from this module
 func ExperimentWorker(ctx context.Context, exptname string, genLog *logrus.Logger) <-chan ExperimentSuccess {
 	var exptLog *logrus.Entry
 	c := make(chan ExperimentSuccess, 2)
@@ -463,8 +491,8 @@ func ExperimentWorker(ctx context.Context, exptname string, genLog *logrus.Logge
 		// }
 
 		if !viper.IsSet("global.krb5ccname") {
-			exptLog.Error(`Could not obtain KRB5CCNAME environmental variable from
-				config.  Please check the config file on fifeutilgpvm01.`)
+			exptLog.Error("Could not obtain KRB5CCNAME environmental variable from config. " +
+				"Please check the config file on fifeutilgpvm01.")
 			declareExptFailure()
 			return
 		}
@@ -473,7 +501,7 @@ func ExperimentWorker(ctx context.Context, exptname string, genLog *logrus.Logge
 		// If we can't get a kerb ticket, log error and keep going.
 		// We might have an old one that's still valid.
 		if err := getKerbTicket(ctx, krb5ccnameCfg); err != nil {
-			exptLog.Error(err)
+			exptLog.Warn(err)
 		}
 
 		// If check of exptConfig keys fails, experiment fails immediately
@@ -482,6 +510,7 @@ func ExperimentWorker(ctx context.Context, exptname string, genLog *logrus.Logge
 			declareExptFailure()
 			return
 		}
+		exptLog.Debug("Config keys are valid")
 
 		t, ok := viper.Get("pingTimeoutDuration").(time.Duration)
 		if !ok {
@@ -517,7 +546,9 @@ func ExperimentWorker(ctx context.Context, exptname string, genLog *logrus.Logge
 		}
 
 		if len(badNodesSlice) > 0 {
-			exptLog.Warn("Bad nodes are: ", badNodesSlice)
+			exptLog.Warn("The nodes %s didn't return a response to ping after 5 "+
+				"seconds.  Please investigate, and see if the nodes are up. "+
+				"We'll still try to copy proxies there.", strings.Join(badNodesSlice, ", "))
 		}
 
 		// If voms-proxy-init fails, we'll just continue on.  We'll still try to push proxies,
@@ -547,7 +578,8 @@ func ExperimentWorker(ctx context.Context, exptname string, genLog *logrus.Logge
 				}
 			case <-vpiCtx.Done():
 				if e := vpiCtx.Err(); e == context.DeadlineExceeded {
-					exptLog.Errorf("Hit the voms-proxy-init timeout for %s: %s.  Check log for details.  Continuing to next proxy.\n", expt.Name, e)
+					exptLog.Errorf("Hit the voms-proxy-init timeout for %s: %s.  Check log for details. "+
+						"Continuing to next proxy.\n", expt.Name, e)
 				} else {
 					exptLog.Error(e)
 				}
@@ -563,7 +595,7 @@ func ExperimentWorker(ctx context.Context, exptname string, genLog *logrus.Logge
 			return
 		}
 		copyCtx, copyCancel := context.WithTimeout(ctx, t)
-		copyChan := copyProxies(copyCtx, exptConfig)
+		copyChan := copyProxies(copyCtx, exptConfig, badNodesSlice)
 		// Listen until we either timeout or the copyChan is closed
 	copyLoop:
 		for {
