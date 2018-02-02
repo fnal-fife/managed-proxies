@@ -20,12 +20,14 @@ import (
 )
 
 const (
-	exptLogFilename string = "golang_proxy_push_%s.log"         // CHANGE ME BEFORE PRODUCTION - temp file per experiment that will be emailed to experiment
-	exptGenFilename string = "golang_proxy_push_general_%s.log" // CHANGE ME BEFORE PRODUCTION - temp file per experiment that will be copied over to logfile
+	exptErrFilenamef      string = "golang_proxy_push_%s.log"         // CHANGE ME BEFORE PRODUCTION - temp file per experiment that will be emailed to experiment
+	exptGenInfoFilenamef  string = "golang_proxy_push_general_%s.log" // CHANGE ME BEFORE PRODUCTION - temp file per experiment that will be copied over to logfile
+	exptGenDebugFilenamef string = "golang_proxy_push_debug_%s.log"   // CHANGE ME BEFORE PRODUCTION - temp file per experiment that will be copied over to logfile
+
 )
 
 var genLog *logrus.Logger
-var rwmuxErr, rwmuxLog sync.RWMutex // mutexes to be used when copying experiment logs into master and error log
+var rwmuxErr, rwmuxLog, rwmuxDebug sync.RWMutex // mutexes to be used when copying experiment logs into master and error log
 
 // Types to carry information about success and status of various operations over channels
 
@@ -91,28 +93,38 @@ func exptLogInit(ctx context.Context, ename string) (*logrus.Entry, error) {
 	}
 
 	var Log = logrus.New()
-	exptlog := fmt.Sprintf(exptLogFilename, ename)
-	genlog := fmt.Sprintf(exptGenFilename, ename)
+	expterrlog := fmt.Sprintf(exptErrFilenamef, ename)
+	exptgenlog := fmt.Sprintf(exptGenInfoFilenamef, ename)
+	exptdebuglog := fmt.Sprintf(exptGenDebugFilenamef, ename)
 
 	Log.SetLevel(logrus.DebugLevel)
 	// logFormatter := logrus.TextFormatter{FullTimestamp: true}
 	// Log.Formatter = &logFormatter
 
+	// Debug Log that gets copied to master debug log
+	Log.AddHook(lfshook.NewHook(lfshook.PathMap{
+		logrus.DebugLevel: exptdebuglog,
+		logrus.InfoLevel:  exptdebuglog,
+		logrus.WarnLevel:  exptdebuglog,
+		logrus.ErrorLevel: exptdebuglog,
+		logrus.FatalLevel: exptdebuglog,
+		logrus.PanicLevel: exptdebuglog,
+	}, &logrus.TextFormatter{FullTimestamp: true}))
+
 	// General Log that gets copied to master log
 	Log.AddHook(lfshook.NewHook(lfshook.PathMap{
-		logrus.DebugLevel: genlog,
-		logrus.InfoLevel:  genlog,
-		logrus.WarnLevel:  genlog,
-		logrus.ErrorLevel: genlog,
-		logrus.FatalLevel: genlog,
-		logrus.PanicLevel: genlog,
+		logrus.InfoLevel:  exptgenlog,
+		logrus.WarnLevel:  exptgenlog,
+		logrus.ErrorLevel: exptgenlog,
+		logrus.FatalLevel: exptgenlog,
+		logrus.PanicLevel: exptgenlog,
 	}, &logrus.TextFormatter{FullTimestamp: true}))
 
 	// Experiment-specific error log that gets emailed if populated
 	Log.AddHook(lfshook.NewHook(lfshook.PathMap{
-		logrus.ErrorLevel: exptlog,
-		logrus.FatalLevel: exptlog,
-		logrus.PanicLevel: exptlog,
+		logrus.ErrorLevel: expterrlog,
+		logrus.FatalLevel: expterrlog,
+		logrus.PanicLevel: expterrlog,
 	}, new(ExptErrorFormatter)))
 
 	exptlogger := Log.WithField("experiment", ename)
@@ -345,7 +357,7 @@ func copyProxies(ctx context.Context, exptConfig *viper.Viper, badNodesSlice []s
 }
 
 // copyLogs copies the experiment-specific logs to the general and error logs.
-func copyLogs(ctx context.Context, exptSuccess bool, exptlogpath, exptgenlogpath string, logconfig map[string]string) {
+func copyLogs(ctx context.Context, exptSuccess bool, expterrpath, exptgeninfopath, exptgendebugpath string, logconfig map[string]string) {
 	if e := ctx.Err(); e != nil {
 		genLog.Error(e)
 		return
@@ -393,8 +405,10 @@ func copyLogs(ctx context.Context, exptSuccess bool, exptlogpath, exptgenlogpath
 		}
 	}
 
-	go copyLog(exptgenlogpath, viper.GetString("logs.logfile"), &rwmuxLog)
-	go copyLog(exptlogpath, viper.GetString("logs.errfile"), &rwmuxErr)
+	go copyLog(expterrpath, viper.GetString("logs.errfile"), &rwmuxErr)
+	go copyLog(exptgeninfopath, viper.GetString("logs.logfile"), &rwmuxLog)
+	go copyLog(exptgendebugpath, viper.GetString("logs.debugfile"), &rwmuxErr)
+
 	wg.Wait()
 }
 
@@ -405,21 +419,21 @@ func (expt *ExperimentSuccess) experimentCleanup(ctx context.Context) error {
 		return e
 	}
 
-	exptlogfilename := fmt.Sprintf(exptLogFilename, expt.Name)
-
 	dir, err := os.Getwd()
 	if err != nil {
 		return errors.New(`Could not get current working directory.  Aborting cleanup.  
 					Please check working directory and manually clean up log files`)
 	}
 
-	exptlogfilepath := path.Join(dir, fmt.Sprintf(exptLogFilename, expt.Name))
-	exptgenlogfilepath := path.Join(dir, fmt.Sprintf(exptGenFilename, expt.Name))
+	expterrfilepath := path.Join(dir, fmt.Sprintf(exptErrFilenamef, expt.Name))
+	exptgenlogfilepath := path.Join(dir, fmt.Sprintf(exptGenInfoFilenamef, expt.Name))
+	exptgendebuglogfilepath := path.Join(dir, fmt.Sprintf(exptGenDebugFilenamef, expt.Name))
 
-	defer copyLogs(ctx, expt.Success, exptlogfilepath, exptgenlogfilepath, viper.GetStringMapString("logs"))
+	defer copyLogs(ctx, expt.Success, expterrfilepath, exptgenlogfilepath,
+		exptgendebuglogfilepath, viper.GetStringMapString("logs"))
 
-	// No experiment logfile
-	if _, err = os.Stat(exptlogfilepath); os.IsNotExist(err) {
+	// No experiment error logfile
+	if _, err = os.Stat(expterrfilepath); os.IsNotExist(err) {
 		return nil
 	}
 
@@ -431,7 +445,7 @@ func (expt *ExperimentSuccess) experimentCleanup(ctx context.Context) error {
 		if viper.GetBool("test") {
 			return nil // Don't do anything - we're testing.
 		}
-		data, err := ioutil.ReadFile(exptlogfilepath)
+		data, err := ioutil.ReadFile(expterrfilepath)
 		if err != nil {
 			return err
 		}
@@ -445,11 +459,11 @@ func (expt *ExperimentSuccess) experimentCleanup(ctx context.Context) error {
 		emailCtx, emailCancel := context.WithTimeout(ctx, t)
 		defer emailCancel()
 		if err := notifications.SendEmail(emailCtx, expt.Name, msg); err != nil {
-			newfilename := fmt.Sprintf("%s-%s", exptlogfilename, time.Now().Format(time.RFC3339))
+			newfilename := fmt.Sprintf("%s-%s", expterrfilepath, time.Now().Format(time.RFC3339))
 			newpath := path.Join(dir, newfilename)
 
-			if err := os.Rename(exptlogfilepath, newpath); err != nil {
-				return fmt.Errorf("Could not move file %s to %s.  The error was %v", exptlogfilepath, newpath, err)
+			if err := os.Rename(expterrfilepath, newpath); err != nil {
+				return fmt.Errorf("Could not move file %s to %s.  The error was %v", expterrfilepath, newpath, err)
 			}
 			return fmt.Errorf("Could not send email for experiment %s.  Archived error file at %s. "+
 				"The error was %v", expt.Name, newpath, err)
@@ -472,7 +486,7 @@ func ExperimentWorker(ctx context.Context, exptname string, genLog *logrus.Logge
 		exptLog = genLog.WithField("experiment", exptname)
 	}
 
-	exptLog.Info("Now processing ", expt.Name)
+	exptLog.Debug("Now processing ", expt.Name)
 
 	go func() {
 		defer close(c) // All expt operations are done (either successful including cleanup or at error)

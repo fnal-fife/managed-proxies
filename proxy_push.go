@@ -117,7 +117,7 @@ func init() {
 	// Set up our global logger
 	log.Level = logrus.DebugLevel
 
-	// Error log
+	// Error Log
 	log.AddHook(lfshook.NewHook(lfshook.PathMap{
 		logrus.ErrorLevel: viper.GetString("logs.errfile"),
 		logrus.FatalLevel: viper.GetString("logs.errfile"),
@@ -126,12 +126,21 @@ func init() {
 
 	// Master Log
 	log.AddHook(lfshook.NewHook(lfshook.PathMap{
-		logrus.DebugLevel: viper.GetString("logs.logfile"),
 		logrus.InfoLevel:  viper.GetString("logs.logfile"),
 		logrus.WarnLevel:  viper.GetString("logs.logfile"),
 		logrus.ErrorLevel: viper.GetString("logs.logfile"),
 		logrus.FatalLevel: viper.GetString("logs.logfile"),
 		logrus.PanicLevel: viper.GetString("logs.logfile"),
+	}, &logrus.TextFormatter{FullTimestamp: true}))
+
+	// Debug Log
+	log.AddHook(lfshook.NewHook(lfshook.PathMap{
+		logrus.DebugLevel: viper.GetString("logs.debugfile"),
+		logrus.InfoLevel:  viper.GetString("logs.debugfile"),
+		logrus.WarnLevel:  viper.GetString("logs.debugfile"),
+		logrus.ErrorLevel: viper.GetString("logs.debugfile"),
+		logrus.FatalLevel: viper.GetString("logs.debugfile"),
+		logrus.PanicLevel: viper.GetString("logs.debugfile"),
 	}, &logrus.TextFormatter{FullTimestamp: true}))
 
 	log.Debugf("Using config file %s", viper.GetString("configfile"))
