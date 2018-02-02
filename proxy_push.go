@@ -38,7 +38,8 @@ func checkUser(authuser string) error {
 	return nil
 }
 
-// manageExperimentChannels starts up the various ExperimentWorkers and listens for their response.  It puts these statuses into an aggregate channel.
+// manageExperimentChannels starts up the various ExperimentWorkers and listens for their response.  It puts these
+// statuses into an aggregate channel.
 func manageExperimentChannels(ctx context.Context, exptList []string) <-chan experimentutil.ExperimentSuccess {
 	agg := make(chan experimentutil.ExperimentSuccess, len(exptList))
 	var wg sync.WaitGroup
@@ -60,9 +61,9 @@ func manageExperimentChannels(ctx context.Context, exptList []string) <-chan exp
 			defer exptCancel()
 
 			// If all goes well, each ExperimentWorker channel will be ready to be received on twice:  once when the
-			// successful status is sent, and when the channel closes after cleanup.  If we timeout, just move on.  Expt channel
-			// is buffered anyway, so if the worker tries to send later and there's no receiver, garbage collection
-			// will take care of it
+			// successful status is sent, and when the channel closes after cleanup.  If we timeout, just move on.
+			// Expt channel is buffered anyway, so if the worker tries to send later and there's no receiver,
+			// garbage collection will take care of it
 			c := experimentutil.ExperimentWorker(exptContext, expt, log)
 			select {
 			case status := <-c: // Grab status from channel
@@ -113,8 +114,6 @@ func init() {
 	// From here on out, we're logging to the log file too
 	// Set up our global logger
 	log.Level = logrus.DebugLevel
-	// logFormatter := logrus.TextFormatter{FullTimestamp: true}
-	// log.Formatter = &logFormatter
 
 	// Error log
 	log.AddHook(lfshook.NewHook(lfshook.PathMap{
@@ -160,7 +159,6 @@ func init() {
 				log.Warn("Could not remove error file.  Please remove manually")
 			}
 		}
-
 		os.Exit(1)
 	}
 
@@ -171,7 +169,8 @@ func init() {
 	}
 	log.Info("Running script as ", cuser.Username)
 	if cuser.Username != viper.GetString("global.should_runuser") {
-		msg := fmt.Sprintf("This must be run as %s.  Trying to run as %s", viper.GetString("global.should_runuser"), cuser.Username)
+		msg := fmt.Sprintf("This must be run as %s.  Trying to run as %s",
+			viper.GetString("global.should_runuser"), cuser.Username)
 		initErrorNotify(msg)
 	}
 
