@@ -647,7 +647,7 @@ func ExperimentWorker(ctx context.Context, exptname string, genLog *logrus.Logge
 
 		// We're logging the cleanup in the general log so that we don't create an extraneous
 		// experiment log file
-		genLog.Info("Cleaning up ", expt.Name)
+		exptLog.Info("Cleaning up ", expt.Name)
 		if err := expt.experimentCleanup(ctx); err != nil {
 			genLog.Errorf("Error cleaning up %s: %s", expt.Name, err)
 		} else {
