@@ -546,7 +546,7 @@ func ExperimentWorker(ctx context.Context, exptname string, genLog *logrus.Logge
 		}
 
 		if len(badNodesSlice) > 0 {
-			exptLog.Warnf("The node(s) %s didn't return a response to ping after 5 "+
+			exptLog.Errorf("The node(s) %s didn't return a response to ping after 5 "+
 				"seconds.  Please investigate, and see if the nodes are up. "+
 				"We'll still try to copy proxies there.", strings.Join(badNodesSlice, ", "))
 		}
@@ -613,7 +613,8 @@ func ExperimentWorker(ctx context.Context, exptname string, genLog *logrus.Logge
 				}
 			case <-copyCtx.Done():
 				if e := copyCtx.Err(); e == context.DeadlineExceeded {
-					exptLog.Error("Experiment hit the timeout when waiting to push proxy.")
+					exptLog.Error("Experiment hit the timeout when waiting to push proxy to one of the nodes. " +
+						"Please check the logs for details")
 				} else {
 					exptLog.Error(e)
 				}
