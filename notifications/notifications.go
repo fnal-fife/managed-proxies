@@ -61,7 +61,7 @@ func SendEmail(ctx context.Context, exptName, msg string) error {
 	select {
 	case e := <-c:
 		if e == nil {
-			fmt.Printf("Sent emails to %s", strings.Join(recipients, ", "))
+			fmt.Printf("Sent emails to %s\n", strings.Join(recipients, ", "))
 		}
 		return e
 	case <-ctx.Done():
