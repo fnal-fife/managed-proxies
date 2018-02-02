@@ -546,7 +546,7 @@ func ExperimentWorker(ctx context.Context, exptname string, genLog *logrus.Logge
 		}
 
 		if len(badNodesSlice) > 0 {
-			exptLog.Warnf("The nodes %s didn't return a response to ping after 5 "+
+			exptLog.Warnf("The node(s) %s didn't return a response to ping after 5 "+
 				"seconds.  Please investigate, and see if the nodes are up. "+
 				"We'll still try to copy proxies there.", strings.Join(badNodesSlice, ", "))
 		}
@@ -632,6 +632,7 @@ func ExperimentWorker(ctx context.Context, exptname string, genLog *logrus.Logge
 
 		// We're logging the cleanup in the general log so that we don't create an extraneous
 		// experiment log file
+		genLog.Info("Cleaning up ", expt.Name)
 		if err := expt.experimentCleanup(ctx); err != nil {
 			genLog.Error(err)
 		}
