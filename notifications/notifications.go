@@ -26,9 +26,8 @@ func addHelperMessage(msg, expt string) string {
 
 	if expt == "" {
 		return msg
-	} else {
-		return msg + help
 	}
+	return msg + help
 }
 
 // SendEmail sends emails to both experiments and admins, depending on the input (exptName = "" gives admin email).
