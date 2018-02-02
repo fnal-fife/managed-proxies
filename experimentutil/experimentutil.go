@@ -546,7 +546,7 @@ func ExperimentWorker(ctx context.Context, exptname string, genLog *logrus.Logge
 		}
 
 		if len(badNodesSlice) > 0 {
-			exptLog.Warn("The nodes %s didn't return a response to ping after 5 "+
+			exptLog.Warnf("The nodes %s didn't return a response to ping after 5 "+
 				"seconds.  Please investigate, and see if the nodes are up. "+
 				"We'll still try to copy proxies there.", strings.Join(badNodesSlice, ", "))
 		}

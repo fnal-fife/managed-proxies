@@ -71,7 +71,9 @@ func manageExperimentChannels(ctx context.Context, exptList []string) <-chan exp
 				<-c // Block until channel closes, which means experiment worker is done with everything
 			case <-exptContext.Done():
 				if err := exptContext.Err(); err == context.DeadlineExceeded {
-					log.Error("Timed out waiting for experiment success info to be reported")
+					log.Error("Timed out waiting for experiment success info to be reported. Someone from USDC should " +
+						"look into this and cleanup if needed.  See " +
+						"https://cdcvs.fnal.gov/redmine/projects/discompsupp/wiki/MANAGEDPROXIES for instructions.")
 				} else {
 					log.Error(err)
 				}
