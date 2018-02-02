@@ -364,7 +364,7 @@ func copyLogs(ctx context.Context, exptSuccess bool, expterrpath, exptgeninfopat
 	}
 
 	var wg sync.WaitGroup
-	wg.Add(2)
+	wg.Add(3)
 
 	copyLog := func(src, dest string, rwmux *sync.RWMutex) {
 		defer wg.Done()
