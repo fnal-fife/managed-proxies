@@ -169,6 +169,20 @@ func checkKeys(ctx context.Context, exptConfig *viper.Viper) error {
 	return nil
 }
 
+// pingNode pings a node with a 5-second timeout.  It returns a pingNodeStatus
+func pingNode(ctx context.Context, node string) pingNodeStatus {
+	p := pingNodeStatus{node, nil}
+	pingargs := []string{"-W", "5", "-c", "1", node}
+	cmd := exec.CommandContext(ctx, "ping", pingargs...)
+	if cmdOut, cmdErr := cmd.CombinedOutput(); cmdErr != nil {
+		if e := ctx.Err(); e != nil {
+			p.err = e
+		}
+		p.err = fmt.Errorf("%s %s", cmdErr, cmdOut)
+	}
+	return p
+}
+
 // pingAllNodes will launch goroutines, which each ping a node in the slice nodes.  It returns a channel,
 // on which it reports the pingNodeStatuses signifying success or error
 func pingAllNodes(ctx context.Context, nodes []string) <-chan pingNodeStatus {
@@ -182,15 +196,16 @@ func pingAllNodes(ctx context.Context, nodes []string) <-chan pingNodeStatus {
 		go func(node string) {
 			defer wg.Done()
 			p := pingNodeStatus{node, nil}
-			pingargs := []string{"-W", "5", "-c", "1", node}
-			cmd := exec.CommandContext(ctx, "ping", pingargs...)
-			if cmdOut, cmdErr := cmd.CombinedOutput(); cmdErr != nil {
-				if e := ctx.Err(); e != nil {
-					p.err = e
-				} else {
-					p.err = fmt.Errorf("%s %s", cmdErr, cmdOut)
-				}
-			}
+
+			// pingargs := []string{"-W", "5", "-c", "1", node}
+			// cmd := exec.CommandContext(ctx, "ping", pingargs...)
+			// if cmdOut, cmdErr := cmd.CombinedOutput(); cmdErr != nil {
+			// 	if e := ctx.Err(); e != nil {
+			// 		p.err = e
+			// 	} else {
+			// 		p.err = fmt.Errorf("%s %s", cmdErr, cmdOut)
+			// 	}
+			// }
 			c <- p
 		}(node)
 	}
