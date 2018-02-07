@@ -46,9 +46,18 @@ type pingNodeStatus struct {
 	err  error
 }
 
-// vomsProxyStatus stores information about an attempt to run voms-proxy-init to generate a VOMS proxy.
+// vomsProxy stores the information needed to uniquely identify the elements of a VOMS proxy.
+type vomsProxy struct {
+	fqan     string
+	role     string
+	account  string
+	certfile string
+	keyfile  string
+}
+
+// vomsProxyInitStatus stores information about an attempt to run voms-proxy-init to generate a VOMS proxy.
 // If there was an error, it's stored in err.
-type vomsProxyStatus struct {
+type vomsProxyInitStatus struct {
 	filename string
 	err      error
 }
@@ -169,7 +178,7 @@ func checkKeys(ctx context.Context, exptConfig *viper.Viper) error {
 	return nil
 }
 
-// pingNode pings a node with a 5-second timeout.  It returns a pingNodeStatus
+// pingNode pings a node with a 5-second timeout.  It returns a pingNodeStatus object
 func pingNode(ctx context.Context, node string) (p pingNodeStatus) {
 	pingargs := []string{"-W", "5", "-c", "1", node}
 	p.node = node
@@ -181,7 +190,6 @@ func pingNode(ctx context.Context, node string) (p pingNodeStatus) {
 		p.err = fmt.Errorf("%s %s", cmdErr, cmdOut)
 	}
 	return
-	// return p
 }
 
 // pingAllNodes will launch goroutines, which each ping a node in the slice nodes.  It returns a channel,
@@ -197,17 +205,6 @@ func pingAllNodes(ctx context.Context, nodes []string) <-chan pingNodeStatus {
 		go func(node string) {
 			defer wg.Done()
 			p := pingNode(ctx, node)
-			// p := pingNodeStatus{node, nil}
-
-			// pingargs := []string{"-W", "5", "-c", "1", node}
-			// cmd := exec.CommandContext(ctx, "ping", pingargs...)
-			// if cmdOut, cmdErr := cmd.CombinedOutput(); cmdErr != nil {
-			// 	if e := ctx.Err(); e != nil {
-			// 		p.err = e
-			// 	} else {
-			// 		p.err = fmt.Errorf("%s %s", cmdErr, cmdOut)
-			// 	}
-			// }
 			c <- p
 		}(node)
 	}
@@ -221,14 +218,40 @@ func pingAllNodes(ctx context.Context, nodes []string) <-chan pingNodeStatus {
 	return c
 }
 
+func (v *vomsProxy) getProxy(ctx context.Context) (vpi vomsProxyInitStatus) {
+	outfile := v.account + "." + v.role + ".proxy"
+	outfilePath := path.Join("proxies", outfile)
+
+	vpi.filename = outfile
+	vpiargs := []string{"-rfc", "-valid", "24:00", "-voms",
+		v.fqan, "-cert", v.certfile,
+		"-key", v.keyfile, "-out", outfilePath}
+
+	cmd := exec.CommandContext(ctx, "/usr/bin/voms-proxy-init", vpiargs...)
+	if cmdErr := cmd.Run(); cmdErr != nil {
+		if e := ctx.Err(); e != nil {
+			vpi.err = e
+		} else {
+			err := fmt.Sprintf(`Error obtaining %s.  Please check the cert on 
+					fifeutilgpvm01. \n%s Continuing on to next role.`, outfile, cmdErr)
+			vpi.err = errors.New(err)
+		}
+	}
+	return
+	// if e == "darkside" {
+	// 	time.Sleep(time.Duration(10) * time.Second)
+	// }
+
+}
+
 // getProxies launches goroutines that run voms-proxy-init to generate the appropriate proxies on the local machine.
 // Calling getProxies will generate all of the proxies per experiment according to the viper configuration.  It returns
 // a channel, on which it reports the status of each attempt
 func getProxies(ctx context.Context, exptConfig *viper.Viper, globalConfig map[string]string,
-	exptname string) <-chan vomsProxyStatus {
+	exptname string) <-chan vomsProxyInitStatus {
 
-	c := make(chan vomsProxyStatus, len(exptConfig.GetStringMapString("accounts")))
-	var vomsprefix, certfile, keyfile string
+	c := make(chan vomsProxyInitStatus, len(exptConfig.GetStringMapString("accounts")))
+	var vomsprefix string
 	var wg sync.WaitGroup
 	wg.Add(len(exptConfig.GetStringMapString("accounts")))
 
@@ -241,41 +264,57 @@ func getProxies(ctx context.Context, exptConfig *viper.Viper, globalConfig map[s
 	for account, role := range exptConfig.GetStringMapString("accounts") {
 		go func(account, role string) {
 			defer wg.Done()
-			vomsstring := vomsprefix + "Role=" + role
+			v := vomsProxy{}
+			v.fqan = vomsprefix + "Role=" + role
 
 			if exptConfig.IsSet("certfile") {
-				certfile = exptConfig.GetString("certfile")
+				v.certfile = exptConfig.GetString("certfile")
 			} else {
-				certfile = path.Join(globalConfig["cert_base_dir"], account+".cert")
+				v.certfile = path.Join(globalConfig["cert_base_dir"], account+".cert")
 			}
 
 			if exptConfig.IsSet("keyfile") {
-				keyfile = exptConfig.GetString("keyfile")
+				v.keyfile = exptConfig.GetString("keyfile")
 			} else {
-				keyfile = path.Join(globalConfig["cert_base_dir"], account+".key")
+				v.keyfile = path.Join(globalConfig["cert_base_dir"], account+".key")
 			}
+			// v := vomsProxy{vomsstring, role, account, certfile, keyfile}
+			vpi := v.getProxy(ctx)
+			// vomsstring := vomsprefix + "Role=" + role
 
-			outfile := account + "." + role + ".proxy"
-			outfilePath := path.Join("proxies", outfile)
-
-			vpi := vomsProxyStatus{outfile, nil}
-			vpiargs := []string{"-rfc", "-valid", "24:00", "-voms",
-				vomsstring, "-cert", certfile,
-				"-key", keyfile, "-out", outfilePath}
-
-			cmd := exec.CommandContext(ctx, "/usr/bin/voms-proxy-init", vpiargs...)
-			if cmdErr := cmd.Run(); cmdErr != nil {
-				if e := ctx.Err(); e != nil {
-					vpi.err = e
-				} else {
-					err := fmt.Sprintf(`Error obtaining %s.  Please check the cert on 
-					fifeutilgpvm01. \n%s Continuing on to next role.`, outfile, cmdErr)
-					vpi.err = errors.New(err)
-				}
-			}
-			// if e == "darkside" {
-			// 	time.Sleep(time.Duration(10) * time.Second)
+			// if exptConfig.IsSet("certfile") {
+			// 	certfile = exptConfig.GetString("certfile")
+			// } else {
+			// 	certfile = path.Join(globalConfig["cert_base_dir"], account+".cert")
 			// }
+
+			// if exptConfig.IsSet("keyfile") {
+			// 	keyfile = exptConfig.GetString("keyfile")
+			// } else {
+			// 	keyfile = path.Join(globalConfig["cert_base_dir"], account+".key")
+			// }
+
+			// outfile := account + "." + role + ".proxy"
+			// outfilePath := path.Join("proxies", outfile)
+
+			// vpi := vomsProxyStatus{outfile, nil}
+			// vpiargs := []string{"-rfc", "-valid", "24:00", "-voms",
+			// 	vomsstring, "-cert", certfile,
+			// 	"-key", keyfile, "-out", outfilePath}
+
+			// cmd := exec.CommandContext(ctx, "/usr/bin/voms-proxy-init", vpiargs...)
+			// if cmdErr := cmd.Run(); cmdErr != nil {
+			// 	if e := ctx.Err(); e != nil {
+			// 		vpi.err = e
+			// 	} else {
+			// 		err := fmt.Sprintf(`Error obtaining %s.  Please check the cert on
+			// 		fifeutilgpvm01. \n%s Continuing on to next role.`, outfile, cmdErr)
+			// 		vpi.err = errors.New(err)
+			// 	}
+			// }
+			// // if e == "darkside" {
+			// // 	time.Sleep(time.Duration(10) * time.Second)
+			// // }
 
 			c <- vpi
 		}(account, role)
