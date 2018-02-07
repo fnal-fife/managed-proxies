@@ -1,3 +1,5 @@
+// Package experimentutil contains all of the operations needed to push a VOMS X509 proxy as a part of the USDC Managed Proxy service that are
+// experiment-specific.
 package experimentutil
 
 import (
@@ -193,7 +195,7 @@ func pingAllNodes(ctx context.Context, nodes []string) <-chan pingNodeStatus {
 		}(node)
 	}
 
-	// Wait for all goroutines to finish, then close channel so that exptWorker can proceed
+	// Wait for all goroutines to finish, then close channel so that expt Worker can proceed
 	go func() {
 		defer close(c)
 		wg.Wait()
@@ -262,7 +264,7 @@ func getProxies(ctx context.Context, exptConfig *viper.Viper, globalConfig map[s
 		}(account, role)
 	}
 
-	// Wait for all goroutines to finish, then close channel so that exptWorker can proceed
+	// Wait for all goroutines to finish, then close channel so that expt Worker can proceed
 	go func() {
 		defer close(c)
 		wg.Wait()
@@ -347,7 +349,7 @@ func copyProxies(ctx context.Context, exptConfig *viper.Viper, badNodesSlice []s
 		}(acct, role)
 	}
 
-	// Wait for all goroutines to finish, then close channel so that exptWorker can proceed
+	// Wait for all goroutines to finish, then close channel so that expt Worker can proceed
 	go func() {
 		defer close(c)
 		wg.Wait()
@@ -472,11 +474,11 @@ func (expt *ExperimentSuccess) experimentCleanup(ctx context.Context) error {
 	return nil
 }
 
-// ExperimentWorker is the main func that manages the processes involved in generating and copying VOMS proxies to
+// Worker is the main func that manages the processes involved in generating and copying VOMS proxies to
 // an experiment's nodes.  It returns a channel on which it reports the status of that experiment's proxy push.
 // genlog is the logrus.logger that gets passed in that's meant to capture the non-experiment specific messages
 // that might be printed from this module
-func ExperimentWorker(ctx context.Context, exptname string, genLog *logrus.Logger) <-chan ExperimentSuccess {
+func Worker(ctx context.Context, exptname string, genLog *logrus.Logger) <-chan ExperimentSuccess {
 	var exptLog *logrus.Entry
 	c := make(chan ExperimentSuccess, 2)
 	expt := ExperimentSuccess{exptname, true} // Initialize

@@ -38,7 +38,7 @@ func checkUser(authuser string) error {
 	return nil
 }
 
-// manageExperimentChannels starts up the various ExperimentWorkers and listens for their response.  It puts these
+// manageExperimentChannels starts up the various experimentutil.Workers and listens for their response.  It puts these
 // statuses into an aggregate channel.
 func manageExperimentChannels(ctx context.Context, exptList []string) <-chan experimentutil.ExperimentSuccess {
 	agg := make(chan experimentutil.ExperimentSuccess, len(exptList))
@@ -60,11 +60,11 @@ func manageExperimentChannels(ctx context.Context, exptList []string) <-chan exp
 			exptContext, exptCancel := context.WithTimeout(ctx, t)
 			defer exptCancel()
 
-			// If all goes well, each ExperimentWorker channel will be ready to be received on twice:  once when the
+			// If all goes well, each experiment Worker channel will be ready to be received on twice:  once when the
 			// successful status is sent, and when the channel closes after cleanup.  If we timeout, just move on.
 			// Expt channel is buffered anyway, so if the worker tries to send later and there's no receiver,
 			// garbage collection will take care of it
-			c := experimentutil.ExperimentWorker(exptContext, expt, log)
+			c := experimentutil.Worker(exptContext, expt, log)
 			select {
 			case status := <-c: // Grab status from channel
 				agg <- status
