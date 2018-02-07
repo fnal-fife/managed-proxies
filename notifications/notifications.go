@@ -1,3 +1,4 @@
+// Package notifications contains functions needed to send notifications to the relevant stakeholders for the USDC Managed Proxy service
 package notifications
 
 import (
