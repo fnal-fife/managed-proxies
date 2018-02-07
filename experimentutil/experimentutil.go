@@ -264,7 +264,7 @@ func getProxies(ctx context.Context, exptConfig *viper.Viper, globalConfig map[s
 	for account, role := range exptConfig.GetStringMapString("accounts") {
 		go func(account, role string) {
 			defer wg.Done()
-			v := vomsProxy{}
+			v := vomsProxy{account: account, role: role}
 			v.fqan = vomsprefix + "Role=" + role
 
 			if exptConfig.IsSet("certfile") {
