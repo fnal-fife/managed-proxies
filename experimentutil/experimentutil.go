@@ -170,9 +170,9 @@ func checkKeys(ctx context.Context, exptConfig *viper.Viper) error {
 }
 
 // pingNode pings a node with a 5-second timeout.  It returns a pingNodeStatus
-func pingNode(ctx context.Context, node string) pingNodeStatus {
-	p := pingNodeStatus{node, nil}
+func pingNode(ctx context.Context, node string) (p pingNodeStatus) {
 	pingargs := []string{"-W", "5", "-c", "1", node}
+	p.node = node
 	cmd := exec.CommandContext(ctx, "ping", pingargs...)
 	if cmdOut, cmdErr := cmd.CombinedOutput(); cmdErr != nil {
 		if e := ctx.Err(); e != nil {
@@ -180,7 +180,8 @@ func pingNode(ctx context.Context, node string) pingNodeStatus {
 		}
 		p.err = fmt.Errorf("%s %s", cmdErr, cmdOut)
 	}
-	return p
+	return
+	// return p
 }
 
 // pingAllNodes will launch goroutines, which each ping a node in the slice nodes.  It returns a channel,
@@ -195,7 +196,8 @@ func pingAllNodes(ctx context.Context, nodes []string) <-chan pingNodeStatus {
 	for _, node := range nodes {
 		go func(node string) {
 			defer wg.Done()
-			p := pingNodeStatus{node, nil}
+			p := pingNode(ctx, node)
+			// p := pingNodeStatus{node, nil}
 
 			// pingargs := []string{"-W", "5", "-c", "1", node}
 			// cmd := exec.CommandContext(ctx, "ping", pingargs...)
