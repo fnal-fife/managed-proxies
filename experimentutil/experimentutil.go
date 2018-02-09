@@ -317,7 +317,7 @@ func pingAllNodes(ctx context.Context, nodes []string) <-chan pingNodeStatus {
 	for _, node := range nodes {
 		go func(node string) {
 			defer wg.Done()
-			p := pingNode(ctx, node)
+			p := pingNodeStatus{node, pingNode(ctx, node)}
 			c <- p
 		}(node)
 	}
@@ -331,18 +331,18 @@ func pingAllNodes(ctx context.Context, nodes []string) <-chan pingNodeStatus {
 	return c
 }
 
-// pingNode pings a node with a 5-second timeout.  It returns a pingNodeStatus object
-func pingNode(ctx context.Context, node string) (p pingNodeStatus) {
+// pingNode pings a node with a 5-second timeout.  It returns an error
+func pingNode(ctx context.Context, node string) error {
 	pingargs := []string{"-W", "5", "-c", "1", node}
-	p.node = node
+	// p.node = node
 	cmd := exec.CommandContext(ctx, "ping", pingargs...)
 	if cmdOut, cmdErr := cmd.CombinedOutput(); cmdErr != nil {
 		if e := ctx.Err(); e != nil {
-			p.err = e
+			return e
 		}
-		p.err = fmt.Errorf("%s %s", cmdErr, cmdOut)
+		return fmt.Errorf("%s %s", cmdErr, cmdOut)
 	}
-	return
+	return nil
 }
 
 // getProxies launches goroutines that run getProxy to generate the appropriate proxies on the local machine.
@@ -470,11 +470,18 @@ func copyProxies(ctx context.Context, exptConfig *viper.Viper, badNodesSlice []s
 						"-o", "ServerAliveInterval=30",
 						"-o", "ServerAliveCountMax=1"}
 
-					if cps = pInfo.copyProxy(ctx, acct, node, badNodeMsg, sshopts, cps); cps.err != nil {
+					if cps.err = pInfo.copyProxy(ctx, acct, node, sshopts); cps.err != nil {
+						if e := ctx.Err(); e == nil {
+							cps.err = errors.New(cps.err.Error() + badNodeMsg)
+						}
 						c <- cps
 						return
 					}
-					cps = pInfo.chmodProxy(ctx, acct, node, badNodeMsg, sshopts, cps)
+					if cps.err = pInfo.chmodProxy(ctx, acct, node, sshopts); cps.err != nil {
+						if e := ctx.Err(); e == nil {
+							cps.err = errors.New(cps.err.Error() + badNodeMsg)
+						}
+					}
 					c <- cps
 				}(node)
 			}
@@ -490,9 +497,9 @@ func copyProxies(ctx context.Context, exptConfig *viper.Viper, badNodesSlice []s
 	return c
 }
 
-// copyProxy uses scp to copy the proxy to the destination node, putting it in a file specified by pt.proxyFileNameDest with ".new" appended.  It returns
-// the copyProxiesStatus that was given to it at call time, modified with any new errors.
-func (pt *proxyTransferInfo) copyProxy(ctx context.Context, account, node, badNodeMsg string, sshopts []string, cps copyProxiesStatus) copyProxiesStatus {
+// copyProxy uses scp to copy the proxy to the destination node, putting it in a file specified by pt.proxyFileNameDest
+// with ".new" appended.  It returns an error.
+func (pt *proxyTransferInfo) copyProxy(ctx context.Context, account, node string, sshopts []string) error {
 	newProxyPath := pt.proxyFileNameDest + ".new"
 	accountNode := account + "@" + node + ".fnal.gov"
 	scpargs := append(sshopts, pt.proxyFilePathSrc, accountNode+":"+newProxyPath)
@@ -500,19 +507,18 @@ func (pt *proxyTransferInfo) copyProxy(ctx context.Context, account, node, badNo
 
 	if cmdOut, cmdErr := scpCmd.CombinedOutput(); cmdErr != nil {
 		if e := ctx.Err(); e != nil {
-			cps.err = e
-		} else {
-			e := fmt.Sprintf("Copying proxy %s to node %s failed.  The error was %s: %s%s",
-				pt.proxyFileName, node, cmdErr, cmdOut, badNodeMsg)
-			cps.err = errors.New(e)
+			return e
 		}
+		e := fmt.Sprintf("Copying proxy %s to node %s failed.  The error was %s: %s",
+			pt.proxyFileName, node, cmdErr, cmdOut)
+		return errors.New(e)
 	}
-	return cps
+	return nil
 }
 
-// copyProxy uses ssh; chmod to change the proxy permissions on the  destination node, putting it in a file specified by pt.proxyFileNameDest.  It returns
-// the copyProxiesStatus that was given to it at call time, modified with any new errors.
-func (pt *proxyTransferInfo) chmodProxy(ctx context.Context, account, node, badNodeMsg string, sshopts []string, cps copyProxiesStatus) copyProxiesStatus {
+// chmodProxy uses ssh and chmod to change the permissions of the proxy on the destination node, putting it in a file
+// specified by pt.proxyFileNameDest.  It returns an error.
+func (pt *proxyTransferInfo) chmodProxy(ctx context.Context, account, node string, sshopts []string) error {
 	newProxyPath := pt.proxyFileNameDest + ".new"
 	accountNode := account + "@" + node + ".fnal.gov"
 	sshargs := append(sshopts, accountNode,
@@ -521,16 +527,15 @@ func (pt *proxyTransferInfo) chmodProxy(ctx context.Context, account, node, badN
 
 	if cmdOut, cmdErr := sshCmd.CombinedOutput(); cmdErr != nil {
 		if e := ctx.Err(); e != nil {
-			cps.err = e
-		} else {
-			cps.err = fmt.Errorf("Error changing permission of proxy %s to mode 400 on %s. "+
-				"The error was %s: %s.%s", pt.proxyFileName, node, cmdErr, cmdOut, badNodeMsg)
+			return e
 		}
+		return fmt.Errorf("Error changing permission of proxy %s to mode 400 on %s. "+
+			"The error was %s: %s.", pt.proxyFileName, node, cmdErr, cmdOut)
 	}
-	return cps
+	return nil
 }
 
-// Worker is the main func that manages the processes involved in generating and copying VOMS proxies to
+// Worker is the main function that manages the processes involved in generating and copying VOMS proxies to
 // an experiment's nodes.  It returns a channel on which it reports the status of that experiment's proxy push.
 // genlog is the logrus.logger that gets passed in that's meant to capture the non-experiment specific messages
 // that might be printed from this module
