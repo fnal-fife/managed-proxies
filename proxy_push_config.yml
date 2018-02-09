@@ -45,8 +45,7 @@ experiments:
   des:
     dir: /opt
     emails: [buckley@fnal.gov]
-    # nodes: [des40, des41, des50, des51, des60, des61]
-    nodes: [des40, des41, des51, des60, des61]
+    nodes: [des40, des41, des50, des51, des60, des61]
     roles:
       - DESGW: desgw
     vomsgroup: "des:/des/"
