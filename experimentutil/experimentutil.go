@@ -635,15 +635,6 @@ func Worker(ctx context.Context, exptname string, genLog *logrus.Logger) <-chan 
 	pingLoop:
 		for {
 			select {
-			case testnode, chanOpen := <-pingChannel: // Receive on pingChannel
-				if !chanOpen { // Break out of loop and proceed only if channel is not open
-					pingCancel()
-					break pingLoop
-				}
-				if testnode.err != nil {
-					badNodesSlice = append(badNodesSlice, testnode.node)
-					exptLog.Error(testnode.err)
-				}
 			case <-pingCtx.Done():
 				if e := pingCtx.Err(); e == context.DeadlineExceeded {
 					exptLog.Errorf("Hit the ping timeout: %s", e)
@@ -653,6 +644,15 @@ func Worker(ctx context.Context, exptname string, genLog *logrus.Logger) <-chan 
 				}
 				pingCancel()
 				break pingLoop
+			case testnode, chanOpen := <-pingChannel: // Receive on pingChannel
+				if !chanOpen { // Break out of loop and proceed only if channel is not open
+					pingCancel()
+					break pingLoop
+				}
+				if testnode.err != nil {
+					badNodesSlice = append(badNodesSlice, testnode.node)
+					exptLog.Error(testnode.err)
+				}
 			}
 		}
 
@@ -676,6 +676,15 @@ func Worker(ctx context.Context, exptname string, genLog *logrus.Logger) <-chan 
 	vpiLoop:
 		for {
 			select {
+			case <-vpiCtx.Done():
+				if e := vpiCtx.Err(); e == context.DeadlineExceeded {
+					exptLog.Errorf("Hit the voms-proxy-init timeout for %s: %s.  Check log for details. "+
+						"Continuing to next proxy.\n", expt.Name, e)
+				} else {
+					exptLog.Error(e)
+				}
+				vpiCancel()
+				break vpiLoop
 			case vpi, chanOpen := <-vpiChan: // receive on vpiChan
 				if !chanOpen {
 					vpiCancel()
@@ -687,15 +696,6 @@ func Worker(ctx context.Context, exptname string, genLog *logrus.Logger) <-chan 
 				} else {
 					exptLog.Debug("Generated voms proxy: ", vpi.filename)
 				}
-			case <-vpiCtx.Done():
-				if e := vpiCtx.Err(); e == context.DeadlineExceeded {
-					exptLog.Errorf("Hit the voms-proxy-init timeout for %s: %s.  Check log for details. "+
-						"Continuing to next proxy.\n", expt.Name, e)
-				} else {
-					exptLog.Error(e)
-				}
-				vpiCancel()
-				break vpiLoop
 			}
 		}
 
@@ -714,6 +714,16 @@ func Worker(ctx context.Context, exptname string, genLog *logrus.Logger) <-chan 
 	copyLoop:
 		for {
 			select {
+			case <-copyCtx.Done():
+				if e := copyCtx.Err(); e == context.DeadlineExceeded {
+					exptLog.Error("Experiment hit the timeout when waiting to push proxy to one of the nodes. " +
+						"Please check the logs for details")
+				} else {
+					exptLog.Error(e)
+				}
+				expt.Success = false
+				copyCancel()
+				break copyLoop
 			case pushproxy, chanOpen := <-copyChan:
 				if !chanOpen {
 					copyCancel()
@@ -725,16 +735,6 @@ func Worker(ctx context.Context, exptname string, genLog *logrus.Logger) <-chan 
 				} else {
 					successfulCopies[pushproxy.role] = append(successfulCopies[pushproxy.role], pushproxy.node)
 				}
-			case <-copyCtx.Done():
-				if e := copyCtx.Err(); e == context.DeadlineExceeded {
-					exptLog.Error("Experiment hit the timeout when waiting to push proxy to one of the nodes. " +
-						"Please check the logs for details")
-				} else {
-					exptLog.Error(e)
-				}
-				expt.Success = false
-				copyCancel()
-				break copyLoop
 			}
 		}
 
