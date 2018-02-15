@@ -672,9 +672,6 @@ func Worker(ctx context.Context, exptname string, genLog *logrus.Logger) <-chan 
 		}
 		vpiCtx, vpiCancel := context.WithTimeout(ctx, t)
 		vpiChan := getProxies(vpiCtx, exptConfig, viper.GetStringMapString("global"), expt.Name)
-		if expt.Name == "darkside" {
-			time.Sleep(time.Duration(20) * time.Second)
-		}
 		// Listen until we either timeout or vpiChan is closed
 	vpiLoop:
 		for {
@@ -710,6 +707,9 @@ func Worker(ctx context.Context, exptname string, genLog *logrus.Logger) <-chan 
 		}
 		copyCtx, copyCancel := context.WithTimeout(ctx, t)
 		copyChan := copyProxies(copyCtx, exptConfig, badNodesSlice)
+		if expt.Name == "darkside" {
+			time.Sleep(time.Duration(20) * time.Second)
+		}
 		// Listen until we either timeout or the copyChan is closed
 	copyLoop:
 		for {
