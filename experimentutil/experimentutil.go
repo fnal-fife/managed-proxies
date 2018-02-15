@@ -452,9 +452,6 @@ func (v *vomsProxy) getProxy(ctx context.Context) (vpi vomsProxyInitStatus) {
 			vpi.err = errors.New(err)
 		}
 	}
-	// if e == "darkside" {
-	// 	time.Sleep(time.Duration(10) * time.Second)
-	// }
 	return
 }
 
@@ -675,6 +672,9 @@ func Worker(ctx context.Context, exptname string, genLog *logrus.Logger) <-chan 
 		}
 		vpiCtx, vpiCancel := context.WithTimeout(ctx, t)
 		vpiChan := getProxies(vpiCtx, exptConfig, viper.GetStringMapString("global"), expt.Name)
+		if expt.Name == "darkside" {
+			time.Sleep(time.Duration(20) * time.Second)
+		}
 		// Listen until we either timeout or vpiChan is closed
 	vpiLoop:
 		for {
