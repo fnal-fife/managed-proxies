@@ -21,12 +21,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-const (
-	exptErrFilenamef string = "golang_proxy_push_%s.log" // CHANGE ME BEFORE PRODUCTION - temp file per experiment that will be emailed to experiment
-	// exptGenInfoFilenamef  string = "golang_proxy_push_general_%s.log" // CHANGE ME BEFORE PRODUCTION - temp file per experiment that will be copied over to logfile
-	// exptGenDebugFilenamef string = "golang_proxy_push_debug_%s.log"   // CHANGE ME BEFORE PRODUCTION - temp file per experiment that will be copied over to logfile
-
-)
+const exptErrFilenamef string = "golang_proxy_push_%s.log" // CHANGE ME BEFORE PRODUCTION - temp file per experiment that will be emailed to experiment
 
 var genLog *logrus.Logger
 var rwmuxErr, rwmuxLog, rwmuxDebug sync.RWMutex // mutexes to be used when copying experiment logs into master and error log
@@ -114,23 +109,8 @@ func exptLogInit(ctx context.Context, ename string) (*logrus.Entry, error) {
 
 	var Log = logrus.New()
 	expterrlog := fmt.Sprintf(exptErrFilenamef, ename)
-	// exptgenlog = viper.GetString(viper.GetString("logs.logfile"))
-	// exptgenlog := fmt.Sprintf(exptGenInfoFilenamef, ename)
-	// exptdebuglog := fmt.Sprintf(exptGenDebugFilenamef, ename)
 
 	Log.SetLevel(logrus.DebugLevel)
-	// logFormatter := logrus.TextFormatter{FullTimestamp: true}
-	// Log.Formatter = &logFormatter
-
-	// Debug Log that gets copied to master debug log
-	// Log.AddHook(lfshook.NewHook(lfshook.PathMap{
-	// 	logrus.DebugLevel: exptdebuglog,
-	// 	logrus.InfoLevel:  exptdebuglog,
-	// 	logrus.WarnLevel:  exptdebuglog,
-	// 	logrus.ErrorLevel: exptdebuglog,
-	// 	logrus.FatalLevel: exptdebuglog,
-	// 	logrus.PanicLevel: exptdebuglog,
-	// }, &logrus.TextFormatter{FullTimestamp: true}))
 
 	Log.AddHook(lfshook.NewHook(lfshook.PathMap{
 		logrus.DebugLevel: viper.GetString("logs.debugfile"),
@@ -140,15 +120,6 @@ func exptLogInit(ctx context.Context, ename string) (*logrus.Entry, error) {
 		logrus.FatalLevel: viper.GetString("logs.debugfile"),
 		logrus.PanicLevel: viper.GetString("logs.debugfile"),
 	}, &logrus.TextFormatter{FullTimestamp: true}))
-
-	// General Log that gets copied to master log
-	// Log.AddHook(lfshook.NewHook(lfshook.PathMap{
-	// 	logrus.InfoLevel:  exptgenlog,
-	// 	logrus.WarnLevel:  exptgenlog,
-	// 	logrus.ErrorLevel: exptgenlog,
-	// 	logrus.FatalLevel: exptgenlog,
-	// 	logrus.PanicLevel: exptgenlog,
-	// }, &logrus.TextFormatter{FullTimestamp: true}))
 
 	Log.AddHook(lfshook.NewHook(lfshook.PathMap{
 		logrus.InfoLevel:  viper.GetString("logs.logfile"),
@@ -212,62 +183,6 @@ func checkKeys(ctx context.Context, exptConfig *viper.Viper) error {
 	return nil
 }
 
-// copyLogs copies the experiment-specific logs to the general and error logs.
-// func copyLogs(ctx context.Context, exptSuccess bool, expterrpath, exptgeninfopath, exptgendebugpath string, logconfig map[string]string) {
-// 	if e := ctx.Err(); e != nil {
-// 		genLog.Error(e)
-// 		return
-// 	}
-
-// 	var wg sync.WaitGroup
-// 	wg.Add(3)
-
-// 	copyLog := func(src, dest string, rwmux *sync.RWMutex) {
-// 		defer wg.Done()
-
-// 		if e := ctx.Err(); e != nil {
-// 			genLog.Error(e)
-// 			return
-// 		}
-
-// 		data, err := ioutil.ReadFile(src)
-// 		if err != nil {
-// 			if exptSuccess { // If the experiment was successful, there would be no error logfile, so we're not worried
-// 				return
-// 			}
-// 			genLog.Error("Could not read experiment logfile ", src)
-// 			return
-// 		}
-
-// 		rwmux.Lock()
-// 		f, err := os.OpenFile(dest, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-// 		if err != nil {
-// 			genLog.Error(err)
-// 			genLog.Error("Please clean up manually")
-// 		} else {
-// 			if _, err = f.Write(data); err != nil {
-// 				genLog.Error(err)
-// 				genLog.Error("Please clean up manually")
-// 			}
-// 			if err = f.Close(); err != nil {
-// 				genLog.Error(err)
-// 				genLog.Errorf("Could not close file %s.  Please investigate", f.Name())
-// 			}
-// 		}
-// 		rwmux.Unlock()
-
-// 		if err := os.Remove(src); err != nil {
-// 			genLog.Errorf("Could not remove experiment log %s.  Please clean up manually", src)
-// 		}
-// 	}
-
-// 	go copyLog(expterrpath, viper.GetString("logs.errfile"), &rwmuxErr)
-// 	go copyLog(exptgeninfopath, viper.GetString("logs.logfile"), &rwmuxLog)
-// 	go copyLog(exptgendebugpath, viper.GetString("logs.debugfile"), &rwmuxErr)
-
-// 	wg.Wait()
-// }
-
 // experimentCleanup manages the cleanup operations for an experiment, such as sending emails if necessary,
 // and copying, removing or archiving the logs
 func (expt *ExperimentSuccess) experimentCleanup(ctx context.Context) error {
@@ -282,11 +197,6 @@ func (expt *ExperimentSuccess) experimentCleanup(ctx context.Context) error {
 	}
 
 	expterrfilepath := path.Join(dir, fmt.Sprintf(exptErrFilenamef, expt.Name))
-	// exptgenlogfilepath := path.Join(dir, fmt.Sprintf(exptGenInfoFilenamef, expt.Name))
-	// exptgendebuglogfilepath := path.Join(dir, fmt.Sprintf(exptGenDebugFilenamef, expt.Name))
-
-	// defer copyLogs(ctx, expt.Success, expterrfilepath, exptgenlogfilepath,
-	// 	exptgendebuglogfilepath, viper.GetStringMapString("logs"))
 
 	// Cleanup that must occur no matter what
 	defer func(path string) error {
@@ -300,11 +210,7 @@ func (expt *ExperimentSuccess) experimentCleanup(ctx context.Context) error {
 		return nil
 	}(expterrfilepath)
 
-	// No experiment error logfile
-	// if _, err = os.Stat(expterrfilepath); os.IsNotExist(err) {
-	// 	return nil
-	// }
-
+	// Experiment failed
 	if !expt.Success {
 		// Try to send email, which also deletes expt file, returns error
 		// var err error = nil // Dummy
