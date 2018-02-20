@@ -28,6 +28,12 @@ var rwmuxErr, rwmuxLog, rwmuxDebug sync.RWMutex // mutexes to be used when copyi
 
 // Types to carry information about success and status of various operations over channels
 
+type pinger interface {
+	pingNode(context.Context) error
+}
+
+type node string
+
 // vomsProxy stores the information needed to uniquely identify the elements of a VOMS proxy.
 type vomsProxy struct {
 	fqan     string
@@ -53,8 +59,8 @@ type ExperimentSuccess struct {
 
 // pingNodeStatus stores information about an attempt to ping a node.  If there was an error, it's stored in err.
 type pingNodeStatus struct {
-	node string
-	err  error
+	pinger
+	err error
 }
 
 // vomsProxyInitStatus stores information about an attempt to run voms-proxy-init to generate a VOMS proxy.
@@ -250,19 +256,19 @@ func (expt *ExperimentSuccess) experimentCleanup(ctx context.Context) error {
 
 // pingAllNodes will launch goroutines, which each ping a node in the slice nodes.  It returns a channel,
 // on which it reports the pingNodeStatuses signifying success or error
-func pingAllNodes(ctx context.Context, nodes []string) <-chan pingNodeStatus {
+func pingAllNodes(ctx context.Context, nodes ...pinger) <-chan pingNodeStatus {
 	// Buffered Channel to report on
 	c := make(chan pingNodeStatus, len(nodes))
 
 	var wg sync.WaitGroup
 	wg.Add(len(nodes))
 
-	for _, node := range nodes {
-		go func(node string) {
+	for _, n := range nodes {
+		go func(n pinger) {
 			defer wg.Done()
-			p := pingNodeStatus{node, pingNode(ctx, node)}
+			p := pingNodeStatus{n, n.pingNode(ctx)}
 			c <- p
-		}(node)
+		}(n)
 	}
 
 	// Wait for all goroutines to finish, then close channel so that expt Worker can proceed
@@ -275,9 +281,8 @@ func pingAllNodes(ctx context.Context, nodes []string) <-chan pingNodeStatus {
 }
 
 // pingNode pings a node with a 5-second timeout.  It returns an error
-func pingNode(ctx context.Context, node string) error {
-	pingargs := []string{"-W", "5", "-c", "1", node}
-	// p.node = node
+func (n node) pingNode(ctx context.Context) error {
+	pingargs := []string{"-W", "5", "-c", "1", string(n)}
 	cmd := exec.CommandContext(ctx, "ping", pingargs...)
 	if cmdOut, cmdErr := cmd.CombinedOutput(); cmdErr != nil {
 		if e := ctx.Err(); e != nil {
@@ -322,8 +327,8 @@ func getProxies(ctx context.Context, exptConfig *viper.Viper, globalConfig map[s
 			} else {
 				v.keyfile = path.Join(globalConfig["cert_base_dir"], account+".key")
 			}
-
-			vpi := v.getProxy(ctx)
+			outfile := v.account + "." + v.role + ".proxy"
+			vpi := vomsProxyInitStatus{outfile, v.getProxy(ctx, outfile)}
 			c <- vpi
 		}(account, role)
 	}
@@ -339,11 +344,11 @@ func getProxies(ctx context.Context, exptConfig *viper.Viper, globalConfig map[s
 
 // getProxy receives a *vomsProxy object, and uses its properties to run voms-proxy-init to generate a VOMS Proxy.
 // It returns the status of this attempt in the form of a vomsProxyInitStatus object.
-func (v *vomsProxy) getProxy(ctx context.Context) (vpi vomsProxyInitStatus) {
-	outfile := v.account + "." + v.role + ".proxy"
+func (v *vomsProxy) getProxy(ctx context.Context, outfile string) error {
+	// outfile := v.account + "." + v.role + ".proxy"
 	outfilePath := path.Join("proxies", outfile)
 
-	vpi.filename = outfile
+	// vpi.filename = outfile
 	vpiargs := []string{"-rfc", "-valid", "24:00", "-voms",
 		v.fqan, "-cert", v.certfile,
 		"-key", v.keyfile, "-out", outfilePath}
@@ -351,14 +356,14 @@ func (v *vomsProxy) getProxy(ctx context.Context) (vpi vomsProxyInitStatus) {
 	cmd := exec.CommandContext(ctx, "/usr/bin/voms-proxy-init", vpiargs...)
 	if cmdErr := cmd.Run(); cmdErr != nil {
 		if e := ctx.Err(); e != nil {
-			vpi.err = e
+			return e
 		} else {
 			err := fmt.Sprintf(`Error obtaining %s.  Please check the cert on 
 					fifeutilgpvm01. \n%s Continuing on to next role.`, outfile, cmdErr)
-			vpi.err = errors.New(err)
+			return errors.New(err)
 		}
 	}
-	return
+	return nil
 }
 
 // copyProxies copies the proxies from the local machine to the experiment nodes as specified by the configuration and
@@ -536,7 +541,11 @@ func Worker(ctx context.Context, exptname string, genLog *logrus.Logger) <-chan 
 			return
 		}
 		pingCtx, pingCancel := context.WithTimeout(ctx, t)
-		pingChannel := pingAllNodes(pingCtx, exptConfig.GetStringSlice("nodes"))
+		configNodes := make([]pinger, 0, len(exptConfig.GetStringSlice("nodes")))
+		for _, n := range exptConfig.GetStringSlice("nodes") {
+			configNodes = append(configNodes, node(n))
+		}
+		pingChannel := pingAllNodes(pingCtx, configNodes...)
 		// Listen until we either timeout or the pingChannel is closed
 	pingLoop:
 		for {
@@ -556,7 +565,11 @@ func Worker(ctx context.Context, exptname string, genLog *logrus.Logger) <-chan 
 					break pingLoop
 				}
 				if testnode.err != nil {
-					badNodesSlice = append(badNodesSlice, testnode.node)
+					if n, ok := testnode.pinger.(node); ok {
+						badNodesSlice = append(badNodesSlice, string(n))
+					} else {
+						exptLog.Errorf("Could not coerce interface pinger value %v to type node", testnode.pinger)
+					}
 					exptLog.Error(testnode.err)
 				}
 			}
