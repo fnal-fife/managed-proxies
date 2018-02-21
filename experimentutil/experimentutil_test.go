@@ -14,24 +14,6 @@ const (
 	badhost  string = "thisisafakehostandwillneverbeusedever.example.com"
 )
 
-type goodNode string
-
-func (g goodNode) pingNode(ctx context.Context) error {
-	return nil
-}
-
-type badNode string
-
-func (b badNode) pingNode(ctx context.Context) error {
-	return fmt.Errorf("exit status 2 ping: unknown host %s", b)
-}
-
-type badNodeTimeout string
-
-func (b badNodeTimeout) pingNode(ctx context.Context) error {
-	return errors.New("context deadline exceeded")
-}
-
 func TestPingNode(t *testing.T) {
 	ctx := context.Background()
 
@@ -117,4 +99,22 @@ func TestPingAllNodes(t *testing.T) {
 		}
 	}
 	cancelTimeout()
+}
+
+type goodNode string
+
+func (g goodNode) pingNode(ctx context.Context) error {
+	return nil
+}
+
+type badNode string
+
+func (b badNode) pingNode(ctx context.Context) error {
+	return fmt.Errorf("exit status 2 ping: unknown host %s", b)
+}
+
+type badNodeTimeout string
+
+func (b badNodeTimeout) pingNode(ctx context.Context) error {
+	return errors.New("context deadline exceeded")
 }
