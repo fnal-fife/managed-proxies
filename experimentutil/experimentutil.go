@@ -284,7 +284,7 @@ func pingAllNodes(ctx context.Context, nodes ...pingNoder) <-chan pingNodeStatus
 	return c
 }
 
-// pingNode pings a node with a 5-second timeout.  It returns an error
+// pingNode pings a node (described by a node object) with a 5-second timeout.  It returns an error
 func (n node) pingNode(ctx context.Context) error {
 	pingargs := []string{"-W", "5", "-c", "1", string(n)}
 	cmd := exec.CommandContext(ctx, "ping", pingargs...)
@@ -297,7 +297,10 @@ func (n node) pingNode(ctx context.Context) error {
 	return nil
 }
 
-// Docstring
+// Maybe split these out?  One for ping, one for voms proxy, one for pushing proxy, one for general (this file)
+
+// createVomsProxyObjects takes the configuration information for an experiment and generates a slice of vomsProxy objects
+// for that experiment
 func createVomsProxyObjects(ctx context.Context, exptConfig *viper.Viper, globalConfig map[string]string,
 	exptname string) (vSlice []getProxyer) {
 	var vomsprefix string
@@ -330,39 +333,16 @@ func createVomsProxyObjects(ctx context.Context, exptConfig *viper.Viper, global
 }
 
 // getProxies launches goroutines that run getProxy to generate the appropriate proxies on the local machine.
-// Calling getProxies will generate all of the proxies per experiment according to the viper configuration.  It returns
+// Calling getProxies will generate voms X509 proxies of all of the proxies pased in as getProxyer objects.  It returns
 // a channel, on which it reports the status of each attempt
 func getProxies(ctx context.Context, proxies ...getProxyer) <-chan vomsProxyInitStatus {
 	c := make(chan vomsProxyInitStatus, len(proxies))
 	var wg sync.WaitGroup
 	wg.Add(len(proxies))
 
-	// if exptConfig.IsSet("vomsgroup") {
-	// 	vomsprefix = exptConfig.GetString("vomsgroup")
-	// } else {
-	// 	vomsprefix = "fermilab:/fermilab/" + exptname + "/"
-	// }
-
-	// for account, role := range exptConfig.GetStringMapString("accounts") {
 	for _, v := range proxies {
 		go func(v getProxyer) {
 			defer wg.Done()
-			// v := vomsProxy{account: account, role: role}
-
-			// v.fqan = vomsprefix + "Role=" + role
-
-			// if exptConfig.IsSet("certfile") {
-			// 	v.certfile = exptConfig.GetString("certfile")
-			// } else {
-			// 	v.certfile = path.Join(globalConfig["cert_base_dir"], account+".cert")
-			// }
-
-			// if exptConfig.IsSet("keyfile") {
-			// 	v.keyfile = exptConfig.GetString("keyfile")
-			// } else {
-			// 	v.keyfile = path.Join(globalConfig["cert_base_dir"], account+".key")
-			// }
-			// outfile := v.account + "." + v.role + ".proxy"
 			outfile, err := v.getProxy(ctx)
 			vpi := vomsProxyInitStatus{outfile, err}
 			c <- vpi
@@ -378,63 +358,8 @@ func getProxies(ctx context.Context, proxies ...getProxyer) <-chan vomsProxyInit
 	return c
 }
 
-// // getProxies launches goroutines that run getProxy to generate the appropriate proxies on the local machine.
-// // Calling getProxies will generate all of the proxies per experiment according to the viper configuration.  It returns
-// // a channel, on which it reports the status of each attempt
-// func getProxies(ctx context.Context, exptConfig *viper.Viper, globalConfig map[string]string,
-// 	exptname string) <-chan vomsProxyInitStatus {
-
-// 	c := make(chan vomsProxyInitStatus, len(exptConfig.GetStringMapString("accounts")))
-
-// 	var vomsprefix string
-// 	var wg sync.WaitGroup
-// 	wg.Add(len(exptConfig.GetStringMapString("accounts")))
-
-// 	if exptConfig.IsSet("vomsgroup") {
-// 		vomsprefix = exptConfig.GetString("vomsgroup")
-// 	} else {
-// 		vomsprefix = "fermilab:/fermilab/" + exptname + "/"
-// 	}
-
-// 	for account, role := range exptConfig.GetStringMapString("accounts") {
-// 		go func(account, role string) {
-// 			defer wg.Done()
-
-// 			v := vomsProxy{account: account, role: role}
-// 			if vomsprefix != "" {
-// 				v.fqan = vomsprefix + "Role=" + role
-// 			}
-
-// 			if exptConfig.IsSet("certfile") {
-// 				v.certfile = exptConfig.GetString("certfile")
-// 			} else {
-// 				v.certfile = path.Join(globalConfig["cert_base_dir"], account+".cert")
-// 			}
-
-// 			if exptConfig.IsSet("keyfile") {
-// 				v.keyfile = exptConfig.GetString("keyfile")
-// 			} else {
-// 				v.keyfile = path.Join(globalConfig["cert_base_dir"], account+".key")
-// 			}
-// 			outfile := v.account + "." + v.role + ".proxy"
-// 			vpi := vomsProxyInitStatus{outfile, v.getProxy(ctx, outfile)}
-// 			c <- vpi
-// 		}(account, role)
-// 	}
-
-// 	// Wait for all goroutines to finish, then close channel so that expt Worker can proceed
-// 	go func() {
-// 		defer close(c)
-// 		wg.Wait()
-// 	}()
-
-// 	return c
-// }
-
-// func that runs getProxy on getProxyer items, returns results.  Basically a pipeline that allows us to test
-
 // getProxy receives a *vomsProxy object, and uses its properties to run voms-proxy-init to generate a VOMS Proxy.
-// It returns the status of this attempt in the form of a vomsProxyInitStatus object.
+// It returns the location of the generated proxy file and an error if the attempt fails.
 func (v *vomsProxy) getProxy(ctx context.Context) (string, error) {
 	outfile := v.account + "." + v.role + ".proxy"
 	outfilePath := path.Join("proxies", outfile)
