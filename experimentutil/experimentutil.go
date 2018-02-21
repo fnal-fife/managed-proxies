@@ -675,6 +675,9 @@ func Worker(ctx context.Context, exptname string, genLog *logrus.Logger) <-chan 
 
 		for role, nodes := range failedCopies {
 			var nodesSlice []string
+			if len(nodes) == 0 {
+				continue
+			}
 			for n := range nodes {
 				nodesSlice = append(nodesSlice, n)
 			}
