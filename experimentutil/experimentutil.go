@@ -512,6 +512,7 @@ func Worker(ctx context.Context, exptname string, genLog *logrus.Logger) <-chan 
 		// Set up failedCopies for troubleshooting issues.  As pushes succeed, we'll be deleting these
 		// from the map.
 		for _, role := range exptConfig.GetStringMapString("accounts") {
+			failedCopies[role] = make(map[string]struct{})
 			for _, n := range exptConfig.GetStringSlice("nodes") {
 				failedCopies[role][n] = struct{}{}
 			}
