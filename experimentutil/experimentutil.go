@@ -28,41 +28,41 @@ var rwmuxErr, rwmuxLog, rwmuxDebug sync.RWMutex // mutexes to be used when copyi
 
 // Types to carry information about success and status of various operations over channels
 
-type pingNoder interface {
-	pingNode(context.Context) error
-}
+// type pingNoder interface {
+// 	pingNode(context.Context) error
+// }
 
-type node string
+// type node string
 
-type getProxyer interface {
-	getProxy(context.Context) (string, error)
-}
+// type getProxyer interface {
+// 	getProxy(context.Context) (string, error)
+// }
 
-type pushProxyer interface {
-	copyProxy(context.Context, []string) error
-	chmodProxy(context.Context, []string) error
-	createCopyProxiesStatus() copyProxiesStatus
-}
+// type pushProxyer interface {
+// 	copyProxy(context.Context, []string) error
+// 	chmodProxy(context.Context, []string) error
+// 	createCopyProxiesStatus() copyProxiesStatus
+// }
 
-// vomsProxy stores the information needed to uniquely identify the elements of a VOMS proxy.
-type vomsProxy struct {
-	fqan     string
-	role     string
-	account  string
-	certfile string
-	keyfile  string
-}
+// // vomsProxy stores the information needed to uniquely identify the elements of a VOMS proxy.
+// type vomsProxy struct {
+// 	fqan     string
+// 	role     string
+// 	account  string
+// 	certfile string
+// 	keyfile  string
+// }
 
-// proxyTransferInfo contains the information needed to describe where on the source host to find the proxy, and where on the destination host to push that proxy
-type proxyTransferInfo struct {
-	account           string
-	role              string
-	node              string
-	nodeDown          bool
-	proxyFileName     string
-	proxyFilePathSrc  string
-	proxyFileNameDest string
-}
+// // proxyTransferInfo contains the information needed to describe where on the source host to find the proxy, and where on the destination host to push that proxy
+// type proxyTransferInfo struct {
+// 	account           string
+// 	role              string
+// 	node              string
+// 	nodeDown          bool
+// 	proxyFileName     string
+// 	proxyFilePathSrc  string
+// 	proxyFileNameDest string
+// }
 
 // ExperimentSuccess stores information on whether all the processes involved in generating, copying, and changing
 // permissions on all proxies for an experiment were successful.
@@ -71,27 +71,27 @@ type ExperimentSuccess struct {
 	Success bool
 }
 
-// pingNodeStatus stores information about an attempt to ping a node.  If there was an error, it's stored in err.
-type pingNodeStatus struct {
-	pingNoder
-	err error
-}
+// // pingNodeStatus stores information about an attempt to ping a node.  If there was an error, it's stored in err.
+// type pingNodeStatus struct {
+// 	pingNoder
+// 	err error
+// }
 
-// vomsProxyInitStatus stores information about an attempt to run voms-proxy-init to generate a VOMS proxy.
-// If there was an error, it's stored in err.
-type vomsProxyInitStatus struct {
-	filename string
-	err      error
-}
+// // vomsProxyInitStatus stores information about an attempt to run voms-proxy-init to generate a VOMS proxy.
+// // If there was an error, it's stored in err.
+// type vomsProxyInitStatus struct {
+// 	filename string
+// 	err      error
+// }
 
-// copyProxiesStatus stores information that uniquely identifies a VOMS proxy within an experiment (account, role) and
-// the node to which it was attempted to be copied.  If there was an error doing so, it's stored in err.
-type copyProxiesStatus struct {
-	node    string
-	account string
-	role    string
-	err     error
-}
+// // copyProxiesStatus stores information that uniquely identifies a VOMS proxy within an experiment (account, role) and
+// // the node to which it was attempted to be copied.  If there was an error doing so, it's stored in err.
+// type copyProxiesStatus struct {
+// 	node    string
+// 	account string
+// 	role    string
+// 	err     error
+// }
 
 // ExptErrorFormatter is a custom formatter that is intended to be used for the
 // experiment error logs that will be sent out to experiments and to the admins.
@@ -268,297 +268,258 @@ func (expt *ExperimentSuccess) experimentCleanup(ctx context.Context) error {
 
 // Proxy copy operations
 
-// pingAllNodes will launch goroutines, which each ping a node the variadic nodes.  It returns a channel,
-// on which it reports the pingNodeStatuses signifying success or error
-func pingAllNodes(ctx context.Context, nodes ...pingNoder) <-chan pingNodeStatus {
-	// Buffered Channel to report on
-	c := make(chan pingNodeStatus, len(nodes))
+// // pingAllNodes will launch goroutines, which each ping a node the variadic nodes.  It returns a channel,
+// // on which it reports the pingNodeStatuses signifying success or error
+// func pingAllNodes(ctx context.Context, nodes ...pingNoder) <-chan pingNodeStatus {
+// 	// Buffered Channel to report on
+// 	c := make(chan pingNodeStatus, len(nodes))
 
-	var wg sync.WaitGroup
-	wg.Add(len(nodes))
+// 	var wg sync.WaitGroup
+// 	wg.Add(len(nodes))
 
-	for _, n := range nodes {
-		go func(n pingNoder) {
-			defer wg.Done()
-			p := pingNodeStatus{n, n.pingNode(ctx)}
-			c <- p
-		}(n)
-	}
+// 	for _, n := range nodes {
+// 		go func(n pingNoder) {
+// 			defer wg.Done()
+// 			p := pingNodeStatus{n, n.pingNode(ctx)}
+// 			c <- p
+// 		}(n)
+// 	}
 
-	// Wait for all goroutines to finish, then close channel so that expt Worker can proceed
-	go func() {
-		defer close(c)
-		wg.Wait()
-	}()
+// 	// Wait for all goroutines to finish, then close channel so that expt Worker can proceed
+// 	go func() {
+// 		defer close(c)
+// 		wg.Wait()
+// 	}()
 
-	return c
-}
+// 	return c
+// }
 
-// pingNode pings a node (described by a node object) with a 5-second timeout.  It returns an error
-func (n node) pingNode(ctx context.Context) error {
-	pingargs := []string{"-W", "5", "-c", "1", string(n)}
-	cmd := exec.CommandContext(ctx, "ping", pingargs...)
-	if cmdOut, cmdErr := cmd.CombinedOutput(); cmdErr != nil {
-		if e := ctx.Err(); e != nil {
-			return e
-		}
-		return fmt.Errorf("%s %s", cmdErr, cmdOut)
-	}
-	return nil
-}
+// // pingNode pings a node (described by a node object) with a 5-second timeout.  It returns an error
+// func (n node) pingNode(ctx context.Context) error {
+// 	pingargs := []string{"-W", "5", "-c", "1", string(n)}
+// 	cmd := exec.CommandContext(ctx, "ping", pingargs...)
+// 	if cmdOut, cmdErr := cmd.CombinedOutput(); cmdErr != nil {
+// 		if e := ctx.Err(); e != nil {
+// 			return e
+// 		}
+// 		return fmt.Errorf("%s %s", cmdErr, cmdOut)
+// 	}
+// 	return nil
+// }
 
 // Maybe split these out?  One for ping, one for voms proxy, one for pushing proxy, one for general (this file)
 
-// createVomsProxyObjects takes the configuration information for an experiment and generates a slice of vomsProxy objects
-// for that experiment
-func createVomsProxyObjects(ctx context.Context, exptConfig *viper.Viper, globalConfig map[string]string,
-	exptname string) (vSlice []getProxyer) {
-	var vomsprefix string
+// // createVomsProxyObjects takes the configuration information for an experiment and generates a slice of vomsProxy objects
+// // for that experiment
+// func createVomsProxyObjects(ctx context.Context, exptConfig *viper.Viper, globalConfig map[string]string,
+// 	exptname string) (vSlice []getProxyer) {
+// 	var vomsprefix string
 
-	if exptConfig.IsSet("vomsgroup") {
-		vomsprefix = exptConfig.GetString("vomsgroup")
-	} else {
-		vomsprefix = "fermilab:/fermilab/" + exptname + "/"
-	}
+// 	if exptConfig.IsSet("vomsgroup") {
+// 		vomsprefix = exptConfig.GetString("vomsgroup")
+// 	} else {
+// 		vomsprefix = "fermilab:/fermilab/" + exptname + "/"
+// 	}
 
-	for account, role := range exptConfig.GetStringMapString("accounts") {
-		v := vomsProxy{account: account, role: role}
-		v.fqan = vomsprefix + "Role=" + role
+// 	for account, role := range exptConfig.GetStringMapString("accounts") {
+// 		v := vomsProxy{account: account, role: role}
+// 		v.fqan = vomsprefix + "Role=" + role
 
-		if exptConfig.IsSet("certfile") {
-			v.certfile = exptConfig.GetString("certfile")
-		} else {
-			v.certfile = path.Join(globalConfig["cert_base_dir"], account+".cert")
-		}
+// 		if exptConfig.IsSet("certfile") {
+// 			v.certfile = exptConfig.GetString("certfile")
+// 		} else {
+// 			v.certfile = path.Join(globalConfig["cert_base_dir"], account+".cert")
+// 		}
 
-		if exptConfig.IsSet("keyfile") {
-			v.keyfile = exptConfig.GetString("keyfile")
-		} else {
-			v.keyfile = path.Join(globalConfig["cert_base_dir"], account+".key")
-		}
+// 		if exptConfig.IsSet("keyfile") {
+// 			v.keyfile = exptConfig.GetString("keyfile")
+// 		} else {
+// 			v.keyfile = path.Join(globalConfig["cert_base_dir"], account+".key")
+// 		}
 
-		vSlice = append(vSlice, &v)
-	}
-	return
-}
+// 		vSlice = append(vSlice, &v)
+// 	}
+// 	return
+// }
 
-// getProxies launches goroutines that run getProxy to generate the appropriate proxies on the local machine.
-// Calling getProxies will generate voms X509 proxies of all of the proxies pased in as getProxyer objects.  It returns
-// a channel, on which it reports the status of each attempt
-func getProxies(ctx context.Context, proxies ...getProxyer) <-chan vomsProxyInitStatus {
-	c := make(chan vomsProxyInitStatus, len(proxies))
-	var wg sync.WaitGroup
-	wg.Add(len(proxies))
+// // getProxies launches goroutines that run getProxy to generate the appropriate proxies on the local machine.
+// // Calling getProxies will generate voms X509 proxies of all of the proxies pased in as getProxyer objects.  It returns
+// // a channel, on which it reports the status of each attempt
+// func getProxies(ctx context.Context, proxies ...getProxyer) <-chan vomsProxyInitStatus {
+// 	c := make(chan vomsProxyInitStatus, len(proxies))
+// 	var wg sync.WaitGroup
+// 	wg.Add(len(proxies))
 
-	for _, v := range proxies {
-		go func(v getProxyer) {
-			defer wg.Done()
-			outfile, err := v.getProxy(ctx)
-			vpi := vomsProxyInitStatus{outfile, err}
-			c <- vpi
-		}(v)
-	}
+// 	for _, v := range proxies {
+// 		go func(v getProxyer) {
+// 			defer wg.Done()
+// 			outfile, err := v.getProxy(ctx)
+// 			vpi := vomsProxyInitStatus{outfile, err}
+// 			c <- vpi
+// 		}(v)
+// 	}
 
-	// Wait for all goroutines to finish, then close channel so that expt Worker can proceed
-	go func() {
-		defer close(c)
-		wg.Wait()
-	}()
+// 	// Wait for all goroutines to finish, then close channel so that expt Worker can proceed
+// 	go func() {
+// 		defer close(c)
+// 		wg.Wait()
+// 	}()
 
-	return c
-}
+// 	return c
+// }
 
-// getProxy receives a *vomsProxy object, and uses its properties to run voms-proxy-init to generate a VOMS Proxy.
-// It returns the location of the generated proxy file and an error if the attempt fails.
-func (v *vomsProxy) getProxy(ctx context.Context) (string, error) {
-	outfile := v.account + "." + v.role + ".proxy"
-	outfilePath := path.Join("proxies", outfile)
+// // getProxy receives a *vomsProxy object, and uses its properties to run voms-proxy-init to generate a VOMS Proxy.
+// // It returns the location of the generated proxy file and an error if the attempt fails.
+// func (v *vomsProxy) getProxy(ctx context.Context) (string, error) {
+// 	outfile := v.account + "." + v.role + ".proxy"
+// 	outfilePath := path.Join("proxies", outfile)
 
-	// vpi.filename = outfile
-	vpiargs := []string{"-rfc", "-valid", "24:00", "-voms",
-		v.fqan, "-cert", v.certfile,
-		"-key", v.keyfile, "-out", outfilePath}
+// 	// vpi.filename = outfile
+// 	vpiargs := []string{"-rfc", "-valid", "24:00", "-voms",
+// 		v.fqan, "-cert", v.certfile,
+// 		"-key", v.keyfile, "-out", outfilePath}
 
-	cmd := exec.CommandContext(ctx, "/usr/bin/voms-proxy-init", vpiargs...)
-	if cmdErr := cmd.Run(); cmdErr != nil {
-		if e := ctx.Err(); e != nil {
-			return "", e
-		}
-		err := fmt.Sprintf(`Error obtaining %s.  Please check the cert on 
-				fifeutilgpvm01. \n%s Continuing on to next role.`, outfile, cmdErr)
-		return "", errors.New(err)
-	}
-	return outfile, nil
-}
+// 	cmd := exec.CommandContext(ctx, "/usr/bin/voms-proxy-init", vpiargs...)
+// 	if cmdErr := cmd.Run(); cmdErr != nil {
+// 		if e := ctx.Err(); e != nil {
+// 			return "", e
+// 		}
+// 		err := fmt.Sprintf(`Error obtaining %s.  Please check the cert on
+// 				fifeutilgpvm01. \n%s Continuing on to next role.`, outfile, cmdErr)
+// 		return "", errors.New(err)
+// 	}
+// 	return outfile, nil
+// }
 
-func createProxyTransferInfoObjects(ctx context.Context, exptConfig *viper.Viper, badNodesSlice []string) (p []pushProxyer) {
-	// numSlots := len(exptConfig.GetStringMapString("accounts")) * len(exptConfig.GetStringSlice("nodes"))
-	badNodesMap := make(map[string]struct{})
+// func createProxyTransferInfoObjects(ctx context.Context, exptConfig *viper.Viper, badNodesSlice []string) (p []pushProxyer) {
+// 	// numSlots := len(exptConfig.GetStringMapString("accounts")) * len(exptConfig.GetStringSlice("nodes"))
+// 	badNodesMap := make(map[string]struct{})
 
-	for _, node := range badNodesSlice {
-		badNodesMap[node] = struct{}{}
-	}
+// 	for _, node := range badNodesSlice {
+// 		badNodesMap[node] = struct{}{}
+// 	}
 
-	for acct, role := range exptConfig.GetStringMapString("accounts") {
-		//Create the proxy transfer objects, attach to slice
-		proxyFile := acct + "." + role + ".proxy"
-		proxyFilePath := path.Join("proxies", proxyFile)
-		finalProxyPath := path.Join(exptConfig.GetString("dir"), acct, proxyFile)
+// 	for acct, role := range exptConfig.GetStringMapString("accounts") {
+// 		//Create the proxy transfer objects, attach to slice
+// 		proxyFile := acct + "." + role + ".proxy"
+// 		proxyFilePath := path.Join("proxies", proxyFile)
+// 		finalProxyPath := path.Join(exptConfig.GetString("dir"), acct, proxyFile)
 
-		for _, node := range exptConfig.GetStringSlice("nodes") {
-			var badnode bool
-			if _, ok := badNodesMap[node]; ok {
-				badnode = true
-			}
-			pInfo := proxyTransferInfo{
-				account:           acct,
-				role:              role,
-				node:              node,
-				nodeDown:          badnode,
-				proxyFileName:     proxyFile,
-				proxyFilePathSrc:  proxyFilePath,
-				proxyFileNameDest: finalProxyPath}
+// 		for _, node := range exptConfig.GetStringSlice("nodes") {
+// 			var badnode bool
+// 			if _, ok := badNodesMap[node]; ok {
+// 				badnode = true
+// 			}
+// 			pInfo := proxyTransferInfo{
+// 				account:           acct,
+// 				role:              role,
+// 				node:              node,
+// 				nodeDown:          badnode,
+// 				proxyFileName:     proxyFile,
+// 				proxyFilePathSrc:  proxyFilePath,
+// 				proxyFileNameDest: finalProxyPath}
 
-			p = append(p, &pInfo)
-		}
-	}
-	return
-}
+// 			p = append(p, &pInfo)
+// 		}
+// 	}
+// 	return
+// }
 
-func (pt *proxyTransferInfo) createCopyProxiesStatus() copyProxiesStatus {
-	return copyProxiesStatus{pt.node, pt.account, pt.role, nil}
-}
+// func (pt *proxyTransferInfo) createCopyProxiesStatus() copyProxiesStatus {
+// 	return copyProxiesStatus{pt.node, pt.account, pt.role, nil}
+// }
 
-// copyProxies copies the proxies from the local machine to the experiment nodes as specified by the configuration and
-// changes their permissions. It returns a channel on which it reports the status of those operations.  The copy and
-// change permission operations share a context that  dictates their deadline.
-func copyProxies(ctx context.Context, proxyTransfers ...pushProxyer) <-chan copyProxiesStatus {
-	numSlots := len(proxyTransfers)
-	sshopts := []string{"-o", "ConnectTimeout=30",
-		"-o", "ServerAliveInterval=30",
-		"-o", "ServerAliveCountMax=1"}
-	// badNodesMap := make(map[string]struct{})
-	c := make(chan copyProxiesStatus, numSlots)
-	var wg sync.WaitGroup
+// // copyProxies copies the proxies from the local machine to the experiment nodes as specified by the configuration and
+// // changes their permissions. It returns a channel on which it reports the status of those operations.  The copy and
+// // change permission operations share a context that  dictates their deadline.
+// func copyProxies(ctx context.Context, proxyTransfers ...pushProxyer) <-chan copyProxiesStatus {
+// 	numSlots := len(proxyTransfers)
+// 	sshopts := []string{"-o", "ConnectTimeout=30",
+// 		"-o", "ServerAliveInterval=30",
+// 		"-o", "ServerAliveCountMax=1"}
+// 	c := make(chan copyProxiesStatus, numSlots)
+// 	var wg sync.WaitGroup
 
-	// for _, node := range badNodesSlice {
-	// 	badNodesMap[node] = struct{}{}
-	// }
+// 	wg.Add(numSlots)
 
-	wg.Add(numSlots)
+// 	for _, p := range proxyTransfers {
+// 		go func(p pushProxyer) {
+// 			cps := p.createCopyProxiesStatus()
+// 			defer wg.Done()
 
-	// One copy per node and role
-	// for acct, role := range exptConfig.GetStringMapString("accounts") {
-	for _, p := range proxyTransfers {
-		go func(p pushProxyer) {
-			// We're recreating this per account and role because even if voms-proxy-init fails, we might still have a
-			// valid proxy sitting at proxyFilePath.
-			// // proxyFile := acct + "." + role + ".proxy"
-			// // proxyFilePath := path.Join("proxies", proxyFile)
-			// // finalProxyPath := path.Join(exptConfig.GetString("dir"), acct, proxyFile)
-			// // pInfo := proxyTransferInfo{
-			// // 	proxyFileName:     proxyFile,
-			// // 	proxyFilePathSrc:  proxyFilePath,
-			// // 	proxyFileNameDest: finalProxyPath}
+// 			if cps.err = p.copyProxy(ctx, sshopts); cps.err != nil {
+// 				if e := ctx.Err(); e == nil {
+// 					cps.err = errors.New(cps.err.Error())
+// 				}
+// 				c <- cps
+// 				return
+// 			}
+// 			if cps.err = p.chmodProxy(ctx, sshopts); cps.err != nil {
+// 				if e := ctx.Err(); e == nil {
+// 					cps.err = errors.New(cps.err.Error())
+// 				}
+// 			}
+// 			c <- cps
+// 		}(p)
+// 	}
 
-			// for _, node := range exptConfig.GetStringSlice("nodes") {
-			// 	go func(node string) {
-			// var badNodeMsg string
-			cps := p.createCopyProxiesStatus()
+// 	// Wait for all goroutines to finish, then close channel so that expt Worker can proceed
+// 	go func() {
+// 		defer close(c)
+// 		wg.Wait()
+// 	}()
 
-			defer wg.Done()
-			// if p.nodeDown {
-			// 	badNodeMsg = "\n" + fmt.Sprintf("Node %s didn't respond to pings earlier - "+
-			// 		"so it's expected that copying there would fail. "+
-			// 		"It may be necessary for the experiment to request via a "+
-			// 		"ServiceNow ticket that the Scientific Server Infrastructure "+
-			// 		"group reboot the node.", p.node)
-			// } else {
-			// 	badNodeMsg = ""
-			// }
-			// if _, ok := badNodesMap[node]; ok {
-			// 	badNodeMsg = "\n" + fmt.Sprintf("Node %s didn't respond to pings earlier - "+
-			// 		"so it's expected that copying there would fail. "+
-			// 		"It may be necessary for the experiment to request via a "+
-			// 		"ServiceNow ticket that the Scientific Server Infrastructure "+
-			// 		"group reboot the node.", node)
-			// } else {
-			// 	badNodeMsg = ""
-			// }
+// 	return c
+// }
 
-			if cps.err = p.copyProxy(ctx, sshopts); cps.err != nil {
-				if e := ctx.Err(); e == nil {
-					cps.err = errors.New(cps.err.Error())
-				}
-				c <- cps
-				return
-			}
-			if cps.err = p.chmodProxy(ctx, sshopts); cps.err != nil {
-				if e := ctx.Err(); e == nil {
-					cps.err = errors.New(cps.err.Error())
-				}
-			}
-			c <- cps
-		}(p)
-	}
+// // copyProxy uses scp to copy the proxy to the destination node, putting it in a file specified by pt.proxyFileNameDest
+// // with ".new" appended.  It returns an error.
+// func (pt *proxyTransferInfo) copyProxy(ctx context.Context, sshopts []string) error {
+// 	newProxyPath := pt.proxyFileNameDest + ".new"
+// 	accountNode := pt.account + "@" + pt.node + ".fnal.gov"
+// 	scpargs := append(sshopts, pt.proxyFilePathSrc, accountNode+":"+newProxyPath)
+// 	scpCmd := exec.CommandContext(ctx, "scp", scpargs...)
 
-	// Wait for all goroutines to finish, then close channel so that expt Worker can proceed
-	go func() {
-		defer close(c)
-		wg.Wait()
-	}()
+// 	if cmdOut, cmdErr := scpCmd.CombinedOutput(); cmdErr != nil {
+// 		if e := ctx.Err(); e != nil {
+// 			return e
+// 		}
+// 		e := fmt.Sprintf("Copying proxy %s to node %s failed.  The error was %s: %s %s",
+// 			pt.proxyFileName, pt.node, cmdErr, cmdOut, pt.generateBadNodeMsg())
+// 		return errors.New(e)
+// 	}
+// 	return nil
+// }
 
-	return c
-}
+// func (pt *proxyTransferInfo) generateBadNodeMsg() (msg string) {
+// 	if pt.nodeDown {
+// 		msg = "\n" + fmt.Sprintf("Node %s didn't respond to pings earlier - "+
+// 			"so it's expected that copying there would fail. "+
+// 			"It may be necessary for the experiment to request via a "+
+// 			"ServiceNow ticket that the Scientific Server Infrastructure "+
+// 			"group reboot the node.", pt.node)
+// 	}
+// 	return
+// }
 
-// copyProxy uses scp to copy the proxy to the destination node, putting it in a file specified by pt.proxyFileNameDest
-// with ".new" appended.  It returns an error.
-func (pt *proxyTransferInfo) copyProxy(ctx context.Context, sshopts []string) error {
-	newProxyPath := pt.proxyFileNameDest + ".new"
-	accountNode := pt.account + "@" + pt.node + ".fnal.gov"
-	scpargs := append(sshopts, pt.proxyFilePathSrc, accountNode+":"+newProxyPath)
-	scpCmd := exec.CommandContext(ctx, "scp", scpargs...)
+// // chmodProxy uses ssh and chmod to change the permissions of the proxy on the destination node, putting it in a file
+// // specified by pt.proxyFileNameDest.  It returns an error.
+// func (pt *proxyTransferInfo) chmodProxy(ctx context.Context, sshopts []string) error {
+// 	newProxyPath := pt.proxyFileNameDest + ".new"
+// 	accountNode := pt.account + "@" + pt.node + ".fnal.gov"
+// 	sshargs := append(sshopts, accountNode,
+// 		"chmod 400 "+newProxyPath+" ; mv -f "+newProxyPath+" "+pt.proxyFileNameDest)
+// 	sshCmd := exec.CommandContext(ctx, "ssh", sshargs...)
 
-	if cmdOut, cmdErr := scpCmd.CombinedOutput(); cmdErr != nil {
-		if e := ctx.Err(); e != nil {
-			return e
-		}
-		e := fmt.Sprintf("Copying proxy %s to node %s failed.  The error was %s: %s %s",
-			pt.proxyFileName, pt.node, cmdErr, cmdOut, pt.generateBadNodeMsg())
-		return errors.New(e)
-	}
-	return nil
-}
-
-func (pt *proxyTransferInfo) generateBadNodeMsg() (msg string) {
-	if pt.nodeDown {
-		msg = "\n" + fmt.Sprintf("Node %s didn't respond to pings earlier - "+
-			"so it's expected that copying there would fail. "+
-			"It may be necessary for the experiment to request via a "+
-			"ServiceNow ticket that the Scientific Server Infrastructure "+
-			"group reboot the node.", pt.node)
-	}
-	return
-}
-
-// chmodProxy uses ssh and chmod to change the permissions of the proxy on the destination node, putting it in a file
-// specified by pt.proxyFileNameDest.  It returns an error.
-func (pt *proxyTransferInfo) chmodProxy(ctx context.Context, sshopts []string) error {
-	newProxyPath := pt.proxyFileNameDest + ".new"
-	accountNode := pt.account + "@" + pt.node + ".fnal.gov"
-	sshargs := append(sshopts, accountNode,
-		"chmod 400 "+newProxyPath+" ; mv -f "+newProxyPath+" "+pt.proxyFileNameDest)
-	sshCmd := exec.CommandContext(ctx, "ssh", sshargs...)
-
-	if cmdOut, cmdErr := sshCmd.CombinedOutput(); cmdErr != nil {
-		if e := ctx.Err(); e != nil {
-			return e
-		}
-		return fmt.Errorf("Error changing permission of proxy %s to mode 400 on %s. "+
-			"The error was %s: %s. %s", pt.proxyFileName, pt.node, cmdErr, cmdOut, pt.generateBadNodeMsg())
-	}
-	return nil
-}
+// 	if cmdOut, cmdErr := sshCmd.CombinedOutput(); cmdErr != nil {
+// 		if e := ctx.Err(); e != nil {
+// 			return e
+// 		}
+// 		return fmt.Errorf("Error changing permission of proxy %s to mode 400 on %s. "+
+// 			"The error was %s: %s. %s", pt.proxyFileName, pt.node, cmdErr, cmdOut, pt.generateBadNodeMsg())
+// 	}
+// 	return nil
+// }
 
 // Worker is the main function that manages the processes involved in generating and copying VOMS proxies to
 // an experiment's nodes.  It returns a channel on which it reports the status of that experiment's proxy push.
