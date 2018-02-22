@@ -72,7 +72,6 @@ func TestCopyProxiesCount(t *testing.T) {
 
 	for c := range copyChannel {
 		if c.err != nil {
-			fmt.Println(c.err)
 			j++
 		} else {
 			i++
@@ -214,7 +213,10 @@ func (f *fakeProxyTransferInfo) copyProxy(ctx context.Context, opts []string) er
 			return e
 		}
 	}
-	return f.copyErr
+	if f.copyErr != nil {
+		return errors.New(f.copyErr.Error() + f.generateBadNodeMsg())
+	}
+	return nil
 }
 
 func (f *fakeProxyTransferInfo) chmodProxy(ctx context.Context, opts []string) error {
@@ -224,4 +226,15 @@ func (f *fakeProxyTransferInfo) chmodProxy(ctx context.Context, opts []string) e
 		return e
 	}
 	return f.chmodErr
+}
+
+func (f *fakeProxyTransferInfo) generateBadNodeMsg() (msg string) {
+	if f.nodeDown {
+		msg = "\n" + fmt.Sprintf("Node %s didn't respond to pings earlier - "+
+			"so it's expected that copying there would fail. "+
+			"It may be necessary for the experiment to request via a "+
+			"ServiceNow ticket that the Scientific Server Infrastructure "+
+			"group reboot the node.", f.node)
+	}
+	return
 }
