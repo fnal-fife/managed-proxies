@@ -142,6 +142,7 @@ func checkKeys(ctx context.Context, exptConfig *viper.Viper) error {
 
 // experimentCleanup manages the cleanup operations for an experiment, such as sending emails if necessary,
 // and copying, removing or archiving the logs
+// TODO:  maybe a unit test for this
 func (expt *ExperimentSuccess) experimentCleanup(ctx context.Context) error {
 	if e := ctx.Err(); e != nil {
 		return e
