@@ -19,8 +19,6 @@ import (
 	"github.com/spf13/viper"
 )
 
-// Error handling - break everything!
-
 const configFile string = "proxy_push_config_test.yml" // CHANGE ME BEFORE PRODUCTION
 
 var log = logrus.New() // Global logger
