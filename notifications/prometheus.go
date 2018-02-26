@@ -1,7 +1,6 @@
 package notifications
 
 import (
-	"fmt"
 	"strings"
 	"time"
 
@@ -23,7 +22,6 @@ type BasicPromPush struct {
 }
 
 func (b BasicPromPush) PushNodeRoleTimestamp(experiment, node, role string) error {
-
 	// Ensure that "-" in our config names are okay for Prometheus
 	experiment = strings.Replace(experiment, "-", "", -1)
 	node = strings.Replace(node, "-", "", -1)
@@ -36,7 +34,6 @@ func (b BasicPromPush) PushNodeRoleTimestamp(experiment, node, role string) erro
 		Name: name,
 		Help: help,
 	})
-	fmt.Println(name)
 	b.R.MustRegister(proxyPushTime)
 	proxyPushTime.SetToCurrentTime()
 
