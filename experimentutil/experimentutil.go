@@ -392,7 +392,11 @@ func Worker(ctx context.Context, exptname string, genLog *logrus.Logger, b notif
 				} else {
 					successfulCopies[pushproxy.role] = append(successfulCopies[pushproxy.role], pushproxy.node)
 					delete(failedCopies[pushproxy.role], pushproxy.node)
-					b.PushNodeRoleTimestamp(expt.Name, pushproxy.node, pushproxy.role)
+					if err := b.PushNodeRoleTimestamp(expt.Name, pushproxy.node, pushproxy.role); err != nil {
+						genLog.Errorf("Could not report success metrics for [%s, %s, %s]", expt.Name, pushproxy.node, pushproxy.role)
+					} else {
+						exptLog.Debugf("Pushed prometheus success time for [%s, %s, %s]", expt.Name, pushproxy.node, pushproxy.role)
+					}
 				}
 			}
 		}
