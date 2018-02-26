@@ -20,7 +20,7 @@ type BasicPromPush struct {
 	R *prometheus.Registry
 }
 
-func (b BasicPromPush) PushNodeTimestamp(node, role string) error {
+func (b BasicPromPush) PushNodeRoleTimestamp(node, role string) error {
 	help := "The timestamp of the last successful proxy push of role " + role + " to node " + node
 	name := node + "_" + role
 
@@ -36,7 +36,7 @@ func (b BasicPromPush) PushNodeTimestamp(node, role string) error {
 }
 
 func (b BasicPromPush) PushCountErrors(numErrors int) error {
-	help := "The number of errors in the last round of proxy pushes"
+	help := "The number of failed experiments in the last round of proxy pushes"
 
 	proxyPushErrorCount := prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "proxypush_num_errors",

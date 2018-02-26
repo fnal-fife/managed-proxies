@@ -26,7 +26,7 @@ const configFile string = "proxy_push_config_test.yml" // CHANGE ME BEFORE PRODU
 var (
 	log      = logrus.New() // Global logger
 	promPush notifications.BasicPromPush
-	start time.Time
+	start    time.Time
 )
 
 // checkUser makes sure that the user running the proxy push is the authorized user
@@ -68,7 +68,7 @@ func manageExperimentChannels(ctx context.Context, exptList []string) <-chan exp
 			// successful status is sent, and when the channel closes after cleanup.  If we timeout, just move on.
 			// Expt channel is buffered anyway, so if the worker tries to send later and there's no receiver,
 			// garbage collection will take care of it
-			c := experimentutil.Worker(exptContext, expt, log)
+			c := experimentutil.Worker(exptContext, expt, log, promPush)
 			select {
 			case status := <-c: // Grab status from channel
 				agg <- status
@@ -202,14 +202,19 @@ func init() {
 
 	// Set up prometheus pusher
 
-	promPush.R := prometheus.NewRegistry()
-	promPush.P := push.New(viper.GetString("prometheus.host"), viper.GetString("prometheus.jobname")).Gatherer(registry)
+	promPush.R = prometheus.NewRegistry()
+	promPush.P = push.New(viper.GetString("prometheus.host"), viper.GetString("prometheus.jobname")).Gatherer(promPush.R)
 
 }
 
 func cleanup(exptStatus map[string]bool, experiments []string) error {
+	defer func() {
+		if err := promPush.PushPromTotalDuration(start); err != nil {
+			log.Error(err.Error())
+			notifications.SendSlackMessage(context.Background(), err.Error())
+		}
+	}()
 
-	defer promPush.PushPromTotalDuration(start)
 	s := make([]string, 0, len(experiments))
 	f := make([]string, 0, len(experiments))
 
@@ -227,6 +232,14 @@ func cleanup(exptStatus map[string]bool, experiments []string) error {
 			f = append(f, expt)
 		}
 	}
+
+	// Defining this defer func here so we have the correct failure count
+	defer func() {
+		if err := promPush.PushCountErrors(len(f)); err != nil {
+			log.Error(err.Error())
+			notifications.SendSlackMessage(context.Background(), err.Error())
+		}
+	}()
 
 	log.Infof("Successes: %v\nFailures: %v\n", strings.Join(s, ", "), strings.Join(f, ", "))
 
@@ -279,7 +292,7 @@ func cleanup(exptStatus map[string]bool, experiments []string) error {
 }
 
 func main() {
-	start := time.Now()
+	start = time.Now()
 	exptSuccesses := make(map[string]bool)                             // map of successful expts
 	expts := make([]string, 0, len(viper.GetStringMap("experiments"))) // Slice of experiments we will actually process
 
