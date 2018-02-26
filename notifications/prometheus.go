@@ -20,11 +20,12 @@ type BasicPromPush struct {
 	R *prometheus.Registry
 }
 
-func (b BasicPromPush) PushNodeTimestamp(node string) error {
-	help := "The timestamp of the last successful proxy push to node " + node
+func (b BasicPromPush) PushNodeTimestamp(node, role string) error {
+	help := "The timestamp of the last successful proxy push of role " + role + " to node " + node
+	name := node + "_" + role
 
 	proxyPushTime := prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: node,
+		Name: name,
 		Help: help,
 	})
 	b.R.MustRegister(proxyPushTime)
