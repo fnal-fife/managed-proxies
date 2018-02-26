@@ -392,7 +392,7 @@ func Worker(ctx context.Context, exptname string, genLog *logrus.Logger, b notif
 				} else {
 					successfulCopies[pushproxy.role] = append(successfulCopies[pushproxy.role], pushproxy.node)
 					delete(failedCopies[pushproxy.role], pushproxy.node)
-					b.PushNodeRoleTimestamp(pushproxy.node, pushproxy.role)
+					b.PushNodeRoleTimestamp(expt.Name, pushproxy.node, pushproxy.role)
 				}
 			}
 		}
