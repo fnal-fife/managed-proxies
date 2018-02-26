@@ -1,6 +1,7 @@
 package notifications
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -28,6 +29,7 @@ func (b BasicPromPush) PushNodeRoleTimestamp(node, role string) error {
 		Name: name,
 		Help: help,
 	})
+	fmt.Println(name)
 	b.R.MustRegister(proxyPushTime)
 	proxyPushTime.SetToCurrentTime()
 
