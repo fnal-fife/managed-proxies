@@ -13,6 +13,8 @@ import (
 
 	"fnal.gov/sbhat/proxypush/experimentutil"
 	"fnal.gov/sbhat/proxypush/notifications"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/push"
 	"github.com/rifflock/lfshook"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
@@ -21,7 +23,11 @@ import (
 
 const configFile string = "proxy_push_config_test.yml" // CHANGE ME BEFORE PRODUCTION
 
-var log = logrus.New() // Global logger
+var (
+	log      = logrus.New() // Global logger
+	promPush notifications.BasicPromPush
+	start time.Time
+)
 
 // checkUser makes sure that the user running the proxy push is the authorized user
 func checkUser(authuser string) error {
@@ -193,9 +199,17 @@ func init() {
 		newName := timeoutName + "Duration"
 		viper.Set(newName, value)
 	}
+
+	// Set up prometheus pusher
+
+	promPush.R := prometheus.NewRegistry()
+	promPush.P := push.New(viper.GetString("prometheus.host"), viper.GetString("prometheus.jobname")).Gatherer(registry)
+
 }
 
 func cleanup(exptStatus map[string]bool, experiments []string) error {
+
+	defer promPush.PushPromTotalDuration(start)
 	s := make([]string, 0, len(experiments))
 	f := make([]string, 0, len(experiments))
 
@@ -265,6 +279,7 @@ func cleanup(exptStatus map[string]bool, experiments []string) error {
 }
 
 func main() {
+	start := time.Now()
 	exptSuccesses := make(map[string]bool)                             // map of successful expts
 	expts := make([]string, 0, len(viper.GetStringMap("experiments"))) // Slice of experiments we will actually process
 
