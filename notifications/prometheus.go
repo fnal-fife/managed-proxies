@@ -81,8 +81,6 @@ func (b BasicPromPush) PushCountErrors(numErrors int) error {
 
 func (b BasicPromPush) PushPromTotalDuration(start time.Time) error {
 	promTotalDuration.Set(time.Since(start).Seconds())
-
-	b.R.MustRegister(promTotalDuration)
 	err := b.P.Add()
 	return err
 }
