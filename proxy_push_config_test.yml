@@ -32,6 +32,12 @@ notifications_test:
   # admin_email: kherner@fnal.gov
   
 
+# Prometheus monitoring config
+prometheus:
+  host: "http://fermicloud149.fnal.gov:9091"
+  jobname: "proxy_push_tracker"
+
+
 # Other config variabless
 global:
   should_runuser: rexbatch                                    # User that this script must run as 
