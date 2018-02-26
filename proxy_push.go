@@ -204,7 +204,9 @@ func init() {
 
 	promPush.R = prometheus.NewRegistry()
 	promPush.P = push.New(viper.GetString("prometheus.host"), viper.GetString("prometheus.jobname")).Gatherer(promPush.R)
-
+	if err := promPush.RegisterMetrics(); err != nil {
+		log.Errorf("Error registering prometheus metrics: %s", err.Error())
+	}
 }
 
 func cleanup(exptStatus map[string]bool, experiments []string) error {

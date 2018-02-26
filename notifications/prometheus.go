@@ -1,7 +1,7 @@
 package notifications
 
 import (
-	"strings"
+	"errors"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -13,6 +13,18 @@ var (
 		Name: "proxy_push_total_seconds",
 		Help: "The total amount of time it took to run the entire Managed Proxies Service script",
 	})
+	proxyPushTime = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: "proxy_push",
+			Name:      "last_timestamp",
+			Help:      "The timestamp of the last successful proxy push of a VOMS proxy to a node",
+		},
+		[]string{
+			"experiment",
+			"node",
+			"role",
+		},
+	)
 )
 
 // Comment
@@ -21,21 +33,32 @@ type BasicPromPush struct {
 	R *prometheus.Registry
 }
 
+func (b BasicPromPush) RegisterMetrics() error {
+	if err := b.R.Register(promTotalDuration); err != nil {
+		return errors.New("Could not register promTotalDuration metric for monitoring")
+	}
+
+	if err := b.R.Register(proxyPushTime); err != nil {
+		return errors.New("Could not register proxyPushTime metric for monitoring")
+	}
+	return nil
+}
+
 func (b BasicPromPush) PushNodeRoleTimestamp(experiment, node, role string) error {
 	// Ensure that "-" in our config names are okay for Prometheus
-	experiment = strings.Replace(experiment, "-", "", -1)
-	node = strings.Replace(node, "-", "", -1)
-	role = strings.Replace(role, "-", "", -1)
+	// experiment = strings.Replace(experiment, "-", "", -1)
+	// node = strings.Replace(node, "-", "", -1)
+	// role = strings.Replace(role, "-", "", -1)
 
-	help := "The timestamp of the last successful proxy push of role " + role + " to node " + node + " for experiment " + experiment
-	name := experiment + "_" + node + "_" + role
+	// help := "The timestamp of the last successful proxy push of role " + role + " to node " + node + " for experiment " + experiment
+	// name := experiment + "_" + node + "_" + role
 
-	proxyPushTime := prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: name,
-		Help: help,
-	})
-	b.R.MustRegister(proxyPushTime)
-	proxyPushTime.SetToCurrentTime()
+	// proxyPushTime := prometheus.NewGauge(prometheus.GaugeOpts{
+	// 	Name: name,
+	// 	Help: help,
+	// })
+	// b.R.MustRegister(proxyPushTime)
+	proxyPushTime.WithLabelValues(experiment, node, role).SetToCurrentTime()
 
 	err := b.P.Add()
 	return err

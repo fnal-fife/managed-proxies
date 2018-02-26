@@ -33,6 +33,8 @@ type ExperimentSuccess struct {
 	Success bool
 }
 
+// ExptErrorFormatter is a struct that implements the logrus.Formatter interface.  It's for experiment logs that will be emailed to experiments in
+// case of error
 type ExptErrorFormatter struct {
 }
 
