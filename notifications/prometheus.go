@@ -9,10 +9,16 @@ import (
 )
 
 var (
-	promTotalDuration = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "proxy_push_total_seconds",
-		Help: "The total amount of time it took to run the entire Managed Proxies Service script",
-	})
+	promDuration = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: "proxy_push",
+		Name:      "duration_seconds",
+		Help:      "The amount of time it took to run a stage (init|main|cleanup) of the Managed Proxies Service script",
+	},
+		[]string{
+			"stage",
+		},
+	)
+
 	proxyPushTime = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Namespace: "proxy_push",
@@ -34,7 +40,7 @@ type BasicPromPush struct {
 }
 
 func (b BasicPromPush) RegisterMetrics() error {
-	if err := b.R.Register(promTotalDuration); err != nil {
+	if err := b.R.Register(promDuration); err != nil {
 		return errors.New("Could not register promTotalDuration metric for monitoring")
 	}
 
@@ -45,19 +51,6 @@ func (b BasicPromPush) RegisterMetrics() error {
 }
 
 func (b BasicPromPush) PushNodeRoleTimestamp(experiment, node, role string) error {
-	// Ensure that "-" in our config names are okay for Prometheus
-	// experiment = strings.Replace(experiment, "-", "", -1)
-	// node = strings.Replace(node, "-", "", -1)
-	// role = strings.Replace(role, "-", "", -1)
-
-	// help := "The timestamp of the last successful proxy push of role " + role + " to node " + node + " for experiment " + experiment
-	// name := experiment + "_" + node + "_" + role
-
-	// proxyPushTime := prometheus.NewGauge(prometheus.GaugeOpts{
-	// 	Name: name,
-	// 	Help: help,
-	// })
-	// b.R.MustRegister(proxyPushTime)
 	proxyPushTime.WithLabelValues(experiment, node, role).SetToCurrentTime()
 
 	err := b.P.Add()
@@ -79,8 +72,8 @@ func (b BasicPromPush) PushCountErrors(numErrors int) error {
 	return err
 }
 
-func (b BasicPromPush) PushPromTotalDuration(start time.Time) error {
-	promTotalDuration.Set(time.Since(start).Seconds())
+func (b BasicPromPush) PushPromDuration(start time.Time, stage string) error {
+	promDuration.WithLabelValues(stage).Set(time.Since(start).Seconds())
 	err := b.P.Add()
 	return err
 }
