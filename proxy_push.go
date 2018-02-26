@@ -302,7 +302,7 @@ func cleanup(exptStatus map[string]bool, experiments []string) error {
 func main() {
 	startMain := time.Now()
 	defer func() {
-		if err := promPush.PushPromDuration(startMain, "init"); err != nil {
+		if err := promPush.PushPromDuration(startMain, "main"); err != nil {
 			notifications.SendSlackMessage(context.Background(), err.Error())
 		}
 	}()
