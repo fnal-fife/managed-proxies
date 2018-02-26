@@ -2,6 +2,7 @@ package notifications
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -22,6 +23,12 @@ type BasicPromPush struct {
 }
 
 func (b BasicPromPush) PushNodeRoleTimestamp(experiment, node, role string) error {
+
+	// Ensure that "-" in our config names are okay for Prometheus
+	experiment = strings.Replace(experiment, "-", "", -1)
+	node = strings.Replace(node, "-", "", -1)
+	role = strings.Replace(role, "-", "", -1)
+
 	help := "The timestamp of the last successful proxy push of role " + role + " to node " + node + " for experiment " + experiment
 	name := experiment + "_" + node + "_" + role
 
