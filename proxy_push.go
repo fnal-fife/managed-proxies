@@ -99,6 +99,7 @@ func manageExperimentChannels(ctx context.Context, exptList []string) <-chan exp
 }
 
 func init() {
+	startInit := time.Now()
 	// Defaults
 	viper.SetDefault("notifications.admin_email", "fife-group@fnal.gov")
 
@@ -207,11 +208,16 @@ func init() {
 	if err := promPush.RegisterMetrics(); err != nil {
 		log.Errorf("Error registering prometheus metrics: %s", err.Error())
 	}
+
+	if err := promPush.PushPromDuration(startInit, "init"); err != nil {
+		log.Error("Error recording time to initialize")
+	}
 }
 
 func cleanup(exptStatus map[string]bool, experiments []string) error {
+	startCleanup := time.Now()
 	defer func() {
-		if err := promPush.PushPromTotalDuration(start); err != nil {
+		if err := promPush.PushPromDuration(startCleanup, "cleanup"); err != nil {
 			log.Error(err.Error())
 			notifications.SendSlackMessage(context.Background(), err.Error())
 		}
@@ -294,7 +300,13 @@ func cleanup(exptStatus map[string]bool, experiments []string) error {
 }
 
 func main() {
-	start = time.Now()
+	startMain := time.Now()
+	defer func() {
+		if err := promPush.PushPromDuration(startMain, "init"); err != nil {
+			notifications.SendSlackMessage(context.Background(), err.Error())
+		}
+	}()
+
 	exptSuccesses := make(map[string]bool)                             // map of successful expts
 	expts := make([]string, 0, len(viper.GetStringMap("experiments"))) // Slice of experiments we will actually process
 
