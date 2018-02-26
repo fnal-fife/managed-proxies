@@ -208,7 +208,7 @@ func (expt *ExperimentSuccess) experimentCleanup(ctx context.Context) error {
 // an experiment's nodes.  It returns a channel on which it reports the status of that experiment's proxy push.
 // genlog is the logrus.logger that gets passed in that's meant to capture the non-experiment specific messages
 // that might be printed from this module
-func Worker(ctx context.Context, exptname string, genLog *logrus.Logger) <-chan ExperimentSuccess {
+func Worker(ctx context.Context, exptname string, genLog *logrus.Logger, b notifications.BasicPromPush) <-chan ExperimentSuccess {
 	var exptLog *logrus.Entry
 	c := make(chan ExperimentSuccess, 2)
 	expt := ExperimentSuccess{exptname, true} // Initialize
@@ -392,6 +392,7 @@ func Worker(ctx context.Context, exptname string, genLog *logrus.Logger) <-chan 
 				} else {
 					successfulCopies[pushproxy.role] = append(successfulCopies[pushproxy.role], pushproxy.node)
 					delete(failedCopies[pushproxy.role], pushproxy.node)
+					b.PushNodeRoleTimestamp(pushproxy.node, pushproxy.role)
 				}
 			}
 		}
