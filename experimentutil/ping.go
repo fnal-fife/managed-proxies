@@ -7,6 +7,7 @@ import (
 	"sync"
 )
 
+// pingNoder is an interface that wraps the pingNode method. It is meant to be used where pinging a node is necessary
 type pingNoder interface {
 	pingNode(context.Context) error
 }
@@ -19,7 +20,7 @@ type pingNodeStatus struct {
 	err error
 }
 
-// pingAllNodes will launch goroutines, which each ping a node the variadic nodes.  It returns a channel,
+// pingAllNodes will launch goroutines, which each ping a node the pingNoder variadic nodes.  It returns a channel,
 // on which it reports the pingNodeStatuses signifying success or error
 func pingAllNodes(ctx context.Context, nodes ...pingNoder) <-chan pingNodeStatus {
 	// Buffered Channel to report on
