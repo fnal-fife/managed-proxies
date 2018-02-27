@@ -65,7 +65,7 @@ func (b BasicPromPush) PushNodeRoleTimestamp(experiment, node, role string) erro
 // configured in b
 func (b BasicPromPush) PushCountErrors(numErrors int) error {
 	help := "The number of failed experiments in the last round of proxy pushes"
-	name := "proxypush_num_errors"
+	name := "proxypush_errors_count"
 
 	proxyPushErrorCount := prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: name,
