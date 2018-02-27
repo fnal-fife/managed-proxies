@@ -32,6 +32,32 @@ type vomsProxyInitStatus struct {
 	err      error
 }
 
+// getProxies launches goroutines that run getProxy to generate the appropriate proxies on the local machine.
+// Calling getProxies will generate voms X509 proxies of all of the proxies passed in as getProxyer objects.  It returns
+// a channel, on which it reports the status of each attempt
+func getProxies(ctx context.Context, proxies ...getProxyer) <-chan vomsProxyInitStatus {
+	c := make(chan vomsProxyInitStatus, len(proxies))
+	var wg sync.WaitGroup
+	wg.Add(len(proxies))
+
+	for _, v := range proxies {
+		go func(v getProxyer) {
+			defer wg.Done()
+			outfile, err := v.getProxy(ctx)
+			vpi := vomsProxyInitStatus{outfile, err}
+			c <- vpi
+		}(v)
+	}
+
+	// Wait for all goroutines to finish, then close channel so that expt Worker can proceed
+	go func() {
+		defer close(c)
+		wg.Wait()
+	}()
+
+	return c
+}
+
 // createVomsProxyObjects takes the configuration information for an experiment and generates a slice of vomsProxy objects
 // for that experiment
 func createVomsProxyObjects(ctx context.Context, exptConfig *viper.Viper, globalConfig map[string]string,
@@ -63,32 +89,6 @@ func createVomsProxyObjects(ctx context.Context, exptConfig *viper.Viper, global
 		vSlice = append(vSlice, &v)
 	}
 	return
-}
-
-// getProxies launches goroutines that run getProxy to generate the appropriate proxies on the local machine.
-// Calling getProxies will generate voms X509 proxies of all of the proxies passed in as getProxyer objects.  It returns
-// a channel, on which it reports the status of each attempt
-func getProxies(ctx context.Context, proxies ...getProxyer) <-chan vomsProxyInitStatus {
-	c := make(chan vomsProxyInitStatus, len(proxies))
-	var wg sync.WaitGroup
-	wg.Add(len(proxies))
-
-	for _, v := range proxies {
-		go func(v getProxyer) {
-			defer wg.Done()
-			outfile, err := v.getProxy(ctx)
-			vpi := vomsProxyInitStatus{outfile, err}
-			c <- vpi
-		}(v)
-	}
-
-	// Wait for all goroutines to finish, then close channel so that expt Worker can proceed
-	go func() {
-		defer close(c)
-		wg.Wait()
-	}()
-
-	return c
 }
 
 // getProxy receives a *vomsProxy object, and uses its properties to run voms-proxy-init to generate a VOMS Proxy.
