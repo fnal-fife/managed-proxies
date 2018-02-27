@@ -2,11 +2,11 @@
 
 # Timeouts
 timeout:
-  globalTimeout: 60s # Global timeout
+  globalTimeout: 300s # Global timeout
   exptTimeout:   60s # Experiment timeout
-  pingTimeout:   10s # Ping timeout (for all pings per experiment)
+  pingTimeout:   20s # Ping timeout (for all pings per experiment)
   vpiTimeout:    10s # voms-proxy-init timeout (total for vpis per experiment)
-  copyTimeout:   20s # copy proxy timeout (total for all copies per experiment)
+  copyTimeout:   30s # copy proxy timeout (total for all copies per experiment)
   slackTimeout:  15s # Slack message timeout
   emailTimeout:  30s # Email timeout (per email)
 
