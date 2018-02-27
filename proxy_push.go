@@ -24,9 +24,11 @@ import (
 const configFile string = "proxy_push_config_test.yml" // CHANGE ME BEFORE PRODUCTION
 
 var (
-	log      = logrus.New() // Global logger
-	promPush notifications.BasicPromPush
-	start    time.Time
+	log            = logrus.New() // Global logger
+	promPush       notifications.BasicPromPush
+	startSetup     time.Time
+	startProxyPush time.Time
+	startCleanup   time.Time
 )
 
 // checkUser makes sure that the user running the proxy push is the authorized user
@@ -99,7 +101,7 @@ func manageExperimentChannels(ctx context.Context, exptList []string) <-chan exp
 }
 
 func init() {
-	startInit := time.Now()
+	startSetup = time.Now()
 	// Defaults
 	viper.SetDefault("notifications.admin_email", "fife-group@fnal.gov")
 
@@ -208,14 +210,13 @@ func init() {
 	if err := promPush.RegisterMetrics(); err != nil {
 		log.Errorf("Error registering prometheus metrics: %s", err.Error())
 	}
-
-	if err := promPush.PushPromDuration(startInit, "init"); err != nil {
-		log.Error("Error recording time to initialize")
-	}
 }
 
 func cleanup(exptStatus map[string]bool, experiments []string) error {
-	startCleanup := time.Now()
+	if err := promPush.PushPromDuration(startProxyPush, "proxypush"); err != nil {
+		log.Error("Error recording time to push proxies")
+	}
+	startCleanup = time.Now()
 	defer func() {
 		if err := promPush.PushPromDuration(startCleanup, "cleanup"); err != nil {
 			log.Error(err.Error())
@@ -300,13 +301,7 @@ func cleanup(exptStatus map[string]bool, experiments []string) error {
 }
 
 func main() {
-	startMain := time.Now()
-	defer func() {
-		if err := promPush.PushPromDuration(startMain, "main"); err != nil {
-			notifications.SendSlackMessage(context.Background(), err.Error())
-		}
-	}()
-
+	// startMain = time.Now()
 	exptSuccesses := make(map[string]bool)                             // map of successful expts
 	expts := make([]string, 0, len(viper.GetStringMap("experiments"))) // Slice of experiments we will actually process
 
@@ -321,6 +316,12 @@ func main() {
 		}
 	}
 
+	// Setup is done here.  Push the time
+	if err := promPush.PushPromDuration(startSetup, "setup"); err != nil {
+		log.Error("Error recording time to setup")
+	}
+
+	startProxyPush = time.Now()
 	// Start up the expt manager
 	t, ok := viper.Get("globalTimeoutDuration").(time.Duration)
 	if !ok {
@@ -350,7 +351,6 @@ func main() {
 			} else {
 				log.Error(e)
 			}
-
 			if err := cleanup(exptSuccesses, expts); err != nil {
 				log.Error(err)
 			}
