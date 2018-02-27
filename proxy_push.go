@@ -214,14 +214,20 @@ func init() {
 
 func cleanup(exptStatus map[string]bool, experiments []string) error {
 	// Since cleanup happens in all cases after the proxy push starts, we stop that timer and push the metric here
-	if err := promPush.PushPromDuration(startProxyPush, "proxypush"); err != nil {
-		log.Error("Error recording time to push proxies")
+	if viper.GetString("experiment") == "" {
+		// Only push this metric if we ran for all experiments to keep data consistent
+		if err := promPush.PushPromDuration(startProxyPush, "proxypush"); err != nil {
+			log.Error("Error recording time to push proxies")
+		}
 	}
 	startCleanup = time.Now()
 	defer func() {
-		if err := promPush.PushPromDuration(startCleanup, "cleanup"); err != nil {
-			log.Error(err.Error())
-			notifications.SendSlackMessage(context.Background(), err.Error())
+		if viper.GetString("experiment") == "" {
+			// Only push this metric if we ran for all experiments to keep data consistent
+			if err := promPush.PushPromDuration(startCleanup, "cleanup"); err != nil {
+				log.Error(err.Error())
+				notifications.SendSlackMessage(context.Background(), err.Error())
+			}
 		}
 	}()
 
