@@ -1,9 +1,21 @@
 # Global config items
 
+# Timeouts
+timeout:
+  globalTimeout: 60s # Global timeout
+  exptTimeout:   60s # Experiment timeout
+  pingTimeout:   10s # Ping timeout (for all pings per experiment)
+  vpiTimeout:    10s # voms-proxy-init timeout (total for vpis per experiment)
+  copyTimeout:   20s # copy proxy timeout (total for all copies per experiment)
+  slackTimeout:  15s # Slack message timeout
+  emailTimeout:  30s # Email timeout (per email)
+
+
 # Logging/Error handling files.
 logs:
   logfile:  proxy_push.log
   errfile:  proxy_push.err      # Set the temporary output file for errors.  
+  debugfile: proxy_push.debug.log
 
 
 # Global email and slack notification parameters
@@ -19,12 +31,18 @@ notifications_test:
   # admin_email: kherner@fnal.gov
   
 
+# Prometheus monitoring config
+prometheus:
+  host: "http://fermicloud149.fnal.gov:9091"
+  jobname: "proxy_push_tracker"
+
+
+
 # Other config variabless
 global:
   should_runuser: rexbatch                                    # User that this script must run as 
   KRB5CCNAME:  "FILE:/tmp/krb5cc_push_proxy"  # What the env variable KRB5CCNAME should be set to
   CERT_BASE_DIR: "/opt/gen_push_proxy/certs"                      # base location for certs/keys
-  # expt_vos: ["des", "dune"]                         # Experiments that have their own VOMS server
 
 
 # Experiments
@@ -69,6 +87,12 @@ experiments:
     nodes: [gm2gpvm01, gm2gpvm02, gm2gpvm03, gm2gpvm04, gm2samgpvm01]
     accounts:
       gm2pro: Production
+  icarus:
+    dir: /opt
+    emails: [wketchum@fnal.gov]
+    nodes: [icarusgpvm01, icarussamgpvm01]
+    roles:
+      icaruspro: Production
   lariat:
     dir: /opt
     emails: [wenzel@fnal.gov]
@@ -107,7 +131,7 @@ experiments:
   sbnd:
     dir: /opt
     emails: [petrillo@fnal.gov]
-    nodes: [sbndgpvm01, sbndgpvm02, sbndgpvm03]
+    nodes: [sbndgpvm01, sbndgpvm02, sbndgpvm03, sbndsamgpvm01]
     accounts:
       sbndpro: Production
   uboone:
@@ -129,7 +153,7 @@ experiments:
     keyfile:  "/opt/gen_push_proxy/certs/CI-service.key"
   p-argoneutcode:
     dir: /opt/ci_proxy/lar_ci
-    emails: [vito@fnal.gov, sbhat@fnal.gov]
+    emails: [vito@fnal.gov,]
     nodes: [cdcvs, ]
     accounts:
       p-argoneutcode: Analysis
@@ -138,7 +162,7 @@ experiments:
     keyfile:  "/opt/gen_push_proxy/certs/CI-service.key"
   p-lardbt:
     dir: /opt/ci_proxy/lar_ci
-    emails: [vito@fnal.gov, sbhat@fnal.gov]
+    emails: [vito@fnal.gov,]
     nodes: [cdcvs, ]
     accounts:
       p-lardbt: Analysis
@@ -147,7 +171,7 @@ experiments:
     keyfile:  "/opt/gen_push_proxy/certs/CI-service.key"
   p-larsoft:
     dir: /opt/ci_proxy/lar_ci
-    emails: [vito@fnal.gov, sbhat@fnal.gov]
+    emails: [vito@fnal.gov,]
     nodes: [cdcvs, ]
     accounts:
       p-larsoft: Analysis
