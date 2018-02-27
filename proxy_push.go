@@ -213,6 +213,7 @@ func init() {
 }
 
 func cleanup(exptStatus map[string]bool, experiments []string) error {
+	// Since cleanup happens in all cases after the proxy push starts, we stop that timer and push the metric here
 	if err := promPush.PushPromDuration(startProxyPush, "proxypush"); err != nil {
 		log.Error("Error recording time to push proxies")
 	}
@@ -301,7 +302,6 @@ func cleanup(exptStatus map[string]bool, experiments []string) error {
 }
 
 func main() {
-	// startMain = time.Now()
 	exptSuccesses := make(map[string]bool)                             // map of successful expts
 	expts := make([]string, 0, len(viper.GetStringMap("experiments"))) // Slice of experiments we will actually process
 

@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/viper"
 )
 
+// getProxyer is an interface that wraps up the getProxy method.  It is meant to be used in methods that obtain a VOMS proxy
 type getProxyer interface {
 	getProxy(context.Context) (string, error)
 }
@@ -65,7 +66,7 @@ func createVomsProxyObjects(ctx context.Context, exptConfig *viper.Viper, global
 }
 
 // getProxies launches goroutines that run getProxy to generate the appropriate proxies on the local machine.
-// Calling getProxies will generate voms X509 proxies of all of the proxies pased in as getProxyer objects.  It returns
+// Calling getProxies will generate voms X509 proxies of all of the proxies passed in as getProxyer objects.  It returns
 // a channel, on which it reports the status of each attempt
 func getProxies(ctx context.Context, proxies ...getProxyer) <-chan vomsProxyInitStatus {
 	c := make(chan vomsProxyInitStatus, len(proxies))
