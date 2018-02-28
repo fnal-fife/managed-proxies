@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"net/http"
 	"os"
 	"os/user"
 	"strings"
@@ -207,6 +208,14 @@ func init() {
 
 	// Set up prometheus pusher
 
+	if _, err := http.Get(viper.GetString("prometheus.host")); err != nil {
+		log.Errorf("Error contacting prometheus pushgateway %s: %s.  The rest of prometheus operations will fail. "+
+			"To limit error noise, "+
+			"these failures at the experiment level will be registered as warnings in the log, "+
+			"and not be sent in any notifications.", viper.GetString("prometheus.host"), err.Error())
+		prometheusUp = false
+	}
+
 	promPush.R = prometheus.NewRegistry()
 	promPush.P = push.New(viper.GetString("prometheus.host"), viper.GetString("prometheus.jobname")).Gatherer(promPush.R)
 	if err := promPush.RegisterMetrics(); err != nil {
@@ -232,7 +241,7 @@ func cleanup(exptStatus map[string]bool, experiments []string) error {
 	if viper.GetString("experiment") == "" {
 		// Only push this metric if we ran for all experiments to keep data consistent
 		if err := promPush.PushPromDuration(startProxyPush, "proxypush"); err != nil {
-			msg := "Error recording time to push proxies"
+			msg := fmt.Sprintf("Error recording time to push proxies, %s", err.Error())
 			promErrLog(msg)
 			// if prometheusUp {
 			// 	log.Error(msg)
@@ -352,7 +361,7 @@ func main() {
 
 	// Setup is done here.  Push the time
 	if err := promPush.PushPromDuration(startSetup, "setup"); err != nil {
-		log.Error("Error recording time to setup")
+		log.Errorf("Error recording time to setup, %s", err.Error())
 	}
 
 	startProxyPush = time.Now()
