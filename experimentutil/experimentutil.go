@@ -395,9 +395,11 @@ func Worker(ctx context.Context, exptname string, genLog *logrus.Logger, b notif
 					successfulCopies[pushproxy.role] = append(successfulCopies[pushproxy.role], pushproxy.node)
 					delete(failedCopies[pushproxy.role], pushproxy.node)
 					if err := b.PushNodeRoleTimestamp(expt.Name, pushproxy.node, pushproxy.role); err != nil {
-						genLog.Errorf("Could not report success metrics for [%s, %s, %s]", expt.Name, pushproxy.node, pushproxy.role)
+						genLog.WithField("experiment", expt.Name).Warnf(
+							"Could not report success metrics to prometheus for [node, role] = [%s, %s]", pushproxy.node, pushproxy.role)
 					} else {
-						exptLog.Debugf("Pushed prometheus success time for [%s, %s]", pushproxy.node, pushproxy.role)
+						exptLog.WithField("experiment", expt.Name).Debugf(
+							"Pushed prometheus success timestamp for [node, role] = [%s, %s]", pushproxy.node, pushproxy.role)
 					}
 				}
 			}
@@ -427,9 +429,10 @@ func Worker(ctx context.Context, exptname string, genLog *logrus.Logger, b notif
 		// experiment log file
 		exptLog.Info("Cleaning up ", expt.Name)
 		if err := expt.experimentCleanup(ctx); err != nil {
-			genLog.Errorf("Error cleaning up %s: %s", expt.Name, err)
+			genLog.WithField("experiment", expt.Name).Errorf("Error cleaning up %s: %s", expt.Name, err)
+			// genLog.Errorf("Error cleaning up %s: %s", expt.Name, err)
 		} else {
-			genLog.Infof("Finished cleaning up %s with no errors", expt.Name)
+			genLog.WithField("experiment", expt.Name).Infof("Finished cleaning up with no errors")
 		}
 	}()
 	return c
