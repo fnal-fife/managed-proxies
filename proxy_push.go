@@ -27,6 +27,7 @@ const configFile string = "proxy_push_config_test.yml" // CHANGE ME BEFORE PRODU
 var (
 	log            = logrus.New() // Global logger
 	promPush       notifications.BasicPromPush
+	prometheusUp   = true
 	startSetup     time.Time
 	startProxyPush time.Time
 	startCleanup   time.Time
@@ -209,16 +210,36 @@ func init() {
 	promPush.R = prometheus.NewRegistry()
 	promPush.P = push.New(viper.GetString("prometheus.host"), viper.GetString("prometheus.jobname")).Gatherer(promPush.R)
 	if err := promPush.RegisterMetrics(); err != nil {
-		log.Errorf("Error registering prometheus metrics: %s", err.Error())
+		log.Errorf("Error registering prometheus metrics: %s.  Subsequent pushes will fail.  To limit error noise, "+
+			"these failures at the experiment level will be registered as warnings in the log, "+
+			"and not be sent in any notifications.", err.Error())
+		prometheusUp = false
 	}
 }
 
 func cleanup(exptStatus map[string]bool, experiments []string) error {
 	// Since cleanup happens in all cases after the proxy push starts, we stop that timer and push the metric here
+
+	promErrLog := func(s string) {
+		if prometheusUp {
+			log.Error(s)
+			notifications.SendSlackMessage(context.Background(), s)
+		} else {
+			log.Warn(s)
+		}
+	}
+
 	if viper.GetString("experiment") == "" {
 		// Only push this metric if we ran for all experiments to keep data consistent
 		if err := promPush.PushPromDuration(startProxyPush, "proxypush"); err != nil {
-			log.Error("Error recording time to push proxies")
+			msg := "Error recording time to push proxies"
+			promErrLog(msg)
+			// if prometheusUp {
+			// 	log.Error(msg)
+			// } else {
+			// 	log.Warn(msg)
+			// }
+			// log.promErrLogFunc("Error recording time to push proxies")
 		}
 	}
 	startCleanup = time.Now()
@@ -226,8 +247,14 @@ func cleanup(exptStatus map[string]bool, experiments []string) error {
 		if viper.GetString("experiment") == "" {
 			// Only push this metric if we ran for all experiments to keep data consistent
 			if err := promPush.PushPromDuration(startCleanup, "cleanup"); err != nil {
-				log.Error(err.Error())
-				notifications.SendSlackMessage(context.Background(), err.Error())
+				promErrLog(err.Error())
+				// log.Error(err.Error())
+				// if prometheusUp {
+				// 	log.Error(err.Error())
+				// 	notifications.SendSlackMessage(context.Background(), err.Error())
+				// } else {
+				// 	log.Warn(err.Error())
+				// }
 			}
 		}
 	}()
