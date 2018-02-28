@@ -238,23 +238,17 @@ func cleanup(exptStatus map[string]bool, experiments []string) error {
 	// 	}
 	// }
 
+	// Logger to use to log errors during cleanup _after_ the error file has been deleted
+	finalCleanupLogErr := logrus.New() // One-use logrus instance to log an error to the general file
+	finalCleanupLogErr.AddHook(lfshook.NewHook(lfshook.PathMap{
+		logrus.ErrorLevel: viper.GetString("logs.logfile"),
+	}, &logrus.TextFormatter{FullTimestamp: true}))
+
 	if viper.GetString("experiment") == "" {
 		// Only push this metric if we ran for all experiments to keep data consistent
 		if err := promPush.PushPromDuration(startProxyPush, "proxypush"); err != nil {
 			msg := "Error recording time to push proxies, " + err.Error()
 			log.Error(msg)
-			// if prometheusUp {
-			// 	log.Error(msg)
-			// 	notifications.SendSlackMessage(context.Background(), s)
-			// } else {
-			// 	log.Warn(msg)
-			// }
-			// if prometheusUp {
-			// 	log.Error(msg)
-			// } else {
-			// 	log.Warn(msg)
-			// }
-			// log.promErrLogFunc("Error recording time to push proxies")
 		}
 	}
 	startCleanup = time.Now()
@@ -262,22 +256,9 @@ func cleanup(exptStatus map[string]bool, experiments []string) error {
 		if viper.GetString("experiment") == "" {
 			// Only push this metric if we ran for all experiments to keep data consistent
 			if err := promPush.PushPromDuration(startCleanup, "cleanup"); err != nil {
-				genLogErr := logrus.New() // One-use logrus instance to log an error to the general file
-				genLogErr.AddHook(lfshook.NewHook(lfshook.PathMap{
-					logrus.ErrorLevel: viper.GetString("logs.logfile"),
-				}, &logrus.TextFormatter{FullTimestamp: true}))
-
 				msg := "Error recording time to cleanup, " + err.Error()
-				genLogErr.Error(msg)
+				finalCleanupLogErr.Error(msg)
 				notifications.SendSlackMessage(context.Background(), msg)
-
-				// log.Error(err.Error())
-				// if prometheusUp {
-				// 	log.Error(err.Error())
-				// 	notifications.SendSlackMessage(context.Background(), err.Error())
-				// } else {
-				// 	log.Warn(err.Error())
-				// }
 			}
 		}
 	}()
@@ -303,7 +284,7 @@ func cleanup(exptStatus map[string]bool, experiments []string) error {
 	// Defining this defer func here so we have the correct failure count
 	defer func() {
 		if err := promPush.PushCountErrors(len(f)); err != nil {
-			log.Error(err.Error())
+			finalCleanupLogErr.Error(err.Error())
 			notifications.SendSlackMessage(context.Background(), err.Error())
 		}
 	}()
