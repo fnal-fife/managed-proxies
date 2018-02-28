@@ -228,22 +228,6 @@ func init() {
 
 func cleanup(exptStatus map[string]bool, experiments []string) error {
 	// Since cleanup happens in all cases after the proxy push starts, we stop that timer and push the metric here
-
-	// promErrLog := func(s string) {
-	// 	if prometheusUp {
-	// 		log.Error(s)
-	// 		notifications.SendSlackMessage(context.Background(), s)
-	// 	} else {
-	// 		log.Warn(s)
-	// 	}
-	// }
-
-	// Logger to use to log errors during cleanup _after_ the error file has been deleted
-	finalCleanupLogErr := logrus.New() // One-use logrus instance to log an error to the general file
-	finalCleanupLogErr.AddHook(lfshook.NewHook(lfshook.PathMap{
-		logrus.ErrorLevel: viper.GetString("logs.logfile"),
-	}, &logrus.TextFormatter{FullTimestamp: true}))
-
 	if viper.GetString("experiment") == "" {
 		// Only push this metric if we ran for all experiments to keep data consistent
 		if err := promPush.PushPromDuration(startProxyPush, "proxypush"); err != nil {
@@ -251,7 +235,15 @@ func cleanup(exptStatus map[string]bool, experiments []string) error {
 			log.Error(msg)
 		}
 	}
+
 	startCleanup = time.Now()
+
+	// Logger to use to log errors during cleanup _after_ the error file has been deleted
+	finalCleanupLogErr := logrus.New() // One-use logrus instance to log an error to the general file
+	finalCleanupLogErr.AddHook(lfshook.NewHook(lfshook.PathMap{
+		logrus.ErrorLevel: viper.GetString("logs.logfile"),
+	}, &logrus.TextFormatter{FullTimestamp: true}))
+
 	defer func() {
 		if viper.GetString("experiment") == "" {
 			// Only push this metric if we ran for all experiments to keep data consistent
