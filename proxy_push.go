@@ -229,20 +229,26 @@ func init() {
 func cleanup(exptStatus map[string]bool, experiments []string) error {
 	// Since cleanup happens in all cases after the proxy push starts, we stop that timer and push the metric here
 
-	promErrLog := func(s string) {
-		if prometheusUp {
-			log.Error(s)
-			notifications.SendSlackMessage(context.Background(), s)
-		} else {
-			log.Warn(s)
-		}
-	}
+	// promErrLog := func(s string) {
+	// 	if prometheusUp {
+	// 		log.Error(s)
+	// 		notifications.SendSlackMessage(context.Background(), s)
+	// 	} else {
+	// 		log.Warn(s)
+	// 	}
+	// }
 
 	if viper.GetString("experiment") == "" {
 		// Only push this metric if we ran for all experiments to keep data consistent
 		if err := promPush.PushPromDuration(startProxyPush, "proxypush"); err != nil {
-			msg := fmt.Sprintf("Error recording time to push proxies, %s", err.Error())
-			promErrLog(msg)
+			msg := "Error recording time to push proxies, " + err.Error()
+			log.Error(msg)
+			// if prometheusUp {
+			// 	log.Error(msg)
+			// 	notifications.SendSlackMessage(context.Background(), s)
+			// } else {
+			// 	log.Warn(msg)
+			// }
 			// if prometheusUp {
 			// 	log.Error(msg)
 			// } else {
@@ -256,7 +262,15 @@ func cleanup(exptStatus map[string]bool, experiments []string) error {
 		if viper.GetString("experiment") == "" {
 			// Only push this metric if we ran for all experiments to keep data consistent
 			if err := promPush.PushPromDuration(startCleanup, "cleanup"); err != nil {
-				promErrLog(err.Error())
+				genLogErr := logrus.New() // One-use logrus instance to log an error to the general file
+				genLogErr.AddHook(lfshook.NewHook(lfshook.PathMap{
+					logrus.ErrorLevel: viper.GetString("logs.logfile"),
+				}, &logrus.TextFormatter{FullTimestamp: true}))
+
+				msg := "Error recording time to cleanup, " + err.Error()
+				genLogErr.Error(msg)
+				notifications.SendSlackMessage(context.Background(), msg)
+
 				// log.Error(err.Error())
 				// if prometheusUp {
 				// 	log.Error(err.Error())
