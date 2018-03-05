@@ -22,8 +22,8 @@ import (
 	"github.com/spf13/viper"
 )
 
-const configFile string = "proxy_push_config_test.yml" // CHANGE ME BEFORE PRODUCTION to proxy_push.yml
-// const configFile string = "proxy_push.yml" // CHANGE ME BEFORE PRODUCTION to proxy_push.yml
+// const configFile string = "proxy_push_config_test.yml" // CHANGE ME BEFORE PRODUCTION to proxy_push.yml
+const configFile string = "proxy_push.yml" // CHANGE ME BEFORE PRODUCTION to proxy_push.yml
 
 var (
 	log            = logrus.New() // Global logger
