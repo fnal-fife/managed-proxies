@@ -91,7 +91,7 @@ experiments:
     dir: /opt
     emails: [wketchum@fnal.gov]
     nodes: [icarusgpvm01, icarussamgpvm01]
-    roles:
+    accounts:
       icaruspro: Production
   lariat:
     dir: /opt
