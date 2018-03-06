@@ -1,0 +1,3 @@
+Put some stuff here about installation instructions
+
+Note that if anyone wants to develop, they'll need to clone git repo into $GOPATH/src/fnal.gov/sbhat for imports to work correctly
