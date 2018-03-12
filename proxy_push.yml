@@ -43,7 +43,7 @@ global:
   should_runuser: rexbatch                                    # User that this script must run as 
   KRB5CCNAME:  "FILE:/tmp/krb5cc_push_proxy"  # What the env variable KRB5CCNAME should be set to
   CERT_BASE_DIR: "/opt/gen_push_proxy/certs"                      # base location for certs/keys
-
+  # Note:  unless there is a certfile and/or keyfile override below in a given stanza, the proxy_push assumes that the cert/key for each experiment/role is located at CERT_BASE_DIR/<account>.{cert|key}.  e.g. novapro.cert and novapro.key
 
 # Experiments
 # Note: accounts entries should be of the form "account_name: Role_name"
