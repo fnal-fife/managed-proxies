@@ -25,7 +25,7 @@ export X509_USER_CERT=$CERTFILE
 export X509_USER_KEY=$KEYFILE
 
 # store in myproxy-int for the preprod and dev servers
-default_ppretrievers="/DC=org/DC=opensciencegrid/O=Open Science Grid/OU=Services/CN=(fifebatch-(preprod|dev)|htcjsdev0(1|2)|jobsub-dev).fnal.gov"
+default_ppretrievers="/DC=org/DC=opensciencegrid/O=Open Science Grid/OU=Services/CN=(fifebatch-(preprod|dev)|htcjsdev0(1|2|3)|jobsub-dev).fnal.gov"
 cigetcertopts=`curl -f -s --capath /etc/grid-security/certificates https://jobsub-dev.fnal.gov/cigetcertopts.txt`
 if [ $? -eq 0 ]; then
     ppretrievers=`echo $cigetcertopts | grep -o -E -e "--myproxyretrievers=('.*')" | sed -e "s/--myproxyretrievers=//" -e "s/'//g"`
