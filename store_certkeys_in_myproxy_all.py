@@ -1,3 +1,4 @@
+#!/usr/bin/python
 """Run ./store_certkeys_in_myproxy for all accounts configured in 
 proxy_push.yml except for those under the p-* entries"""
 
