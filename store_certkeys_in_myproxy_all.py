@@ -54,11 +54,16 @@ def main():
     for account in accounts:
         results[account] = run_store_certkeys(account)
     
+    all_succeeded = True
     for account, success in results.iteritems():
         if not success:
             print ("Storing of cert and key in myproxy for {0} failed.  Try to "
                    "run \"./store_certkeys_in_myproxy {0}\" and inspect any error "
                    "messages.").format(account)        
+            all_succeeded = False
+
+    if all_succeeded:
+         print "All certs and keys were stored in myproxy and myproxy-int successfully."
 
 
 if __name__ == '__main__':
