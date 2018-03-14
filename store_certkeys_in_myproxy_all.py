@@ -6,6 +6,8 @@ import subprocess
 CONFIG = 'proxy_push.yml'
 
 def run_store_certkeys(account):
+    """Run ./store_certkeys_in_myproxy <account>.  Return True if success, 
+    False if not"""
     print account
     try:
         cmd_list = ["./store_certkeys_in_myproxy", account]
@@ -37,14 +39,14 @@ def main():
     """
     
     expt_dicts = (value
-        for key, value in config['experiments'].iteritems()
-        if "p-" not in key
-        )
+                  for key, value in config['experiments'].iteritems()
+                  if "p-" not in key
+                 )
     accounts_dict = (d['accounts'] for d in expt_dicts)
     accounts = (acct_name
-        for d in accounts_dict
-        for acct_name in d.iterkeys()
-        )
+                for d in accounts_dict
+                for acct_name in d.iterkeys()
+               )
 
 
     results = {}
@@ -54,8 +56,8 @@ def main():
     for account, success in results.iteritems():
         if not success:
             print ("Storing of cert and key in myproxy for {0} failed.  Try to "
-            "run \"./store_certkeys_in_myproxy {0}\" and inspect any error "
-            "messages.").format(account)        
+                   "run \"./store_certkeys_in_myproxy {0}\" and inspect any error "
+                   "messages.").format(account)        
 
 
 if __name__ == '__main__':
