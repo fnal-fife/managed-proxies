@@ -41,7 +41,7 @@ def main():
     
     expt_dicts = (value
                   for key, value in config['experiments'].iteritems()
-                  if "p-" not in key
+                  if "p-" not in key      # exclude p-larreco, p-larsoft, etc.
                  )
     accounts_dict = (d['accounts'] for d in expt_dicts)
     accounts = (acct_name
