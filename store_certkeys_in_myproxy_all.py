@@ -21,6 +21,7 @@ def run_store_certkeys(account):
 
 def main():
     import yaml
+    from datetime import datetime
 
     with open(CONFIG, 'r') as f:
         config = yaml.load(f.read())
@@ -63,7 +64,10 @@ def main():
             all_succeeded = False
 
     if all_succeeded:
-         print "All certs and keys were stored in myproxy and myproxy-int successfully."
+        print "All certs and keys were stored in myproxy and myproxy-int successfully."
+        print datetime.now()
+        print "-"*80
+
 
 
 if __name__ == '__main__':
