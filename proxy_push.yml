@@ -142,15 +142,6 @@ experiments:
       uboonepubsgpvm05, uboonepubsgpvm06, uboonetmp02]
     accounts:
       uboonepro: Production
-  p-larreco:
-    dir: /opt/ci_proxy/lar_ci
-    emails: [vito@fnal.gov, sbhat@fnal.gov]
-    nodes: [cdcvs, ]
-    accounts:
-      p-larreco: Analysis
-    vomsgroup: "fermilab:/fermilab/uboone/"
-    certfile: "/opt/gen_push_proxy/certs/CI-service.cert" 
-    keyfile:  "/opt/gen_push_proxy/certs/CI-service.key"
   p-argoneutcode:
     dir: /opt/ci_proxy/lar_ci
     emails: [vito@fnal.gov,]
@@ -171,7 +162,7 @@ experiments:
     keyfile:  "/opt/gen_push_proxy/certs/CI-service.key"
   p-larsoft:
     dir: /opt/ci_proxy/lar_ci
-    emails: [vito@fnal.gov,]
+    emails: [vito@fnal.gov, sbhat@fnal.gov]
     nodes: [cdcvs, ]
     accounts:
       p-larsoft: Analysis
