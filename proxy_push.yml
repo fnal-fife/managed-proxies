@@ -169,3 +169,21 @@ experiments:
     vomsgroup: "fermilab:/fermilab/uboone/"
     certfile: "/opt/gen_push_proxy/certs/CI-service.cert" 
     keyfile:  "/opt/gen_push_proxy/certs/CI-service.key"
+  p-sbndcode:
+    dir: /opt/ci_proxy/lar_ci
+    emails: [vito@fnal.gov]
+    nodes: [cdcvs, ]
+    accounts:
+      p-sbndcode: Analysis
+    vomsgroup: "fermilab:/fermilab/sbnd/"
+    certfile: "/opt/gen_push_proxy/certs/CI-service.cert"
+    keyfile:  "/opt/gen_push_proxy/certs/CI-service.key"
+  p-uboonecode:
+    dir: /opt/ci_proxy/lar_ci
+    emails: [vito@fnal.gov]
+    nodes: [cdcvs, ]
+    accounts:
+      p-uboonecode: Analysis
+    vomsgroup: "fermilab:/fermilab/uboone/"
+    certfile: "/opt/gen_push_proxy/certs/CI-service.cert"
+    keyfile:  "/opt/gen_push_proxy/certs/CI-service.key"
