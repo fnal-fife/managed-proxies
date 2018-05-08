@@ -189,3 +189,12 @@ experiments:
     vomsgroup: "fermilab:/fermilab/uboone/"
     certfile: "/opt/gen_push_proxy/certs/CI-service.cert"
     keyfile:  "/opt/gen_push_proxy/certs/CI-service.key"
+  p-novaart:
+    dir: /opt/ci_proxy/nova_ci
+    emails: [vito@fnal.gov]
+    nodes: [cdcvs, ]
+    accounts:
+      p-novaart: Analysis
+    vomsgroup: "fermilab:/fermilab/nova/"
+    certfile: "/opt/gen_push_proxy/certs/CI-service.cert"
+    keyfile:  "/opt/gen_push_proxy/certs/CI-service.key"
