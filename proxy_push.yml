@@ -189,6 +189,15 @@ experiments:
     vomsgroup: "fermilab:/fermilab/uboone/"
     certfile: "/opt/gen_push_proxy/certs/CI-service.cert"
     keyfile:  "/opt/gen_push_proxy/certs/CI-service.key"
+  p-dunetpc:
+    dir: /opt/ci_proxy/lar_ci
+    emails: [vito@fnal.gov]
+    nodes: [cdcvs, ]
+    accounts:
+      p-dunetpc: Analysis
+    vomsgroup: "dune:/dune/"
+    certfile: "/opt/gen_push_proxy/certs/CI-service.cert"
+    keyfile:  "/opt/gen_push_proxy/certs/CI-service.key"
   p-novaart:
     dir: /opt/ci_proxy/nova_ci
     emails: [vito@fnal.gov]
