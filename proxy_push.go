@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"fnal.gov/sbhat/proxypush/experimentutil"
-	"fnal.gov/sbhat/proxypush/notifications"
+	"cdcvs.fnal.gov/discompsupp/proxypush/experimentutil"
+	"cdcvs.fnal.gov/discompsupp/proxypush/notifications"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/push"
 	"github.com/rifflock/lfshook"
