@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	"cdcvs.fnal.gov/discompsupp/proxypush/notifications"
+	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/notifications"
 	"github.com/rifflock/lfshook"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
