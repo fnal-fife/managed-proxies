@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	"fnal.gov/sbhat/proxypush/notifications"
+	"cdcvs.fnal.gov/discompsupp/proxypush/notifications"
 	"github.com/rifflock/lfshook"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
