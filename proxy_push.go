@@ -24,6 +24,8 @@ import (
 
 const configFile string = "proxy_push.yml"
 
+// Sub-config types
+
 var (
 	log            = logrus.New() // Global logger
 	promPush       notifications.BasicPromPush
@@ -31,76 +33,106 @@ var (
 	startSetup     time.Time
 	startProxyPush time.Time
 	startCleanup   time.Time
+	tConfig        timeoutsConfig
+	nConfig        notificationsConfig
+	lConfig        logsConfig
 )
 
+// createExptConfig takes the config information from the global file and creates an exptConfig object
+//func createExptConfig(expt string) (exptConfig, error) {
+//
+//	c := exptConfig{
+//		name:                expt,
+//		certBaseDir:         viper.GetString("global.cert_base_dir"),
+//		krb5ccname:          viper.GetString("global.krb5ccname"),
+//		timeoutsConfig:      tConfig,
+//		notificationsConfig: nConfig,
+//		logsConfig:          lConfig,
+//		exptSubConfig:       viper.Sub("global"),
+//	}
+//
+//	exptKey := "experiments." + expt
+//	if !viper.IsSet(exptKey) {
+//		err := errors.New("Experiment is not configured in the configuration file")
+//		log.WithFields(log.Fields{
+//			"experiment": expt,
+//		}).Error(err)
+//		return c, err
+//	}
+//
+//	c.exptSubConfig = viper.Sub(exptKey)
+//	return c, nil
+//
+//}
+
 // checkUser makes sure that the user running the proxy push is the authorized user
-func checkUser(authuser string) error {
-	cuser, err := user.Current()
-	if err != nil {
-		return errors.New("Could not lookup current user.  Exiting")
-	}
-	log.Info("Running script as ", cuser.Username)
-	if cuser.Username != authuser {
-		return fmt.Errorf("This must be run as %s.  Trying to run as %s", authuser, cuser.Username)
-	}
-	return nil
-}
+//func checkUser(authuser string) error {
+//	cuser, err := user.Current()
+//	if err != nil {
+//		return errors.New("Could not lookup current user.  Exiting")
+//	}
+//	log.Info("Running script as ", cuser.Username)
+//	if cuser.Username != authuser {
+//		return fmt.Errorf("This must be run as %s.  Trying to run as %s", authuser, cuser.Username)
+//	}
+//	return nil
+//}
 
 // manageExperimentChannels starts up the various experimentutil.Workers and listens for their response.  It puts these
 // statuses into an aggregate channel.
-func manageExperimentChannels(ctx context.Context, exptList []string) <-chan experimentutil.ExperimentSuccess {
-	agg := make(chan experimentutil.ExperimentSuccess, len(exptList))
-	var wg sync.WaitGroup
-	wg.Add(len(exptList))
-
-	t, ok := viper.Get("exptTimeoutDuration").(time.Duration)
-	if !ok {
-		log.Error("exptTimeoutDuration is not a time.Duration object")
-	}
-
-	// Start all of the experiment workers, put their results into the agg channel
-	for _, expt := range exptList {
-		go func(expt string) {
-			defer wg.Done()
-			if !ok {
-				return
-			}
-			exptContext, exptCancel := context.WithTimeout(ctx, t)
-			defer exptCancel()
-
-			// If all goes well, each experiment Worker channel will be ready to be received on twice:  once when the
-			// successful status is sent, and when the channel closes after cleanup.  If we timeout, just move on.
-			// Expt channel is buffered anyway, so if the worker tries to send later and there's no receiver,
-			// garbage collection will take care of it
-			c := experimentutil.Worker(exptContext, expt, log, promPush)
-			select {
-			case status := <-c: // Grab status from channel
-				agg <- status
-				<-c // Block until channel closes, which means experiment worker is done with everything
-			case <-exptContext.Done():
-				if err := exptContext.Err(); err == context.DeadlineExceeded {
-					log.Error("Timed out waiting for experiment success info to be reported. Someone from USDC should " +
-						"look into this and cleanup if needed.  See " +
-						"https://cdcvs.fnal.gov/redmine/projects/discompsupp/wiki/MANAGEDPROXIES for instructions.")
-				} else {
-					log.Error(err)
-				}
-			}
-		}(expt)
-	}
-
-	// This will wait until all expt workers have put their values into agg channel, and have finished
-	// cleanup.  This prevents the 2 rare race conditions: 1) that main() returns before all expt cleanup
-	// is done (since main() waits for the agg channel to close before doing cleanup), and 2) we close the
-	// agg channel before all values have been sent into it.
-	go func() {
-		wg.Wait()
-		log.Debug("Closing aggregation channel")
-		close(agg)
-	}()
-
-	return agg
-}
+//func manageExperimentChannels(ctx context.Context, exptConfigs []exptConfig) <-chan experimentutil.ExperimentSuccess {
+//	agg := make(chan experimentutil.ExperimentSuccess, len(exptConfigs))
+//	var wg sync.WaitGroup
+//	wg.Add(len(exptConfigs))
+//
+//	t, ok := tConfig["exptTimeoutDuration"].(time.Duration)
+//	if !ok {
+//		log.Error("exptTimeoutDuration is not a time.Duration object")
+//	}
+//
+//	// Start all of the experiment workers, put their results into the agg channel
+//	for _, eConfig := range exptConfigs {
+//		go func(eConfig exptConfig) {
+//			defer wg.Done()
+//			if !ok {
+//				return
+//			}
+//			exptContext, exptCancel := context.WithTimeout(ctx, t)
+//			defer exptCancel()
+//
+//			// If all goes well, each experiment Worker channel will be ready to be received on twice:  once when the
+//			// successful status is sent, and when the channel closes after cleanup.  If we timeout, just move on.
+//			// Expt channel is buffered anyway, so if the worker tries to send later and there's no receiver,
+//			// garbage collection will take care of it
+//			c := experimentutil.Worker(exptContext, eConfig, log, promPush)
+//			select {
+//			case status := <-c: // Grab status from channel
+//				agg <- status
+//				<-c // Block until channel closes, which means experiment worker is done with everything
+//			case <-exptContext.Done():
+//				if err := exptContext.Err(); err == context.DeadlineExceeded {
+//					log.Error("Timed out waiting for experiment success info to be reported. Someone from USDC should " +
+//						"look into this and cleanup if needed.  See " +
+//						"https://cdcvs.fnal.gov/redmine/projects/discompsupp/wiki/MANAGEDPROXIES for instructions.")
+//				} else {
+//					log.Error(err)
+//				}
+//			}
+//		}(eConfig)
+//	}
+//
+//	// This will wait until all expt workers have put their values into agg channel, and have finished
+//	// cleanup.  This prevents the 2 rare race conditions: 1) that main() returns before all expt cleanup
+//	// is done (since main() waits for the agg channel to close before doing cleanup), and 2) we close the
+//	// agg channel before all values have been sent into it.
+//	go func() {
+//		wg.Wait()
+//		log.Debug("Closing aggregation channel")
+//		close(agg)
+//	}()
+//
+//	return agg
+//}
 
 func init() {
 	startSetup = time.Now()
@@ -152,12 +184,24 @@ func init() {
 		logrus.PanicLevel: viper.GetString("logs.debugfile"),
 	}, &logrus.TextFormatter{FullTimestamp: true}))
 
+	// Set up the logConfig to pass to other packages
+	lConfig := make(experimentutil.logsConfig)
+	for key, value := range viper.GetStringMapString("logs") {
+		lConfig[key] = value
+	}
+
 	log.Debugf("Using config file %s", viper.GetString("configfile"))
 
+	// Set up notifications
+	nConfig := make(notifications.notificationsConfig)
+	nKey := "notifications"
 	// Test flag sets which notifications section from config we want to use.
 	if viper.GetBool("test") {
 		log.Info("Running in test mode")
-		viper.Set("notifications", viper.Get("notifications_test"))
+		nKey = "notifications_test"
+	}
+	for key, value := range viper.GetStringMapString(nKey) {
+		nConfig[key] = value
 	}
 
 	// Now that our log is set up and we've got a valid config, handle all init (fatal) errors using the following func
@@ -195,6 +239,8 @@ func init() {
 	}
 
 	// Parse our timeouts, store them into timeoutDurationMap for later use
+	tConfig := make(experimentutil.timeoutsConfig)
+
 	for timeoutName, timeoutString := range viper.GetStringMapString("timeout") {
 		value, err := time.ParseDuration(timeoutString)
 		if err != nil {
@@ -202,7 +248,7 @@ func init() {
 			initErrorNotify(msg)
 		}
 		newName := timeoutName + "Duration"
-		viper.Set(newName, value)
+		tConfig[newName] = value
 	}
 
 	// Set up prometheus pusher
@@ -254,13 +300,13 @@ func cleanup(exptStatus map[string]bool, experiments []string) error {
 		}
 	}()
 
-	s := make([]string, 0, len(experiments))
-	f := make([]string, 0, len(experiments))
+	s := make([]string, 0, len(exptConfigs))
+	f := make([]string, 0, len(exptConfigs))
 
 	// Compile list of successes and failures
-	for _, expt := range experiments {
-		if _, ok := exptStatus[expt]; !ok {
-			f = append(f, expt)
+	for _, e := range exptConfigs {
+		if _, ok := exptStatus[e.Name]; !ok {
+			f = append(f, e.Name)
 		}
 	}
 
@@ -296,7 +342,7 @@ func cleanup(exptStatus map[string]bool, experiments []string) error {
 	finalCleanupSuccess := true
 	msg := string(data)
 
-	t, ok := viper.Get("emailTimeoutDuration").(time.Duration)
+	t, ok := tConfig["emailTimeoutDuration"].(time.Duration)
 	if !ok {
 		return errors.New("emailTimeoutDuration is not a time.Duration object")
 	}
@@ -307,7 +353,7 @@ func cleanup(exptStatus map[string]bool, experiments []string) error {
 	}
 	emailCancel()
 
-	t, ok = viper.Get("slackTimeoutDuration").(time.Duration)
+	t, ok = tConfig["slackTimeoutDuration"].(time.Duration)
 	if !ok {
 		return errors.New("slackTimeoutDuration is not a time.Duration object")
 	}
@@ -331,17 +377,33 @@ func cleanup(exptStatus map[string]bool, experiments []string) error {
 }
 
 func main() {
-	exptSuccesses := make(map[string]bool)                             // map of successful expts
-	expts := make([]string, 0, len(viper.GetStringMap("experiments"))) // Slice of experiments we will actually process
+	exptSuccesses := make(map[string]bool) // map of successful expts
+	//expts := make([]string, 0, len(viper.GetStringMap("experiments"))) // Slice of experiments we will actually process
 
-	// Get our list of experiments from the config file, set exptConfig Name variable
+	exptConfigs := make([]experimentutil.exptConfig, 0, len(viper.GetStringMap("experiments"))) // Slice of experiments we will actually process
+
+	// Get our list of experiments from the config file, create exptConfig objects
 	if viper.GetString("experiment") != "" {
 		// If experiment is passed in on command line
-		expts = append(expts, viper.GetString("experiment"))
+		eConfig, err := createExptConfig(viper.GetString("experiment"))
+		if err != nil {
+			log.WithFields(log.Fields{
+				"experiment": viper.GetString("experiment"),
+				"caller":     "main",
+			}).Fatal("Error setting up experiment configuration slice.  As this is the only experiment, we will exit now.")
+		}
+		exptConfigs = append(exptConfigs, eConfig)
 	} else {
 		// No experiment on command line, so use all expts in config file
 		for k := range viper.GetStringMap("experiments") {
-			expts = append(expts, k)
+			eConfig, err := createExptConfig(k)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"experiment": k,
+					"caller":     "main",
+				}).Error("Error setting up experiment configuration slice")
+			}
+			exptConfigs = append(exptConfigs, eConfig)
 		}
 	}
 
@@ -352,20 +414,20 @@ func main() {
 
 	startProxyPush = time.Now()
 	// Start up the expt manager
-	t, ok := viper.Get("globalTimeoutDuration").(time.Duration)
+	t, ok := tConfig["globalTimeoutDuration"].(time.Duration)
 	if !ok {
 		log.Fatal("globalTimeoutDuration is not a time.Duration object")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), t)
 	defer cancel()
-	c := manageExperimentChannels(ctx, expts)
+	c := manageExperimentChannels(ctx, exptConfigs)
 	// Listen on the manager channel
 	for {
 		select {
 		case expt, chanOpen := <-c:
 			// Manager channel is closed, so cleanup.
 			if !chanOpen {
-				err := cleanup(exptSuccesses, expts)
+				err := cleanup(exptSuccesses, exptConfigs)
 				if err != nil {
 					log.Error(err)
 				}
@@ -380,7 +442,7 @@ func main() {
 			} else {
 				log.Error(e)
 			}
-			if err := cleanup(exptSuccesses, expts); err != nil {
+			if err := cleanup(exptSuccesses, exptConfigs); err != nil {
 				log.Error(err)
 			}
 			return
