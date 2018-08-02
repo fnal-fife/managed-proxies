@@ -92,7 +92,7 @@ func init() {
 	}, &logrus.TextFormatter{FullTimestamp: true}))
 
 	// Set up the logConfig to pass to other packages
-	// lConfig := make(experimentutil.logsConfig)
+	lConfig := make(experimentutil.LogsConfig)
 	for key, value := range viper.GetStringMapString("logs") {
 		lConfig[key] = value
 	}
@@ -100,7 +100,7 @@ func init() {
 	log.Debugf("Using config file %s", viper.GetString("configfile"))
 
 	// Set up notifications
-	// nConfig := make(notifications.notificationsConfig)
+	nConfig := make(notifications.Config)
 	nKey := "notifications"
 	// Test flag sets which notifications section from config we want to use.
 	if viper.GetBool("test") {
@@ -146,7 +146,7 @@ func init() {
 	}
 
 	// Parse our timeouts, store them into timeoutDurationMap for later use
-	//tConfig := make(experimentutil.timeoutsConfig)
+	tConfig := make(experimentutil.TimeoutsConfig)
 
 	for timeoutName, timeoutString := range viper.GetStringMapString("timeout") {
 		value, err := time.ParseDuration(timeoutString)
@@ -159,6 +159,7 @@ func init() {
 	}
 
 	// Set up voms-proxy-init config object
+	vConfig := make(experimentutil.VPIConfig)
 	for key, value := range viper.GetStringMapString("vomsproxyinit") {
 		if key != "defaultvomsprefixroot" {
 			vConfig[key] = value
@@ -166,16 +167,19 @@ func init() {
 	}
 
 	// Set up kerb config object
+	krbConfig := make(experimentutil.KerbConfig)
 	for key, value := range viper.GetStringMapString("kerberos") {
 		krbConfig[key] = value
 	}
 
 	// Set up ping config object
+	pConfig := make(experimentutil.PingConfig)
 	for key, value := range viper.GetStringMapString("ping") {
 		pConfig[key] = value
 	}
 
 	// Set up ssh config object
+	sConfig := make(experimentutil.SSHConfig)
 	for key, value := range viper.GetStringMapString("ssh") {
 		sConfig[key] = value
 	}
