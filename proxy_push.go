@@ -275,14 +275,14 @@ func cleanup(exptStatus map[string]bool, exptConfigs []experimentutil.ExptConfig
 	finalCleanupSuccess := true
 	msg := string(data)
 
-	emailCtx, emailCancel := context.WithTimeout(context.Background(), tConfig["emailTimeoutDuration"])
+	emailCtx, emailCancel := context.WithTimeout(context.Background(), tConfig["emailtimeoutDuration"])
 	if err = notifications.SendEmail(emailCtx, "", msg); err != nil {
 		log.Error(err)
 		finalCleanupSuccess = false
 	}
 	emailCancel()
 
-	slackCtx, slackCancel := context.WithTimeout(context.Background(), tConfig["slackTimeoutDuration"])
+	slackCtx, slackCancel := context.WithTimeout(context.Background(), tConfig["slacktimeoutDuration"])
 	if err = notifications.SendSlackMessage(slackCtx, msg); err != nil {
 		log.Error(err)
 		finalCleanupSuccess = false
