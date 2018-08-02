@@ -38,23 +38,22 @@ type ExperimentSuccess struct {
 type ExptErrorFormatter struct {
 }
 
-// TODO:  Document exported types
 type (
-	// TimeoutsConfig TODO
+	// TimeoutsConfig is a map of the timeouts passed in from the config file
 	TimeoutsConfig map[string]time.Duration
-	// LogsConfig TODO
+	// LogsConfig is a map of the location of the logfiles
 	LogsConfig map[string]string
-	// VPIConfig TODO
+	// VPIConfig contains information needed to run the voms-proxy-init command
 	VPIConfig map[string]string
-	// KerbConfig TODO
+	// KerbConfig contains information needed to run kinit
 	KerbConfig map[string]string
-	// PingConfig TODO
+	// PingConfig contains information needed to ping the various interactive nodes
 	PingConfig map[string]string
-	// SSHConfig TODO
+	// SSHConfig contains the common options and arguments necessary to run scp and ssh; chmod to copy the proxies into place
 	SSHConfig map[string]string
 )
 
-// ExptConfig TODO
+// ExptConfig is a mega struct containing all the information the Worker needs to have or pass onto lower level funcs.
 type ExptConfig struct {
 	Name        string
 	CertBaseDir string
@@ -366,9 +365,8 @@ func Worker(ctx context.Context, eConfig ExptConfig, genLog *logrus.Logger, b no
 			return
 		}
 		vpiCtx, vpiCancel := context.WithTimeout(ctx, t)
-		vomsProxyObjects := make([]getProxyer, len(eConfig.Accounts))
-		//TODO
-		vomsProxyObjects = createVomsProxyObjects(vpiCtx, eConfig)
+		// vomsProxyObjects := make([]getProxyer, len(eConfig.Accounts))
+		vomsProxyObjects := createVomsProxyObjects(vpiCtx, eConfig)
 		vpiChan := getProxies(vpiCtx, eConfig.VPIConfig, vomsProxyObjects...)
 		// Listen until we either timeout or vpiChan is closed
 	vpiLoop:

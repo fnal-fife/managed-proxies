@@ -17,7 +17,7 @@ import (
 
 var emailDialer = gomail.Dialer{Host: "localhost", Port: 25} // gomail dialer to use to send emails
 
-// Config TODO
+// Config contains the information needed to send notifications from the proxy push service
 type Config map[string]string
 
 // addHelperMessage tacks on the help text we want experiments to get.
