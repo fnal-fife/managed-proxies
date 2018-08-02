@@ -78,7 +78,7 @@ func manageExperimentChannels(ctx context.Context, exptConfigs []experimentutil.
 		go func(eConfig experimentutil.ExptConfig) {
 			defer wg.Done()
 
-			exptContext, exptCancel := context.WithTimeout(ctx, tConfig["exptTimeoutDuration"])
+			exptContext, exptCancel := context.WithTimeout(ctx, tConfig["expttimeoutDuration"])
 			defer exptCancel()
 
 			// If all goes well, each experiment Worker channel will be ready to be received on twice:  once when the
