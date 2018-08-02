@@ -183,7 +183,7 @@ func checkKeys(ctx context.Context, eConfig ExptConfig) error {
 // experimentCleanup manages the cleanup operations for an experiment, such as sending emails if necessary,
 // and copying, removing or archiving the logs
 // TODO:  maybe a unit test for this
-func (expt *ExperimentSuccess) experimentCleanup(ctx context.Context) error {
+func (expt *ExperimentSuccess) experimentCleanup(ctx context.Context, timeout time.Duration) error {
 	if e := ctx.Err(); e != nil {
 		return e
 	}
@@ -224,11 +224,11 @@ func (expt *ExperimentSuccess) experimentCleanup(ctx context.Context) error {
 
 		msg := string(data)
 
-		t, ok := viper.Get("emailTimeoutDuration").(time.Duration)
-		if !ok {
-			return errors.New("emailTimeoutDuration is not a time.Duration object")
-		}
-		emailCtx, emailCancel := context.WithTimeout(ctx, t)
+		//		t, ok := viper.Get("emailTimeoutDuration").(time.Duration)
+		//		if !ok {
+		//			return errors.New("emailTimeoutDuration is not a time.Duration object")
+		//		}
+		emailCtx, emailCancel := context.WithTimeout(ctx, timeout)
 		defer emailCancel()
 		if err := notifications.SendEmail(emailCtx, expt.Name, msg); err != nil {
 			newfilename := fmt.Sprintf("%s-%s", expterrfilepath, time.Now().Format(time.RFC3339))
@@ -309,13 +309,13 @@ func Worker(ctx context.Context, eConfig ExptConfig, genLog *logrus.Logger, b no
 		}
 		exptLog.Debug("Config keys are valid")
 
-		t, ok := viper.Get("pingTimeoutDuration").(time.Duration)
-		if !ok {
-			genLog.Error("pingTimeoutDuration is not a time.Duration object")
-			declareExptFailure()
-			return
-		}
-		pingCtx, pingCancel := context.WithTimeout(ctx, t)
+		//		t, ok := viper.Get("pingTimeoutDuration").(time.Duration)
+		//		if !ok {
+		//			genLog.Error("pingTimeoutDuration is not a time.Duration object")
+		//			declareExptFailure()
+		//			return
+		//		}
+		pingCtx, pingCancel := context.WithTimeout(ctx, eConfig.TimeoutsConfig["pingtimeoutDuration"])
 		configNodes := make([]pingNoder, 0, len(eConfig.Nodes))
 		for _, n := range eConfig.Nodes {
 			configNodes = append(configNodes, node(n))
@@ -358,13 +358,13 @@ func Worker(ctx context.Context, eConfig ExptConfig, genLog *logrus.Logger, b no
 
 		// If voms-proxy-init fails, we'll just continue on.  We'll still try to push proxies,
 		// since they're valid for 24 hours
-		t, ok = viper.Get("vpiTimeoutDuration").(time.Duration)
-		if !ok {
-			genLog.Error("vpiTimeoutDuration is not a time.Duration object")
-			declareExptFailure()
-			return
-		}
-		vpiCtx, vpiCancel := context.WithTimeout(ctx, t)
+		//		t, ok = viper.Get("vpiTimeoutDuration").(time.Duration)
+		//		if !ok {
+		//			genLog.Error("vpiTimeoutDuration is not a time.Duration object")
+		//			declareExptFailure()
+		//			return
+		//		}
+		vpiCtx, vpiCancel := context.WithTimeout(ctx, eConfig.TimeoutsConfig["vpitimeoutDuration"])
 		// vomsProxyObjects := make([]getProxyer, len(eConfig.Accounts))
 		vomsProxyObjects := createVomsProxyObjects(vpiCtx, eConfig)
 		vpiChan := getProxies(vpiCtx, eConfig.VPIConfig, vomsProxyObjects...)
@@ -395,13 +395,13 @@ func Worker(ctx context.Context, eConfig ExptConfig, genLog *logrus.Logger, b no
 			}
 		}
 
-		t, ok = viper.Get("copyTimeoutDuration").(time.Duration)
-		if !ok {
-			genLog.Error("copyTimeoutDuration is not a time.Duration object")
-			declareExptFailure()
-			return
-		}
-		copyCtx, copyCancel := context.WithTimeout(ctx, t)
+		//		t, ok = viper.Get("copyTimeoutDuration").(time.Duration)
+		//		if !ok {
+		//			genLog.Error("copyTimeoutDuration is not a time.Duration object")
+		//			declareExptFailure()
+		//			return
+		//		}
+		copyCtx, copyCancel := context.WithTimeout(ctx, eConfig.TimeoutsConfig["copytimeoutDuration"])
 		//		proxyTransferInfoObjects := make([]pushProxyer, len(exptConfig.GetStringSlice("nodes"))*len(exptConfig.GetStringMapString("accounts")))
 		//		proxyTransferInfoObjects := make([]pushProxyer, len(exptConfig.GetStringSlice("nodes"))*len(exptConfig.GetStringMapString("accounts")))
 		proxyTransferInfoObjects := createProxyTransferInfoObjects(copyCtx, eConfig, badNodesSlice)
@@ -468,7 +468,7 @@ func Worker(ctx context.Context, eConfig ExptConfig, genLog *logrus.Logger, b no
 		// We're logging the cleanup in the general log so that we don't create an extraneous
 		// experiment log file
 		exptLog.Info("Cleaning up ", expt.Name)
-		if err := expt.experimentCleanup(ctx); err != nil {
+		if err := expt.experimentCleanup(ctx, eConfig.TimeoutsConfig["emailtimeoutDuration"]); err != nil {
 			genLog.WithField("experiment", expt.Name).Errorf("Error cleaning up %s: %s", expt.Name, err)
 			// genLog.Errorf("Error cleaning up %s: %s", expt.Name, err)
 		} else {
