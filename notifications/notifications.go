@@ -17,6 +17,9 @@ import (
 
 var emailDialer = gomail.Dialer{Host: "localhost", Port: 25} // gomail dialer to use to send emails
 
+// Config TODO
+type Config map[string]string
+
 // addHelperMessage tacks on the help text we want experiments to get.
 func addHelperMessage(msg, expt string) string {
 	help := "\n\nWe've compiled a list of common errors here: " +

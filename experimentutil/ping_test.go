@@ -15,13 +15,13 @@ const (
 
 type goodNode string
 
-func (g goodNode) pingNode(ctx context.Context) error {
+func (g goodNode) pingNode(ctx context.Context, p PingConfig) error {
 	return nil
 }
 
 type badNode string
 
-func (b badNode) pingNode(ctx context.Context) error {
+func (b badNode) pingNode(ctx context.Context, p PingConfig) error {
 	time.Sleep(1 * time.Second)
 	if e := ctx.Err(); e != nil {
 		return e
@@ -32,12 +32,16 @@ func (b badNode) pingNode(ctx context.Context) error {
 func TestPingNode(t *testing.T) {
 	ctx := context.Background()
 
+	var p = PingConfig{
+		"foo": "bar",
+	}
+
 	// Control test
 	if testing.Verbose() {
 		t.Log("Running control test")
 	}
 	g := node(goodhost)
-	if err := g.pingNode(ctx); err != nil {
+	if err := g.pingNode(ctx, p); err != nil {
 		t.Errorf("Expected error to be nil but got %s", err)
 		t.Errorf("Our \"reliable\" host, %s, is probably down or just not responding", goodhost)
 	}
@@ -47,7 +51,7 @@ func TestPingNode(t *testing.T) {
 		t.Log("Running bogus host test")
 	}
 	b := node(badhost)
-	if err := b.pingNode(ctx); err != nil {
+	if err := b.pingNode(ctx, p); err != nil {
 		lowerErr := strings.ToLower(err.Error())
 		if !strings.Contains(lowerErr, "unknown host") && !strings.Contains(lowerErr, badhost) {
 			t.Errorf("Expected error message containing the phrase \"unknown host\" and %s but got %s", badhost, err)
@@ -61,7 +65,7 @@ func TestPingNode(t *testing.T) {
 		t.Log("Running timeout test")
 	}
 	timeoutCtx, cancelTimeout := context.WithTimeout(ctx, time.Duration(1*time.Nanosecond))
-	if err := g.pingNode(timeoutCtx); err != nil {
+	if err := g.pingNode(timeoutCtx, p); err != nil {
 		lowerErr := strings.ToLower(err.Error())
 		expectedMsg := "context deadline exceeded"
 		if lowerErr != expectedMsg {
@@ -79,10 +83,14 @@ func TestPingAllNodes(t *testing.T) {
 	numBad := 1
 	ctx := context.Background()
 
+	var p = PingConfig{
+		"foo": "bar",
+	}
+
 	if testing.Verbose() {
 		t.Logf("Ping all nodes - %d good, %d bad", numGood, numBad)
 	}
-	pingChannel := pingAllNodes(ctx, goodNode(""), badNode(badhost), goodNode(""))
+	pingChannel := pingAllNodes(ctx, p, goodNode(""), badNode(badhost), goodNode(""))
 
 	for n := range pingChannel {
 		if n.err != nil {
@@ -101,7 +109,7 @@ func TestPingAllNodes(t *testing.T) {
 		t.Log("Running timeout test")
 	}
 	timeoutCtx, cancelTimeout := context.WithTimeout(ctx, time.Duration(1*time.Nanosecond))
-	pingChannel = pingAllNodes(timeoutCtx, badNode(badhost))
+	pingChannel = pingAllNodes(timeoutCtx, p, badNode(badhost))
 	for n := range pingChannel {
 		if n.err != nil {
 			lowerErr := strings.ToLower(n.err.Error())

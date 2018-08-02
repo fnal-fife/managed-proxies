@@ -22,6 +22,11 @@ func TestCopyProxiesCount(t *testing.T) {
 	numBad := 2
 	ctx := context.Background()
 
+	// Fake config
+	cfg := SSHConfig{
+		"foo": "bar",
+	}
+
 	// Test cases
 	var countTests = []struct {
 		f               fakeProxyTransferInfo
@@ -68,7 +73,7 @@ func TestCopyProxiesCount(t *testing.T) {
 		testPointers = append(testPointers, &countTests[idx].f)
 	}
 
-	copyChannel := copyProxies(ctx, testPointers...)
+	copyChannel := copyProxies(ctx, cfg, testPointers...)
 
 	for c := range copyChannel {
 		if c.err != nil {
@@ -83,6 +88,11 @@ func TestCopyProxiesCount(t *testing.T) {
 }
 
 func TestCopyProxiesBasic(t *testing.T) {
+	// Fake config
+	cfg := SSHConfig{
+		"foo": "bar",
+	}
+
 	ctx := context.Background()
 
 	// Test cases
@@ -117,7 +127,7 @@ func TestCopyProxiesBasic(t *testing.T) {
 		if testing.Verbose() {
 			t.Log(test.f.tag)
 		}
-		copyChannel := copyProxies(ctx, &test.f)
+		copyChannel := copyProxies(ctx, cfg, &test.f)
 		c := <-copyChannel
 		if !strings.Contains(c.err.Error(), test.expectedMsgPart) {
 			t.Errorf("Expected state \"%s\", and thus error should have contained the phrase %s.  Got %s instead", test.f.tag, test.expectedMsgPart, c.err)
@@ -127,6 +137,10 @@ func TestCopyProxiesBasic(t *testing.T) {
 
 func TestBadNode(t *testing.T) {
 	var f fakeProxyTransferInfo
+	// Fake config
+	cfg := SSHConfig{
+		"foo": "bar",
+	}
 	ctx := context.Background()
 
 	if testing.Verbose() {
@@ -136,7 +150,7 @@ func TestBadNode(t *testing.T) {
 	f.nodeDown = true
 	expectedMsgPart1 := "Copying proxy"
 	expectedMsgPart2 := fmt.Sprintf(badNodeMsgf, f.node)
-	copyChannel := copyProxies(ctx, &f)
+	copyChannel := copyProxies(ctx, cfg, &f)
 	c := <-copyChannel
 	if !(strings.Contains(c.err.Error(), expectedMsgPart1) && strings.Contains(c.err.Error(), expectedMsgPart2)) {
 		t.Errorf("Expected chmod to fail, and thus error should have contained the phrases %s and %s.  Got %s instead", expectedMsgPart1, expectedMsgPart2, c.err)
@@ -145,6 +159,11 @@ func TestBadNode(t *testing.T) {
 
 func TestTimeouts(t *testing.T) {
 	ctx := context.Background()
+
+	// Fake config
+	cfg := SSHConfig{
+		"foo": "bar",
+	}
 
 	// Test cases
 	var timeoutTests = []struct {
@@ -180,7 +199,7 @@ func TestTimeouts(t *testing.T) {
 		}
 
 		timeoutCtx, cancelTimeout := context.WithTimeout(ctx, time.Duration(1*time.Nanosecond))
-		copyChannel := copyProxies(timeoutCtx, &test.f)
+		copyChannel := copyProxies(timeoutCtx, cfg, &test.f)
 		c := <-copyChannel
 		if c.err != nil {
 			lowerErr := strings.ToLower(c.err.Error())
@@ -206,7 +225,7 @@ func (f *fakeProxyTransferInfo) createCopyProxiesStatus() copyProxiesStatus {
 	return copyProxiesStatus{f.node, f.account, f.role, nil}
 }
 
-func (f *fakeProxyTransferInfo) copyProxy(ctx context.Context, opts []string) error {
+func (f *fakeProxyTransferInfo) copyProxy(ctx context.Context, sshopts []string, template string) error {
 	time.Sleep(1 * time.Second)
 	if f.contextCopyCheck {
 		if e := ctx.Err(); e != nil {
@@ -219,7 +238,7 @@ func (f *fakeProxyTransferInfo) copyProxy(ctx context.Context, opts []string) er
 	return nil
 }
 
-func (f *fakeProxyTransferInfo) chmodProxy(ctx context.Context, opts []string) error {
+func (f *fakeProxyTransferInfo) chmodProxy(ctx context.Context, sshopts []string, template string) error {
 	time.Sleep(1 * time.Second)
 	// We want to always check context here
 	if e := ctx.Err(); e != nil {

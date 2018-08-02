@@ -38,6 +38,43 @@ type ExperimentSuccess struct {
 type ExptErrorFormatter struct {
 }
 
+// TODO:  Document exported types
+type (
+	// TimeoutsConfig TODO
+	TimeoutsConfig map[string]time.Duration
+	// LogsConfig TODO
+	LogsConfig map[string]string
+	// VPIConfig TODO
+	VPIConfig map[string]string
+	// KerbConfig TODO
+	KerbConfig map[string]string
+	// PingConfig TODO
+	PingConfig map[string]string
+	// SSHConfig TODO
+	SSHConfig map[string]string
+)
+
+// ExptConfig TODO
+type ExptConfig struct {
+	Name        string
+	CertBaseDir string
+	Krb5ccname  string
+	DestDir     string
+	ExptEmails  []string
+	Nodes       []string
+	Accounts    map[string]string
+	VomsPrefix  string
+	CertFile    string
+	KeyFile     string
+	NConfig     notifications.Config
+	TimeoutsConfig
+	LogsConfig
+	VPIConfig
+	KerbConfig
+	PingConfig
+	SSHConfig
+}
+
 // Experiment worker-specific functions
 
 // Setup and cleanup
@@ -61,7 +98,7 @@ func (f *ExptErrorFormatter) Format(entry *logrus.Entry) ([]byte, error) {
 
 // exptLogInit sets up the logrus instance for the experiment worker
 // It returns a pointer to a logrus.Entry object that can be used to log events.
-func exptLogInit(ctx context.Context, ename string) (*logrus.Entry, error) {
+func exptLogInit(ctx context.Context, ename string, lConfig LogsConfig) (*logrus.Entry, error) {
 	if e := ctx.Err(); e != nil {
 		return nil, e
 	}
@@ -72,27 +109,27 @@ func exptLogInit(ctx context.Context, ename string) (*logrus.Entry, error) {
 	Log.SetLevel(logrus.DebugLevel)
 
 	Log.AddHook(lfshook.NewHook(lfshook.PathMap{
-		logrus.DebugLevel: viper.GetString("logs.debugfile"),
-		logrus.InfoLevel:  viper.GetString("logs.debugfile"),
-		logrus.WarnLevel:  viper.GetString("logs.debugfile"),
-		logrus.ErrorLevel: viper.GetString("logs.debugfile"),
-		logrus.FatalLevel: viper.GetString("logs.debugfile"),
-		logrus.PanicLevel: viper.GetString("logs.debugfile"),
+		logrus.DebugLevel: lConfig["debugfile"],
+		logrus.InfoLevel:  lConfig["debugfile"],
+		logrus.WarnLevel:  lConfig["debugfile"],
+		logrus.ErrorLevel: lConfig["debugfile"],
+		logrus.FatalLevel: lConfig["debugfile"],
+		logrus.PanicLevel: lConfig["debugfile"],
 	}, &logrus.TextFormatter{FullTimestamp: true}))
 
 	Log.AddHook(lfshook.NewHook(lfshook.PathMap{
-		logrus.InfoLevel:  viper.GetString("logs.logfile"),
-		logrus.WarnLevel:  viper.GetString("logs.logfile"),
-		logrus.ErrorLevel: viper.GetString("logs.logfile"),
-		logrus.FatalLevel: viper.GetString("logs.logfile"),
-		logrus.PanicLevel: viper.GetString("logs.logfile"),
+		logrus.InfoLevel:  lConfig["logfile"],
+		logrus.WarnLevel:  lConfig["logfile"],
+		logrus.ErrorLevel: lConfig["logfile"],
+		logrus.FatalLevel: lConfig["logfile"],
+		logrus.PanicLevel: lConfig["logfile"],
 	}, &logrus.TextFormatter{FullTimestamp: true}))
 
 	// General Error Log that will get sent to Admins
 	Log.AddHook(lfshook.NewHook(lfshook.PathMap{
-		logrus.ErrorLevel: viper.GetString("logs.errfile"),
-		logrus.FatalLevel: viper.GetString("logs.errfile"),
-		logrus.PanicLevel: viper.GetString("logs.errfile"),
+		logrus.ErrorLevel: lConfig["errfile"],
+		logrus.FatalLevel: lConfig["errfile"],
+		logrus.PanicLevel: lConfig["errfile"],
 	}, new(ExptErrorFormatter)))
 
 	// Experiment-specific error log that gets emailed if populated
@@ -110,14 +147,16 @@ func exptLogInit(ctx context.Context, ename string) (*logrus.Entry, error) {
 }
 
 // getKerbTicket runs kinit to get a kerberos ticket
-func getKerbTicket(ctx context.Context, krb5ccname string) error {
-	os.Setenv("KRB5CCNAME", krb5ccname)
+func getKerbTicket(ctx context.Context, krbConfig KerbConfig) error {
+	os.Setenv("KRB5CCNAME", krbConfig["krb5ccname"])
 
-	kerbcmdargs := []string{"-k", "-t",
-		"/opt/gen_keytabs/config/gcso_monitor.keytab",
-		"monitor/gcso/fermigrid.fnal.gov@FNAL.GOV"}
+	//	kerbcmdargs := []string{"-k", "-t",
+	//		"/opt/gen_keytabs/config/gcso_monitor.keytab",
+	//		"monitor/gcso/fermigrid.fnal.gov@FNAL.GOV"}
 
-	cmd := exec.CommandContext(ctx, "/usr/krb5/bin/kinit", kerbcmdargs...)
+	kerbcmdargs := strings.Fields(krbConfig["kinitargs"])
+
+	cmd := exec.CommandContext(ctx, krbConfig["kinitexecutable"], kerbcmdargs...)
 	if cmdOut, cmdErr := cmd.CombinedOutput(); cmdErr != nil {
 		if ctx.Err() == context.DeadlineExceeded {
 			return ctx.Err()
@@ -129,12 +168,12 @@ func getKerbTicket(ctx context.Context, krb5ccname string) error {
 }
 
 // checkKeys looks at the portion of the configuration passed in and makes sure the required keys are present
-func checkKeys(ctx context.Context, exptConfig *viper.Viper) error {
+func checkKeys(ctx context.Context, eConfig ExptConfig) error {
 	if e := ctx.Err(); e != nil {
 		return e
 	}
 
-	if !exptConfig.IsSet("nodes") || !exptConfig.IsSet("accounts") {
+	if len(eConfig.Nodes) == 0 || len(eConfig.Accounts) == 0 {
 		return errors.New(`Input file improperly formatted for %s (accounts or nodes don't 
 			exist for this experiment). Please check the config file on fifeutilgpvm01.
 			 I will skip this experiment for now`)
@@ -210,17 +249,17 @@ func (expt *ExperimentSuccess) experimentCleanup(ctx context.Context) error {
 // an experiment's nodes.  It returns a channel on which it reports the status of that experiment's proxy push.
 // genlog is the logrus.logger that gets passed in that's meant to capture the non-experiment specific messages
 // that might be printed from this module
-func Worker(ctx context.Context, exptname string, genLog *logrus.Logger, b notifications.BasicPromPush) <-chan ExperimentSuccess {
+func Worker(ctx context.Context, eConfig ExptConfig, genLog *logrus.Logger, b notifications.BasicPromPush) <-chan ExperimentSuccess {
 	var exptLog *logrus.Entry
 	c := make(chan ExperimentSuccess, 2)
-	expt := ExperimentSuccess{exptname, true} // Initialize
+	expt := ExperimentSuccess{eConfig.Name, true} // Initialize
 
-	exptLog, err := exptLogInit(ctx, expt.Name)
+	exptLog, err := exptLogInit(ctx, eConfig.Name, eConfig.LogsConfig)
 	if err != nil { // We either have panicked or it's a context error.  If it's the latter, we really don't care here
-		exptLog = genLog.WithField("experiment", exptname)
+		exptLog = genLog.WithField("experiment", eConfig.Name)
 	}
 
-	exptLog.Debug("Now processing ", expt.Name)
+	exptLog.Debug("Now processing ", eConfig.Name)
 
 	go func() {
 		defer close(c) // All expt operations are done (either successful including cleanup or at error)
@@ -238,36 +277,33 @@ func Worker(ctx context.Context, exptname string, genLog *logrus.Logger, b notif
 			declareExptFailure()
 			return
 		}
-		exptConfig := viper.Sub("experiments." + expt.Name)
 		successfulCopies := make(map[string][]string)
 		failedCopies := make(map[string]map[string]struct{})
-		badNodesSlice := make([]string, 0, len(exptConfig.GetStringSlice("nodes")))
+		badNodesSlice := make([]string, 0, len(eConfig.Nodes))
 
 		// Set up failedCopies for troubleshooting issues.  As pushes succeed, we'll be deleting these
 		// from the map.
-		for _, role := range exptConfig.GetStringMapString("accounts") {
+		for _, role := range eConfig.Accounts {
 			failedCopies[role] = make(map[string]struct{})
-			for _, n := range exptConfig.GetStringSlice("nodes") {
+			for _, n := range eConfig.Nodes {
 				failedCopies[role][n] = struct{}{}
 			}
 		}
 
-		if !viper.IsSet("global.krb5ccname") {
+		if _, ok := eConfig.KerbConfig["krb5ccname"]; !ok {
 			exptLog.Error("Could not obtain KRB5CCNAME environmental variable from config. " +
 				"Please check the config file on fifeutilgpvm01.")
 			declareExptFailure()
 			return
 		}
-		krb5ccnameCfg := viper.GetString("global.krb5ccname")
-
 		// If we can't get a kerb ticket, log error and keep going.
 		// We might have an old one that's still valid.
-		if err := getKerbTicket(ctx, krb5ccnameCfg); err != nil {
+		if err := getKerbTicket(ctx, eConfig.KerbConfig); err != nil {
 			exptLog.Warn(err)
 		}
 
 		// If check of exptConfig keys fails, experiment fails immediately
-		if err := checkKeys(ctx, exptConfig); err != nil {
+		if err := checkKeys(ctx, eConfig); err != nil {
 			exptLog.Error(err)
 			declareExptFailure()
 			return
@@ -281,11 +317,11 @@ func Worker(ctx context.Context, exptname string, genLog *logrus.Logger, b notif
 			return
 		}
 		pingCtx, pingCancel := context.WithTimeout(ctx, t)
-		configNodes := make([]pingNoder, 0, len(exptConfig.GetStringSlice("nodes")))
-		for _, n := range exptConfig.GetStringSlice("nodes") {
+		configNodes := make([]pingNoder, 0, len(eConfig.Nodes))
+		for _, n := range eConfig.Nodes {
 			configNodes = append(configNodes, node(n))
 		}
-		pingChannel := pingAllNodes(pingCtx, configNodes...)
+		pingChannel := pingAllNodes(pingCtx, eConfig.PingConfig, configNodes...)
 		// Listen until we either timeout or the pingChannel is closed
 	pingLoop:
 		for {
@@ -330,9 +366,10 @@ func Worker(ctx context.Context, exptname string, genLog *logrus.Logger, b notif
 			return
 		}
 		vpiCtx, vpiCancel := context.WithTimeout(ctx, t)
-		vomsProxyObjects := make([]getProxyer, len(exptConfig.GetStringMapString("accounts")))
-		vomsProxyObjects = createVomsProxyObjects(vpiCtx, exptConfig, viper.GetStringMapString("global"), expt.Name)
-		vpiChan := getProxies(vpiCtx, vomsProxyObjects...)
+		vomsProxyObjects := make([]getProxyer, len(eConfig.Accounts))
+		//TODO
+		vomsProxyObjects = createVomsProxyObjects(vpiCtx, eConfig)
+		vpiChan := getProxies(vpiCtx, eConfig.VPIConfig, vomsProxyObjects...)
 		// Listen until we either timeout or vpiChan is closed
 	vpiLoop:
 		for {
@@ -367,9 +404,10 @@ func Worker(ctx context.Context, exptname string, genLog *logrus.Logger, b notif
 			return
 		}
 		copyCtx, copyCancel := context.WithTimeout(ctx, t)
-		proxyTransferInfoObjects := make([]pushProxyer, len(exptConfig.GetStringSlice("nodes"))*len(exptConfig.GetStringMapString("accounts")))
-		proxyTransferInfoObjects = createProxyTransferInfoObjects(copyCtx, exptConfig, badNodesSlice)
-		copyChan := copyProxies(copyCtx, proxyTransferInfoObjects...)
+		//		proxyTransferInfoObjects := make([]pushProxyer, len(exptConfig.GetStringSlice("nodes"))*len(exptConfig.GetStringMapString("accounts")))
+		//		proxyTransferInfoObjects := make([]pushProxyer, len(exptConfig.GetStringSlice("nodes"))*len(exptConfig.GetStringMapString("accounts")))
+		proxyTransferInfoObjects := createProxyTransferInfoObjects(copyCtx, eConfig, badNodesSlice)
+		copyChan := copyProxies(copyCtx, eConfig.SSHConfig, proxyTransferInfoObjects...)
 		// if expt.Name == "darkside" {
 		// 	time.Sleep(time.Duration(25) * time.Second)
 		// }

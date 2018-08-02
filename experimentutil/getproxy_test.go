@@ -11,13 +11,13 @@ import (
 
 type goodVomsProxy struct{}
 
-func (g *goodVomsProxy) getProxy(ctx context.Context) (string, error) {
+func (g *goodVomsProxy) getProxy(ctx context.Context, v VPIConfig) (string, error) {
 	return "/path/to/file", nil
 }
 
 type badVomsProxy struct{}
 
-func (b *badVomsProxy) getProxy(ctx context.Context) (string, error) {
+func (b *badVomsProxy) getProxy(ctx context.Context, v VPIConfig) (string, error) {
 	time.Sleep(1 * time.Second)
 	if e := ctx.Err(); e != nil {
 		return "", e
@@ -35,10 +35,15 @@ func TestGetProxies(t *testing.T) {
 	var g1, g2 goodVomsProxy
 	var b badVomsProxy
 
+	var fakeVConfig = map[string]string{
+		"foo": "bar",
+		"baz": "blah",
+	}
+
 	if testing.Verbose() {
 		t.Logf("Testing mocking generating voms proxies - %d successful, %d bad.", numGood, numBad)
 	}
-	vpiChannel := getProxies(ctx, &g1, &b, &g2)
+	vpiChannel := getProxies(ctx, fakeVConfig, &g1, &b, &g2)
 	for p := range vpiChannel {
 		if p.err != nil {
 			j++
@@ -55,7 +60,7 @@ func TestGetProxies(t *testing.T) {
 		t.Log("Testing mocking generating voms proxies - timeout")
 	}
 	timeoutCtx, cancelTimeout := context.WithTimeout(ctx, time.Duration(1*time.Nanosecond))
-	vpiChannel = getProxies(timeoutCtx, &b)
+	vpiChannel = getProxies(timeoutCtx, fakeVConfig, &b)
 	for n := range vpiChannel {
 		if n.err != nil {
 			lowerErr := strings.ToLower(n.err.Error())
