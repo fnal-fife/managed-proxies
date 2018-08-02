@@ -339,6 +339,7 @@ func main() {
 
 	startProxyPush = time.Now()
 	// Start up the expt manager
+	log.Info(tConfig)
 	ctx, cancel := context.WithTimeout(context.Background(), tConfig["globalTimeoutDuration"])
 	defer cancel()
 	c := manageExperimentChannels(ctx, exptConfigs)
