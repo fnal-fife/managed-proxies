@@ -1,19 +1,22 @@
 package experimentutil
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"os/exec"
 	"path"
+	"strings"
 	"sync"
+	"text/template"
 
-	"github.com/spf13/viper"
+	log "github.com/sirupsen/logrus"
 )
 
 // getProxyer is an interface that wraps up the getProxy method.  It is meant to be used in methods that obtain a VOMS proxy
 type getProxyer interface {
-	getProxy(context.Context) (string, error)
+	getProxy(context.Context, VPIConfig) (string, error)
 }
 
 // vomsProxy stores the information needed to uniquely identify the elements of a VOMS proxy.
@@ -35,7 +38,7 @@ type vomsProxyInitStatus struct {
 // getProxies launches goroutines that run getProxy to generate the appropriate proxies on the local machine.
 // Calling getProxies will generate voms X509 proxies of all of the proxies passed in as getProxyer objects.  It returns
 // a channel, on which it reports the status of each attempt
-func getProxies(ctx context.Context, proxies ...getProxyer) <-chan vomsProxyInitStatus {
+func getProxies(ctx context.Context, vConfig VPIConfig, proxies ...getProxyer) <-chan vomsProxyInitStatus {
 	c := make(chan vomsProxyInitStatus, len(proxies))
 	var wg sync.WaitGroup
 	wg.Add(len(proxies))
@@ -43,7 +46,7 @@ func getProxies(ctx context.Context, proxies ...getProxyer) <-chan vomsProxyInit
 	for _, v := range proxies {
 		go func(v getProxyer) {
 			defer wg.Done()
-			outfile, err := v.getProxy(ctx)
+			outfile, err := v.getProxy(ctx, vConfig)
 			vpi := vomsProxyInitStatus{outfile, err}
 			c <- vpi
 		}(v)
@@ -60,30 +63,22 @@ func getProxies(ctx context.Context, proxies ...getProxyer) <-chan vomsProxyInit
 
 // createVomsProxyObjects takes the configuration information for an experiment and generates a slice of vomsProxy objects
 // for that experiment
-func createVomsProxyObjects(ctx context.Context, exptConfig *viper.Viper, globalConfig map[string]string,
-	exptname string) (vSlice []getProxyer) {
-	var vomsprefix string
+func createVomsProxyObjects(ctx context.Context, eConfig ExptConfig) (vSlice []getProxyer) {
 
-	if exptConfig.IsSet("vomsgroup") {
-		vomsprefix = exptConfig.GetString("vomsgroup")
-	} else {
-		vomsprefix = "fermilab:/fermilab/" + exptname + "/"
-	}
-
-	for account, role := range exptConfig.GetStringMapString("accounts") {
+	for account, role := range eConfig.Accounts {
 		v := vomsProxy{account: account, role: role}
-		v.fqan = vomsprefix + "Role=" + role
+		v.fqan = eConfig.VomsPrefix + "Role=" + role
 
-		if exptConfig.IsSet("certfile") {
-			v.certfile = exptConfig.GetString("certfile")
+		if eConfig.CertFile != "" {
+			v.certfile = eConfig.CertFile
 		} else {
-			v.certfile = path.Join(globalConfig["cert_base_dir"], account+".cert")
+			v.certfile = path.Join(eConfig.CertBaseDir, account+".cert")
 		}
 
-		if exptConfig.IsSet("keyfile") {
-			v.keyfile = exptConfig.GetString("keyfile")
+		if eConfig.KeyFile != "" {
+			v.keyfile = eConfig.KeyFile
 		} else {
-			v.keyfile = path.Join(globalConfig["cert_base_dir"], account+".key")
+			v.keyfile = path.Join(eConfig.CertBaseDir, account+".key")
 		}
 
 		vSlice = append(vSlice, &v)
@@ -93,16 +88,40 @@ func createVomsProxyObjects(ctx context.Context, exptConfig *viper.Viper, global
 
 // getProxy receives a *vomsProxy object, and uses its properties to run voms-proxy-init to generate a VOMS Proxy.
 // It returns the location of the generated proxy file and an error if the attempt fails.
-func (v *vomsProxy) getProxy(ctx context.Context) (string, error) {
+func (v *vomsProxy) getProxy(ctx context.Context, vConfig VPIConfig) (string, error) {
+	var vpiArgsTemplateOut bytes.Buffer
+
 	outfile := v.account + "." + v.role + ".proxy"
 	outfilePath := path.Join("proxies", outfile)
 
-	// vpi.filename = outfile
-	vpiargs := []string{"-rfc", "-valid", "24:00", "-voms",
-		v.fqan, "-cert", v.certfile,
-		"-key", v.keyfile, "-out", outfilePath}
+	var vpiMap = map[string]string{
+		"VomsFQAN":    v.fqan,
+		"CertFile":    v.certfile,
+		"KeyFile":     v.keyfile,
+		"OutfilePath": outfilePath,
+	}
 
-	cmd := exec.CommandContext(ctx, "/usr/bin/voms-proxy-init", vpiargs...)
+	// vpi.filename = outfile
+	t := template.Must(template.New("vpiTemplate").Parse(vConfig["vpicommand"]))
+	err := t.Execute(&vpiArgsTemplateOut, vpiMap)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"FQAN":     v.fqan,
+			"account":  v.account,
+			"certfile": v.certfile,
+		}).Error(err)
+		return outfile, err
+	}
+
+	vpiArgsString := vpiArgsTemplateOut.String()
+	vpiArgs := strings.Fields(vpiArgsString)
+
+	//	vpiargs := []string{"-rfc", "-valid", "24:00", "-voms",
+	//		v.fqan, "-cert", v.certfile,
+	//		"-key", v.keyfile, "-out", outfilePath}
+
+	//cmd := exec.CommandContext(ctx, "/usr/bin/voms-proxy-init", vpiargs...)
+	cmd := exec.CommandContext(ctx, vConfig["executable"], vpiArgs...)
 	if cmdErr := cmd.Run(); cmdErr != nil {
 		if e := ctx.Err(); e != nil {
 			return "", e

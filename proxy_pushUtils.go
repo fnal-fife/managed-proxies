@@ -1,53 +1,65 @@
 package main
 
 import (
+	"context"
 	"errors"
+	"fmt"
+	"os/user"
+	"sync"
 
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/experimentutil"
+	"github.com/sirupsen/logrus"
+	"github.com/spf13/viper"
 )
 
 // createExptConfig takes the config information from the global file and creates an exptConfig object
-func createExptConfig(expt string) (exptConfig, error) {
+func createExptConfig(expt string) (experimentutil.ExptConfig, error) {
 	var vomsprefix, certfile, keyfile string
+	var c experimentutil.ExptConfig
 
 	exptKey := "experiments." + expt
 	if !viper.IsSet(exptKey) {
 		err := errors.New("Experiment is not configured in the configuration file")
-		log.WithFields(log.Fields{
+		log.WithFields(logrus.Fields{
 			"experiment": expt,
 		}).Error(err)
 		return c, err
 	}
 
-	exptSubConfig = viper.Sub(exptKey)
+	exptSubConfig := viper.Sub(exptKey)
 
 	if exptSubConfig.IsSet("vomsgroup") {
-		vomsprefix = exptConfig.GetString("vomsgroup")
+		vomsprefix = exptSubConfig.GetString("vomsgroup")
 	} else {
 		vomsprefix = "fermilab:/fermilab/" + expt + "/"
+		vomsprefix = viper.GetString("vomsproxyinit.defaultvomsprefixroot") + expt + "/"
 	}
 
 	if exptSubConfig.IsSet("certfile") {
-		certfile := exptSubConfig("certfile")
+		certfile = exptSubConfig.GetString("certfile")
 	}
 	if exptSubConfig.IsSet("keyfile") {
-		certfile := exptSubConfig("keyfile")
+		certfile = exptSubConfig.GetString("keyfile")
 	}
 
-	c := exptConfig{
+	c = experimentutil.ExptConfig{
 		Name:           expt,
 		CertBaseDir:    viper.GetString("global.cert_base_dir"),
 		Krb5ccname:     viper.GetString("global.krb5ccname"),
-		DestDir:        exptSubConfig.GetString(dir),
+		DestDir:        exptSubConfig.GetString("dir"),
 		ExptEmails:     exptSubConfig.GetStringSlice("emails"),
 		Nodes:          exptSubConfig.GetStringSlice("nodes"),
 		Accounts:       exptSubConfig.GetStringMapString("accounts"),
-		VomsGroup:      vomsprefix,
+		VomsPrefix:     vomsprefix,
 		CertFile:       certfile,
 		KeyFile:        keyfile,
 		NConfig:        nConfig,
 		TimeoutsConfig: tConfig,
 		LogsConfig:     lConfig,
+		VPIConfig:      vConfig,
+		KerbConfig:     krbConfig,
+		PingConfig:     pConfig,
+		SSHConfig:      sConfig,
 	}
 
 	return c, nil
@@ -56,24 +68,17 @@ func createExptConfig(expt string) (exptConfig, error) {
 
 // manageExperimentChannels starts up the various experimentutil.Workers and listens for their response.  It puts these
 // statuses into an aggregate channel.
-func manageExperimentChannels(ctx context.Context, exptConfigs []exptConfig) <-chan experimentutil.ExperimentSuccess {
+func manageExperimentChannels(ctx context.Context, exptConfigs []experimentutil.ExptConfig) <-chan experimentutil.ExperimentSuccess {
 	agg := make(chan experimentutil.ExperimentSuccess, len(exptConfigs))
 	var wg sync.WaitGroup
 	wg.Add(len(exptConfigs))
 
-	t, ok := tConfig["exptTimeoutDuration"].(time.Duration)
-	if !ok {
-		log.Error("exptTimeoutDuration is not a time.Duration object")
-	}
-
 	// Start all of the experiment workers, put their results into the agg channel
 	for _, eConfig := range exptConfigs {
-		go func(eConfig exptConfig) {
+		go func(eConfig experimentutil.ExptConfig) {
 			defer wg.Done()
-			if !ok {
-				return
-			}
-			exptContext, exptCancel := context.WithTimeout(ctx, t)
+
+			exptContext, exptCancel := context.WithTimeout(ctx, tConfig["exptTimeoutDuration"])
 			defer exptCancel()
 
 			// If all goes well, each experiment Worker channel will be ready to be received on twice:  once when the

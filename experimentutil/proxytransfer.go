@@ -1,20 +1,21 @@
 package experimentutil
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"os/exec"
 	"path"
+	"strings"
 	"sync"
-
-	"github.com/spf13/viper"
+	"text/template"
 )
 
 // pushProxyer is an interface that wraps up the methods meant to be used in pushing a VOMS proxy to an experiment's node
 type pushProxyer interface {
-	copyProxy(context.Context, []string) error
-	chmodProxy(context.Context, []string) error
+	copyProxy(context.Context, []string, string) error
+	chmodProxy(context.Context, []string, string) error
 	createCopyProxiesStatus() copyProxiesStatus
 }
 
@@ -41,11 +42,14 @@ type copyProxiesStatus struct {
 // copyProxies copies the proxies from the local machine to the experiment nodes as specified by pushProxyer variadic and
 // changes their permissions. It returns a channel on which it reports the status of those operations.  The copy and
 // change permission operations share a context that dictates their deadline.
-func copyProxies(ctx context.Context, proxyTransfers ...pushProxyer) <-chan copyProxiesStatus {
+func copyProxies(ctx context.Context, sConfig SSHConfig, proxyTransfers ...pushProxyer) <-chan copyProxiesStatus {
 	numSlots := len(proxyTransfers)
-	sshopts := []string{"-o", "ConnectTimeout=30",
-		"-o", "ServerAliveInterval=30",
-		"-o", "ServerAliveCountMax=1"}
+	//	sshopts := []string{"-o", "ConnectTimeout=30",
+	//		"-o", "ServerAliveInterval=30",
+	//		"-o", "ServerAliveCountMax=1"}
+
+	sshOpts := strings.Fields(sConfig["sshopts"])
+
 	c := make(chan copyProxiesStatus, numSlots)
 	var wg sync.WaitGroup
 
@@ -56,14 +60,14 @@ func copyProxies(ctx context.Context, proxyTransfers ...pushProxyer) <-chan copy
 			cps := p.createCopyProxiesStatus()
 			defer wg.Done()
 
-			if cps.err = p.copyProxy(ctx, sshopts); cps.err != nil {
+			if cps.err = p.copyProxy(ctx, sshOpts, sConfig["scpArgs"]); cps.err != nil {
 				if e := ctx.Err(); e == nil {
 					cps.err = errors.New(cps.err.Error())
 				}
 				c <- cps
 				return
 			}
-			if cps.err = p.chmodProxy(ctx, sshopts); cps.err != nil {
+			if cps.err = p.chmodProxy(ctx, sshOpts, sConfig["chmodArgs"]); cps.err != nil {
 				if e := ctx.Err(); e == nil {
 					cps.err = errors.New(cps.err.Error())
 				}
@@ -83,20 +87,20 @@ func copyProxies(ctx context.Context, proxyTransfers ...pushProxyer) <-chan copy
 
 // createProxyTransferInfoObjects uses the configuration information to create a string of pushProxyer objects containing source and
 // destination information for VOMS proxies
-func createProxyTransferInfoObjects(ctx context.Context, exptConfig *viper.Viper, badNodesSlice []string) (p []pushProxyer) {
+func createProxyTransferInfoObjects(ctx context.Context, eConfig ExptConfig, badNodesSlice []string) (p []pushProxyer) {
 	badNodesMap := make(map[string]struct{})
 
 	for _, node := range badNodesSlice {
 		badNodesMap[node] = struct{}{}
 	}
 
-	for acct, role := range exptConfig.GetStringMapString("accounts") {
+	for acct, role := range eConfig.Accounts {
 		// Create the proxy transfer objects, attach to slice
 		proxyFile := acct + "." + role + ".proxy"
 		proxyFilePath := path.Join("proxies", proxyFile)
-		finalProxyPath := path.Join(exptConfig.GetString("dir"), acct, proxyFile)
+		finalProxyPath := path.Join(eConfig.DestDir, acct, proxyFile)
 
-		for _, node := range exptConfig.GetStringSlice("nodes") {
+		for _, node := range eConfig.Nodes {
 			var badnode bool
 			if _, ok := badNodesMap[node]; ok {
 				badnode = true
@@ -118,11 +122,37 @@ func createProxyTransferInfoObjects(ctx context.Context, exptConfig *viper.Viper
 
 // copyProxy uses scp to copy the proxy to the destination node, putting it in a file specified by pt.proxyFileNameDest
 // with ".new" appended.  It returns an error.
-func (pt *proxyTransferInfo) copyProxy(ctx context.Context, sshopts []string) error {
+func (pt *proxyTransferInfo) copyProxy(ctx context.Context, sshOpts []string, scpTemplate string) error {
+	var scpArgsTemplateOut bytes.Buffer
 	newProxyPath := pt.proxyFileNameDest + ".new"
-	accountNode := pt.account + "@" + pt.node + ".fnal.gov"
-	scpargs := append(sshopts, pt.proxyFilePathSrc, accountNode+":"+newProxyPath)
-	scpCmd := exec.CommandContext(ctx, "scp", scpargs...)
+
+	var scpMap = map[string]string{
+		"ProxySourcePath": pt.proxyFilePathSrc,
+		"Account":         pt.account,
+		"Node":            pt.node,
+		"NewProxyPath":    newProxyPath,
+	}
+
+	t := template.Must(template.New("scpTemplate").Parse(scpTemplate))
+	err := t.Execute(&scpArgsTemplateOut, scpMap)
+	if err != nil {
+		return err
+	}
+
+	scpArgsString := scpArgsTemplateOut.String()
+	scpArgs := sshOpts
+	scpArgs = append(scpArgs, strings.Fields(scpArgsString)...)
+
+	// accountNode := pt.account + "@" + pt.node + ".fnal.gov"
+
+	//scpargs := append(sshopts, pt.proxyFilePathSrc, accountNode+":"+newProxyPath)
+
+	scpExecutable, err := exec.LookPath("scp")
+	if err != nil {
+		return err
+	}
+
+	scpCmd := exec.CommandContext(ctx, scpExecutable, scpArgs...)
 
 	if cmdOut, cmdErr := scpCmd.CombinedOutput(); cmdErr != nil {
 		if e := ctx.Err(); e != nil {
@@ -137,14 +167,38 @@ func (pt *proxyTransferInfo) copyProxy(ctx context.Context, sshopts []string) er
 
 // chmodProxy uses ssh and chmod to change the permissions of the proxy on the destination node, putting it in a file
 // specified by pt.proxyFileNameDest.  It returns an error.
-func (pt *proxyTransferInfo) chmodProxy(ctx context.Context, sshopts []string) error {
-	newProxyPath := pt.proxyFileNameDest + ".new"
-	accountNode := pt.account + "@" + pt.node + ".fnal.gov"
-	sshargs := append(sshopts, accountNode,
-		"chmod 400 "+newProxyPath+" ; mv -f "+newProxyPath+" "+pt.proxyFileNameDest)
-	sshCmd := exec.CommandContext(ctx, "ssh", sshargs...)
+func (pt *proxyTransferInfo) chmodProxy(ctx context.Context, sshOpts []string, chmodTemplate string) error {
+	var chmodArgsTemplateOut bytes.Buffer
 
-	if cmdOut, cmdErr := sshCmd.CombinedOutput(); cmdErr != nil {
+	newProxyPath := pt.proxyFileNameDest + ".new"
+	// accountNode := pt.account + "@" + pt.node + ".fnal.gov"
+	var chmodMap = map[string]string{
+		"Account":        pt.account,
+		"Node":           pt.node,
+		"NewProxyPath":   newProxyPath,
+		"FinalProxyPath": pt.proxyFileNameDest,
+	}
+
+	t := template.Must(template.New("chmodTemplate").Parse(chmodTemplate))
+	err := t.Execute(&chmodArgsTemplateOut, chmodMap)
+	if err != nil {
+		return err
+	}
+
+	chmodArgsString := chmodArgsTemplateOut.String()
+	chmodArgs := sshOpts
+	chmodArgs = append(chmodArgs, strings.Fields(chmodArgsString)...)
+
+	//	sshargs := append(sshopts, accountNode,
+	//"chmod 400 "+newProxyPath+" ; mv -f "+newProxyPath+" "+pt.proxyFileNameDest)
+	sshExecutable, err := exec.LookPath("ssh")
+	if err != nil {
+		return err
+	}
+
+	chmodCmd := exec.CommandContext(ctx, sshExecutable, chmodArgs...)
+
+	if cmdOut, cmdErr := chmodCmd.CombinedOutput(); cmdErr != nil {
 		if e := ctx.Err(); e != nil {
 			return e
 		}

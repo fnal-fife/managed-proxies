@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/user"
 	"strings"
-	"sync"
 	"time"
 
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/experimentutil"
@@ -33,9 +32,13 @@ var (
 	startSetup     time.Time
 	startProxyPush time.Time
 	startCleanup   time.Time
-	tConfig        timeoutsConfig
-	nConfig        notificationsConfig
-	lConfig        logsConfig
+	tConfig        experimentutil.TimeoutsConfig
+	nConfig        notifications.Config
+	lConfig        experimentutil.LogsConfig
+	vConfig        experimentutil.VPIConfig
+	krbConfig      experimentutil.KerbConfig
+	pConfig        experimentutil.PingConfig
+	sConfig        experimentutil.SSHConfig
 )
 
 // createExptConfig takes the config information from the global file and creates an exptConfig object
@@ -185,7 +188,7 @@ func init() {
 	}, &logrus.TextFormatter{FullTimestamp: true}))
 
 	// Set up the logConfig to pass to other packages
-	lConfig := make(experimentutil.logsConfig)
+	// lConfig := make(experimentutil.logsConfig)
 	for key, value := range viper.GetStringMapString("logs") {
 		lConfig[key] = value
 	}
@@ -193,7 +196,7 @@ func init() {
 	log.Debugf("Using config file %s", viper.GetString("configfile"))
 
 	// Set up notifications
-	nConfig := make(notifications.notificationsConfig)
+	// nConfig := make(notifications.notificationsConfig)
 	nKey := "notifications"
 	// Test flag sets which notifications section from config we want to use.
 	if viper.GetBool("test") {
@@ -239,7 +242,7 @@ func init() {
 	}
 
 	// Parse our timeouts, store them into timeoutDurationMap for later use
-	tConfig := make(experimentutil.timeoutsConfig)
+	//tConfig := make(experimentutil.timeoutsConfig)
 
 	for timeoutName, timeoutString := range viper.GetStringMapString("timeout") {
 		value, err := time.ParseDuration(timeoutString)
@@ -249,6 +252,29 @@ func init() {
 		}
 		newName := timeoutName + "Duration"
 		tConfig[newName] = value
+	}
+
+	// Set up voms-proxy-init config object
+	for key, value := range viper.GetStringMapString("vomsproxyinit") {
+		if key != "defaultvomsprefixroot" {
+			vConfig[key] = value
+		}
+	}
+
+	// TODO:  Put the next three in a loop
+	// Set up kerb config object
+	for key, value := range viper.GetStringMapString("kerberos") {
+		krbConfig[key] = value
+	}
+
+	// Set up ping config object
+	for key, value := range viper.GetStringMapString("ping") {
+		pConfig[key] = value
+	}
+
+	// Set up ssh config object
+	for key, value := range viper.GetStringMapString("ssh") {
+		sConfig[key] = value
 	}
 
 	// Set up prometheus pusher
@@ -271,7 +297,7 @@ func init() {
 	}
 }
 
-func cleanup(exptStatus map[string]bool, experiments []string) error {
+func cleanup(exptStatus map[string]bool, exptConfigs []experimentutil.ExptConfig) error {
 	// Since cleanup happens in all cases after the proxy push starts, we stop that timer and push the metric here
 	if viper.GetString("experiment") == "" {
 		// Only push this metric if we ran for all experiments to keep data consistent
@@ -342,22 +368,14 @@ func cleanup(exptStatus map[string]bool, experiments []string) error {
 	finalCleanupSuccess := true
 	msg := string(data)
 
-	t, ok := tConfig["emailTimeoutDuration"].(time.Duration)
-	if !ok {
-		return errors.New("emailTimeoutDuration is not a time.Duration object")
-	}
-	emailCtx, emailCancel := context.WithTimeout(context.Background(), t)
+	emailCtx, emailCancel := context.WithTimeout(context.Background(), tConfig["emailTimeoutDuration"])
 	if err = notifications.SendEmail(emailCtx, "", msg); err != nil {
 		log.Error(err)
 		finalCleanupSuccess = false
 	}
 	emailCancel()
 
-	t, ok = tConfig["slackTimeoutDuration"].(time.Duration)
-	if !ok {
-		return errors.New("slackTimeoutDuration is not a time.Duration object")
-	}
-	slackCtx, slackCancel := context.WithTimeout(context.Background(), t)
+	slackCtx, slackCancel := context.WithTimeout(context.Background(), tConfig["slackTimeoutDuration"])
 	if err = notifications.SendSlackMessage(slackCtx, msg); err != nil {
 		log.Error(err)
 		finalCleanupSuccess = false
@@ -380,14 +398,14 @@ func main() {
 	exptSuccesses := make(map[string]bool) // map of successful expts
 	//expts := make([]string, 0, len(viper.GetStringMap("experiments"))) // Slice of experiments we will actually process
 
-	exptConfigs := make([]experimentutil.exptConfig, 0, len(viper.GetStringMap("experiments"))) // Slice of experiments we will actually process
+	exptConfigs := make([]experimentutil.ExptConfig, 0, len(viper.GetStringMap("experiments"))) // Slice of experiments we will actually process
 
 	// Get our list of experiments from the config file, create exptConfig objects
 	if viper.GetString("experiment") != "" {
 		// If experiment is passed in on command line
 		eConfig, err := createExptConfig(viper.GetString("experiment"))
 		if err != nil {
-			log.WithFields(log.Fields{
+			log.WithFields(logrus.Fields{
 				"experiment": viper.GetString("experiment"),
 				"caller":     "main",
 			}).Fatal("Error setting up experiment configuration slice.  As this is the only experiment, we will exit now.")
@@ -398,7 +416,7 @@ func main() {
 		for k := range viper.GetStringMap("experiments") {
 			eConfig, err := createExptConfig(k)
 			if err != nil {
-				log.WithFields(log.Fields{
+				log.WithFields(logrus.Fields{
 					"experiment": k,
 					"caller":     "main",
 				}).Error("Error setting up experiment configuration slice")
@@ -414,11 +432,7 @@ func main() {
 
 	startProxyPush = time.Now()
 	// Start up the expt manager
-	t, ok := tConfig["globalTimeoutDuration"].(time.Duration)
-	if !ok {
-		log.Fatal("globalTimeoutDuration is not a time.Duration object")
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), t)
+	ctx, cancel := context.WithTimeout(context.Background(), tConfig["globalTimeoutDuration"])
 	defer cancel()
 	c := manageExperimentChannels(ctx, exptConfigs)
 	// Listen on the manager channel
