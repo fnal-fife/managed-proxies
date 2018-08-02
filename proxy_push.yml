@@ -10,7 +10,6 @@ timeout:
   slackTimeout:  15s # Slack message timeout
   emailTimeout:  30s # Email timeout (per email)
 
-
 # Logging/Error handling files.
 logs:
   logfile:  proxy_push.log
@@ -31,22 +30,8 @@ notifications_test:
   SLACK_ALERTS_URL: "https://hooks.slack.com/services/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"     # Slack url for #fifealertsdev channel in fnal slack.  Use for testing
   admin_email: sbhat@fnal.gov
   # admin_email: kherner@fnal.gov
+  #
   
-
-# Prometheus monitoring config
-prometheus:
-  host: "http://fermicloud149.fnal.gov:9091"
-  jobname: "proxy_push_tracker"
-
-
-
-# Other config variabless
-global:
-  should_runuser: rexbatch                                    # User that this script must run as 
-  KRB5CCNAME:  "FILE:/tmp/krb5cc_push_proxy"  # What the env variable KRB5CCNAME should be set to
-  CERT_BASE_DIR: "/opt/gen_push_proxy/certs"                      # base location for certs/keys
-  # Note:  unless there is a certfile and/or keyfile override below in a given stanza, the proxy_push assumes that the cert/key for each experiment/role is located at CERT_BASE_DIR/<account>.{cert|key}.  e.g. novapro.cert and novapro.key
-
 # Experiments
 # Note: accounts entries should be of the form "account_name: Role_name"
 experiments:
@@ -207,3 +192,38 @@ experiments:
     vomsgroup: "fermilab:/fermilab/nova/"
     certfile: "/opt/gen_push_proxy/certs/CI-service.cert"
     keyfile:  "/opt/gen_push_proxy/certs/CI-service.key"
+
+
+# Prometheus monitoring config
+prometheus:
+  host: "http://fermicloud149.fnal.gov:9091"
+  jobname: "proxy_push_tracker"
+  
+
+# Other config variabless
+global:
+  should_runuser: rexbatch                                    # User that this script must run as 
+  CERT_BASE_DIR: "/opt/gen_push_proxy/certs"                      # base location for certs/keys
+  # Note:  unless there is a certfile and/or keyfile override below in a given stanza, the proxy_push assumes that the cert/key for each experiment/role is located at CERT_BASE_DIR/<account>.{cert|key}.  e.g. novapro.cert and novapro.key
+
+
+# Command templates and arguments 
+vomsProxyInit:
+  defaultVomsPrefixRoot: "fermilab:/fermilab/" 
+  executable: /usr/bin/voms-proxy-init
+  vpiCommand: "-rfc -valid 24:00 -voms {{.VomsFQAN}} -cert {{.CertFile}} -key {{.KeyFile}} -out {{.OutfilePath}}"
+
+kerberos:
+  KRB5CCNAME:  "FILE:/tmp/krb5cc_push_proxy"  # What the env variable KRB5CCNAME should be set to
+  kinitExecutable: /usr/krb5/bin/kinit
+  kinitArgs: "-k -t /opt/gen_keytabs/config/gcso_monitor.keytab monitor/gcso/fermigrid.fnal.gov@FNAL.GOV"
+
+ping:
+  pingArgs: "-W 5 -c 1 {{.Node}}"
+
+ssh:
+  sshOpts: "-o ConnectTimeout=30 -o ServerAliveInterval=30 -o ServerAliveCountMax=1"
+  scpArgs: "{{.ProxySourcePath}} {{.Account}}@{{.Node}}.fnal.gov:{{.NewProxyPath}}"
+  chmodArgs: "{{.Account}}@{{.Node}}.fnal.gov chmod 400 {{.NewProxyPath}} ; mv -f {{.NewProxyPath}} {{.FinalProxyPath}}"
+
+
