@@ -152,6 +152,8 @@ func (pt *proxyTransferInfo) copyProxy(ctx context.Context, sshOpts []string, sc
 		return err
 	}
 
+	fmt.Println(scpExecutable, scpArgs)
+
 	scpCmd := exec.CommandContext(ctx, scpExecutable, scpArgs...)
 
 	if cmdOut, cmdErr := scpCmd.CombinedOutput(); cmdErr != nil {
