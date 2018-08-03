@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/user"
+	"strconv"
 	"strings"
 	"time"
 
@@ -100,7 +101,8 @@ func init() {
 	log.Debugf("Using config file %s", viper.GetString("configfile"))
 
 	// Set up notifications
-	nConfig = make(notifications.Config)
+	// nConfig = make(notifications.Config)
+	nConfig.ConfigInfo = make(map[string]string)
 	nKey := "notifications"
 	// Test flag sets which notifications section from config we want to use.
 	if viper.GetBool("test") {
@@ -108,21 +110,25 @@ func init() {
 		nKey = "notifications_test"
 	}
 	for key, value := range viper.GetStringMapString(nKey) {
-		nConfig[key] = value
+		nConfig.ConfigInfo[key] = value
 	}
+	nConfig.ConfigInfo["smtphost"] = viper.GetString("global.smtphost")
+	nConfig.ConfigInfo["smtpport"] = strconv.Itoa(viper.GetInt("global.smtpport"))
+	setAdminEmail(&nConfig)
 
 	// Now that our log is set up and we've got a valid config, handle all init (fatal) errors using the following func
 	// that logs the error, sends a slack message and an email, cleans up, and then exits.
 	initErrorNotify := func(m string) {
 		log.Error(m)
+		nConfig.Subject = "Error setting up proxy push"
 
 		// Durations are hard-coded here since we haven't parsed them out yet
 		slackInitCtx, slackInitCancel := context.WithTimeout(context.Background(), time.Duration(15*time.Second))
-		notifications.SendSlackMessage(slackInitCtx, m)
+		notifications.SendSlackMessage(slackInitCtx, nConfig, m)
 		slackInitCancel()
 
 		emailInitCtx, emailInitCancel := context.WithTimeout(context.Background(), time.Duration(30*time.Second))
-		notifications.SendEmail(emailInitCtx, "", m)
+		notifications.SendEmail(emailInitCtx, nConfig, m)
 		emailInitCancel()
 
 		if _, err := os.Stat(viper.GetString("logs.errfile")); !os.IsNotExist(err) {
@@ -228,7 +234,7 @@ func cleanup(exptStatus map[string]bool, exptConfigs []experimentutil.ExptConfig
 			if err := promPush.PushPromDuration(startCleanup, "cleanup"); err != nil {
 				msg := "Error recording time to cleanup, " + err.Error()
 				finalCleanupLogErr.Error(msg)
-				notifications.SendSlackMessage(context.Background(), msg)
+				notifications.SendSlackMessage(context.Background(), nConfig, msg)
 			}
 		}
 	}()
@@ -255,7 +261,7 @@ func cleanup(exptStatus map[string]bool, exptConfigs []experimentutil.ExptConfig
 	defer func() {
 		if err := promPush.PushCountErrors(len(f)); err != nil {
 			finalCleanupLogErr.Error(err.Error())
-			notifications.SendSlackMessage(context.Background(), err.Error())
+			notifications.SendSlackMessage(context.Background(), nConfig, err.Error())
 		}
 	}()
 
@@ -275,15 +281,16 @@ func cleanup(exptStatus map[string]bool, exptConfigs []experimentutil.ExptConfig
 	finalCleanupSuccess := true
 	msg := string(data)
 
+	setAdminEmail(&nConfig)
 	emailCtx, emailCancel := context.WithTimeout(context.Background(), tConfig["emailtimeoutDuration"])
-	if err = notifications.SendEmail(emailCtx, "", msg); err != nil {
+	if err = notifications.SendEmail(emailCtx, nConfig, msg); err != nil {
 		log.Error(err)
 		finalCleanupSuccess = false
 	}
 	emailCancel()
 
 	slackCtx, slackCancel := context.WithTimeout(context.Background(), tConfig["slacktimeoutDuration"])
-	if err = notifications.SendSlackMessage(slackCtx, msg); err != nil {
+	if err = notifications.SendSlackMessage(slackCtx, nConfig, msg); err != nil {
 		log.Error(err)
 		finalCleanupSuccess = false
 	}

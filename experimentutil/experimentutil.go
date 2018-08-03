@@ -18,7 +18,6 @@ import (
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/notifications"
 	"github.com/rifflock/lfshook"
 	"github.com/sirupsen/logrus"
-	"github.com/spf13/viper"
 )
 
 const exptErrFilenamef string = "golang_proxy_push_%s.log" // CHANGE ME BEFORE PRODUCTION - temp file per experiment that will be emailed to experiment
@@ -65,6 +64,7 @@ type ExptConfig struct {
 	VomsPrefix  string
 	CertFile    string
 	KeyFile     string
+	IsTest      bool
 	NConfig     notifications.Config
 	TimeoutsConfig
 	LogsConfig
@@ -93,6 +93,15 @@ func (f *ExptErrorFormatter) Format(entry *logrus.Entry) ([]byte, error) {
 	logLine := fmt.Sprintf("[%s] [%s] [%s]: %s", entry.Time, expt, entry.Level, entry.Message)
 	logByte := []byte(logLine)
 	return append(logByte, '\n'), nil
+}
+
+// setupNotificationsConfig TODO
+func setupNotificationsConfig(pExptConfig *ExptConfig) {
+	pExptConfig.NConfig.From = pExptConfig.NConfig.ConfigInfo["admin_email"]
+	if !pExptConfig.IsTest {
+		pExptConfig.NConfig.To = pExptConfig.ExptEmails
+	}
+	pExptConfig.NConfig.Subject = "Managed Proxy Push errors for " + pExptConfig.Name
 }
 
 // exptLogInit sets up the logrus instance for the experiment worker
@@ -183,7 +192,7 @@ func checkKeys(ctx context.Context, eConfig ExptConfig) error {
 // experimentCleanup manages the cleanup operations for an experiment, such as sending emails if necessary,
 // and copying, removing or archiving the logs
 // TODO:  maybe a unit test for this
-func (expt *ExperimentSuccess) experimentCleanup(ctx context.Context, timeout time.Duration) error {
+func (expt *ExperimentSuccess) experimentCleanup(ctx context.Context, exptConfig ExptConfig) error {
 	if e := ctx.Err(); e != nil {
 		return e
 	}
@@ -214,7 +223,7 @@ func (expt *ExperimentSuccess) experimentCleanup(ctx context.Context, timeout ti
 		// var err error = nil // Dummy
 		// err := sendEmail(expt.Name, exptlogfilepath, emailSlice)
 		// err := errors.New("Dummy error for email") // Take this line out and replace it with
-		if viper.GetBool("test") {
+		if exptConfig.IsTest {
 			return nil // Don't do anything - we're testing.
 		}
 		data, err := ioutil.ReadFile(expterrfilepath)
@@ -228,9 +237,9 @@ func (expt *ExperimentSuccess) experimentCleanup(ctx context.Context, timeout ti
 		//		if !ok {
 		//			return errors.New("emailTimeoutDuration is not a time.Duration object")
 		//		}
-		emailCtx, emailCancel := context.WithTimeout(ctx, timeout)
+		emailCtx, emailCancel := context.WithTimeout(ctx, exptConfig.TimeoutsConfig["emailtimeoutDuration"])
 		defer emailCancel()
-		if err := notifications.SendEmail(emailCtx, expt.Name, msg); err != nil {
+		if err := notifications.SendEmail(emailCtx, exptConfig.NConfig, msg); err != nil {
 			newfilename := fmt.Sprintf("%s-%s", expterrfilepath, time.Now().Format(time.RFC3339))
 			newpath := path.Join(dir, newfilename)
 
@@ -270,12 +279,13 @@ func Worker(ctx context.Context, eConfig ExptConfig, genLog *logrus.Logger, b no
 		}
 
 		// General Setup
-		exptKey := fmt.Sprintf("experiments.%s", expt.Name)
-		if !viper.IsSet(exptKey) {
-			exptLog.Errorf("Invalid experiment %s", expt.Name)
-			declareExptFailure()
-			return
-		}
+		//		exptKey := fmt.Sprintf("experiments.%s", expt.Name)
+		//		if !viper.IsSet(exptKey) {
+		//			exptLog.Errorf("Invalid experiment %s", expt.Name)
+		//			declareExptFailure()
+		//			return
+		//		}
+		setupNotificationsConfig(&eConfig)
 		successfulCopies := make(map[string][]string)
 		failedCopies := make(map[string]map[string]struct{})
 		badNodesSlice := make([]string, 0, len(eConfig.Nodes))
@@ -468,7 +478,7 @@ func Worker(ctx context.Context, eConfig ExptConfig, genLog *logrus.Logger, b no
 		// We're logging the cleanup in the general log so that we don't create an extraneous
 		// experiment log file
 		exptLog.Info("Cleaning up ", expt.Name)
-		if err := expt.experimentCleanup(ctx, eConfig.TimeoutsConfig["emailtimeoutDuration"]); err != nil {
+		if err := expt.experimentCleanup(ctx, eConfig); err != nil {
 			genLog.WithField("experiment", expt.Name).Errorf("Error cleaning up %s: %s", expt.Name, err)
 			// genLog.Errorf("Error cleaning up %s: %s", expt.Name, err)
 		} else {

@@ -4,21 +4,27 @@ package notifications
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"strconv"
 	"strings"
-	"time"
 
-	"github.com/spf13/viper"
+	//"github.com/spf13/viper"
 	gomail "gopkg.in/gomail.v2"
 )
 
-var emailDialer = gomail.Dialer{Host: "localhost", Port: 25} // gomail dialer to use to send emails
+//var emailDialer = gomail.Dialer{Host: "localhost", Port: 25} // gomail dialer to use to send emails
+var emailDialer gomail.Dialer // gomail dialer to use to send emails
 
 // Config contains the information needed to send notifications from the proxy push service
-type Config map[string]string
+type Config struct {
+	ConfigInfo map[string]string
+	From       string
+	To         []string
+	Subject    string
+	Experiment string
+}
 
 // addHelperMessage tacks on the help text we want experiments to get.
 func addHelperMessage(msg, expt string) string {
@@ -35,24 +41,35 @@ func addHelperMessage(msg, expt string) string {
 }
 
 // SendEmail sends emails to both experiments and admins, depending on the input (exptName = "" gives admin email).
-func SendEmail(ctx context.Context, exptName, msg string) error {
-	var recipients []string
-	message := addHelperMessage(msg, exptName)
-
-	if exptName == "" {
-		exptName = "all experiments" // Send email for all experiments to admin
-		recipients = viper.GetStringSlice("notifications.admin_email")
-	} else {
-		emailsKeyLookup := "experiments." + exptName + ".emails"
-		recipients = viper.GetStringSlice(emailsKeyLookup)
+// func SendEmail(ctx context.Context, nConfig Config, exptName, msg string) error {
+func SendEmail(ctx context.Context, nConfig Config, msg string) error {
+	// var recipients []string
+	port, err := strconv.Atoi(nConfig.ConfigInfo["smtpport"])
+	if err != nil {
+		return err
 	}
 
-	subject := "Managed Proxy Push errors for " + exptName
+	emailDialer = gomail.Dialer{
+		Host: nConfig.ConfigInfo["smtphost"],
+		Port: port,
+	}
+	message := addHelperMessage(msg, nConfig.Experiment)
+
+	//	if exptName == "" {
+	//		exptName = "all experiments"  Send email for all experiments to admin
+	//		recipients = viper.GetStringSlice("notifications.admin_email")
+	//	} else {
+	//		emailsKeyLookup := "experiments." + exptName + ".emails"
+	//		recipients = viper.GetStringSlice(emailsKeyLookup)
+	//	}
+
+	// subject := "Managed Proxy Push errors for " + exptName
 
 	m := gomail.NewMessage()
-	m.SetHeader("From", "fife-group@fnal.gov")
-	m.SetHeader("To", recipients...)
-	m.SetHeader("Subject", subject)
+	// m.SetHeader("From", "fife-group@fnal.gov")
+	m.SetHeader("From", nConfig.From)
+	m.SetHeader("To", nConfig.To...)
+	m.SetHeader("Subject", nConfig.Subject)
 	m.SetBody("text/plain", message)
 
 	c := make(chan error)
@@ -65,38 +82,40 @@ func SendEmail(ctx context.Context, exptName, msg string) error {
 	select {
 	case e := <-c:
 		if e == nil {
-			fmt.Printf("Sent emails to %s\n", strings.Join(recipients, ", "))
+			fmt.Printf("Sent emails to %s\n", strings.Join(nConfig.To, ", "))
 		}
 		return e
 	case <-ctx.Done():
 		e := ctx.Err()
 		if e != context.DeadlineExceeded {
-			return fmt.Errorf("Hit timeout attempting to send email to %s", exptName)
+			return fmt.Errorf("Hit timeout attempting to send email to %s", nConfig.Experiment)
 		}
 		return e
 	}
 }
 
 // SendSlackMessage sends an HTTP POST request to a URL specified in the config file.
-func SendSlackMessage(ctx context.Context, message string) error {
+func SendSlackMessage(ctx context.Context, nConfig Config, message string) error {
 	if e := ctx.Err(); e != nil {
 		return e
 	}
 
 	msg := []byte(fmt.Sprintf(`{"text": "%s"}`, strings.Replace(message, "\"", "\\\"", -1)))
-	req, err := http.NewRequest("POST", viper.GetString("notifications.slack_alerts_url"), bytes.NewBuffer(msg))
+	req, err := http.NewRequest("POST", nConfig.ConfigInfo["slack_alerts_url"], bytes.NewBuffer(msg))
 	if err != nil {
 		return err
 	}
 
 	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(ctx)
 
 	// Actually send the request
-	d, ok := viper.Get("slackTimeoutDuration").(time.Duration)
-	if !ok {
-		return errors.New("slackTimeoutDuration is not a time.Duration object")
-	}
-	client := &http.Client{Timeout: d}
+	//	d, ok := viper.Get("slackTimeoutDuration").(time.Duration)
+	//	if !ok {
+	//		return errors.New("slackTimeoutDuration is not a time.Duration object")
+	//	}
+	client := http.DefaultClient
+	// client := &http.Client{Timeout: d}
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
