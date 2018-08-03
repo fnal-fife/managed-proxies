@@ -133,10 +133,6 @@ func (pt *proxyTransferInfo) copyProxy(ctx context.Context, sshOpts []string, sc
 		"NewProxyPath":    newProxyPath,
 	}
 
-	//TODO
-
-	fmt.Println(scpTemplate)
-
 	t := template.Must(template.New("scpTemplate").Parse(scpTemplate))
 	err := t.Execute(&scpArgsTemplateOut, scpMap)
 	if err != nil {
@@ -144,10 +140,6 @@ func (pt *proxyTransferInfo) copyProxy(ctx context.Context, sshOpts []string, sc
 	}
 
 	scpArgsString := scpArgsTemplateOut.String()
-
-	//TODO
-	fmt.Println(scpArgsTemplateOut)
-
 	scpArgs := sshOpts
 	scpArgs = append(scpArgs, strings.Fields(scpArgsString)...)
 
