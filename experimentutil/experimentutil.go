@@ -415,6 +415,8 @@ func Worker(ctx context.Context, eConfig ExptConfig, genLog *logrus.Logger, b no
 		//		proxyTransferInfoObjects := make([]pushProxyer, len(exptConfig.GetStringSlice("nodes"))*len(exptConfig.GetStringMapString("accounts")))
 		//		proxyTransferInfoObjects := make([]pushProxyer, len(exptConfig.GetStringSlice("nodes"))*len(exptConfig.GetStringMapString("accounts")))
 		proxyTransferInfoObjects := createProxyTransferInfoObjects(copyCtx, eConfig, badNodesSlice)
+		//TODO
+		fmt.Println("SSH CONFIG", eConfig.SSHConfig)
 		copyChan := copyProxies(copyCtx, eConfig.SSHConfig, proxyTransferInfoObjects...)
 		// if expt.Name == "darkside" {
 		// 	time.Sleep(time.Duration(25) * time.Second)
