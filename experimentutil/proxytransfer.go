@@ -140,6 +140,10 @@ func (pt *proxyTransferInfo) copyProxy(ctx context.Context, sshOpts []string, sc
 	}
 
 	scpArgsString := scpArgsTemplateOut.String()
+
+	//TODO
+	fmt.Println(scpArgsTemplateOut)
+
 	scpArgs := sshOpts
 	scpArgs = append(scpArgs, strings.Fields(scpArgsString)...)
 
