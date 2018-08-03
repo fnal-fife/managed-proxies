@@ -41,7 +41,7 @@ func createExptConfig(expt string) (experimentutil.ExptConfig, error) {
 	if exptSubConfig.IsSet("vomsgroup") {
 		vomsprefix = exptSubConfig.GetString("vomsgroup")
 	} else {
-		vomsprefix = "fermilab:/fermilab/" + expt + "/"
+		//vomsprefix = "fermilab:/fermilab/" + expt + "/"
 		vomsprefix = viper.GetString("vomsproxyinit.defaultvomsprefixroot") + expt + "/"
 	}
 
@@ -49,7 +49,7 @@ func createExptConfig(expt string) (experimentutil.ExptConfig, error) {
 		certfile = exptSubConfig.GetString("certfile")
 	}
 	if exptSubConfig.IsSet("keyfile") {
-		certfile = exptSubConfig.GetString("keyfile")
+		keyfile = exptSubConfig.GetString("keyfile")
 	}
 
 	n := notifications.Config{}
