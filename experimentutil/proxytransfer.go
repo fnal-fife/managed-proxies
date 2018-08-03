@@ -60,14 +60,14 @@ func copyProxies(ctx context.Context, sConfig SSHConfig, proxyTransfers ...pushP
 			cps := p.createCopyProxiesStatus()
 			defer wg.Done()
 
-			if cps.err = p.copyProxy(ctx, sshOpts, sConfig["scpArgs"]); cps.err != nil {
+			if cps.err = p.copyProxy(ctx, sshOpts, sConfig["scpargs"]); cps.err != nil {
 				if e := ctx.Err(); e == nil {
 					cps.err = errors.New(cps.err.Error())
 				}
 				c <- cps
 				return
 			}
-			if cps.err = p.chmodProxy(ctx, sshOpts, sConfig["chmodArgs"]); cps.err != nil {
+			if cps.err = p.chmodProxy(ctx, sshOpts, sConfig["chmodargs"]); cps.err != nil {
 				if e := ctx.Err(); e == nil {
 					cps.err = errors.New(cps.err.Error())
 				}
