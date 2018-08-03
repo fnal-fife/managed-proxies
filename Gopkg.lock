@@ -36,6 +36,12 @@
   revision = "23c074d0eceb2b8a5bfdbb271ab780cde70f05a8"
 
 [[projects]]
+  branch = "master"
+  name = "github.com/jinzhu/copier"
+  packages = ["."]
+  revision = "7e38e58719c33e0d44d585c4ab477a30f8cb82dd"
+
+[[projects]]
   name = "github.com/magiconair/properties"
   packages = ["."]
   revision = "d419a98cdbed11a922bf76f257b7c4be79b50e73"
@@ -188,6 +194,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "d5509073c895698bbf2ab4eb80e94df485d6e1cab354d2f9e556f616f37164a7"
+  inputs-digest = "ab27af73a69e31f3d0f089963ba1ece8bbe68d3e900210350545581ba04c20e0"
   solver-name = "gps-cdcl"
   solver-version = 1
