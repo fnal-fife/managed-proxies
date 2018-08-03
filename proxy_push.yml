@@ -204,6 +204,8 @@ prometheus:
 global:
   should_runuser: rexbatch                                    # User that this script must run as 
   CERT_BASE_DIR: "/opt/gen_push_proxy/certs"                      # base location for certs/keys
+  smtphost: localhost
+  smtpport: 25 
   # Note:  unless there is a certfile and/or keyfile override below in a given stanza, the proxy_push assumes that the cert/key for each experiment/role is located at CERT_BASE_DIR/<account>.{cert|key}.  e.g. novapro.cert and novapro.key
 
 

@@ -8,9 +8,19 @@ import (
 	"sync"
 
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/experimentutil"
+	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/notifications"
+	"github.com/jinzhu/copier"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 )
+
+// setAdminEmail TODO
+func setAdminEmail(pnConfig *notifications.Config) {
+	pnConfig.From = pnConfig.ConfigInfo["admin_email"]
+	pnConfig.To = []string{pnConfig.ConfigInfo["admin_email"]}
+
+	return
+}
 
 // createExptConfig takes the config information from the global file and creates an exptConfig object
 func createExptConfig(expt string) (experimentutil.ExptConfig, error) {
@@ -42,6 +52,9 @@ func createExptConfig(expt string) (experimentutil.ExptConfig, error) {
 		certfile = exptSubConfig.GetString("keyfile")
 	}
 
+	n := notifications.Config{}
+	copier.Copy(&n, &nConfig)
+
 	c = experimentutil.ExptConfig{
 		Name:           expt,
 		CertBaseDir:    viper.GetString("global.cert_base_dir"),
@@ -53,7 +66,8 @@ func createExptConfig(expt string) (experimentutil.ExptConfig, error) {
 		VomsPrefix:     vomsprefix,
 		CertFile:       certfile,
 		KeyFile:        keyfile,
-		NConfig:        nConfig,
+		IsTest:         viper.GetBool("test"),
+		NConfig:        n,
 		TimeoutsConfig: tConfig,
 		LogsConfig:     lConfig,
 		VPIConfig:      vConfig,
