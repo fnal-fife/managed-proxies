@@ -120,10 +120,10 @@ func (v *vomsProxy) getProxy(ctx context.Context, vConfig VPIConfig) (string, er
 	//		v.fqan, "-cert", v.certfile,
 	//		"-key", v.keyfile, "-out", outfilePath}
 
-	//cmd := exec.CommandContext(ctx, "/usr/bin/voms-proxy-init", vpiargs...)
-	//TODO:
+	//TODO
 	fmt.Println(vConfig["executable"], vpiArgs)
 
+	//cmd := exec.CommandContext(ctx, "/usr/bin/voms-proxy-init", vpiargs...)
 	cmd := exec.CommandContext(ctx, vConfig["executable"], vpiArgs...)
 	if cmdErr := cmd.Run(); cmdErr != nil {
 		if e := ctx.Err(); e != nil {
