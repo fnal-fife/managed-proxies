@@ -271,7 +271,7 @@ func cleanup(exptStatus map[string]bool, exptConfigs []experimentutil.ExptConfig
 		log.Info("Proxy Push completed with no errors")
 		if viper.GetBool("test") {
 			slackCtx, slackCancel := context.WithTimeout(context.Background(), tConfig["slacktimeoutDuration"])
-			msg := "Proxies were pushed in test mode for all experiments successfully."
+			msg := "Proxies were pushed in test mode for all tested experiments successfully."
 			if err = notifications.SendSlackMessage(slackCtx, nConfig, msg); err != nil {
 				log.Error(err)
 			}
