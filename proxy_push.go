@@ -301,6 +301,16 @@ func cleanup(exptStatus map[string]bool, exptConfigs []experimentutil.ExptConfig
 		finalCleanupSuccess = false
 	}
 
+	if viper.GetBool("test") {
+		slackCtx, slackCancel := context.WithTimeout(context.Background(), tConfig["slacktimeoutDuration"])
+		msg := "Proxies were pushed in test mode for all experiments successfully."
+		if err = notifications.SendSlackMessage(slackCtx, nConfig, msg); err != nil {
+			log.Error(err)
+			finalCleanupSuccess = false
+		}
+		slackCancel()
+	}
+
 	if !finalCleanupSuccess {
 		return errors.New("Could not clean up.  Please review")
 	}
