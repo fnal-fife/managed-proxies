@@ -269,6 +269,14 @@ func cleanup(exptStatus map[string]bool, exptConfigs []experimentutil.ExptConfig
 
 	if _, err := os.Stat(viper.GetString("logs.errfile")); os.IsNotExist(err) {
 		log.Info("Proxy Push completed with no errors")
+		if viper.GetBool("test") {
+			slackCtx, slackCancel := context.WithTimeout(context.Background(), tConfig["slacktimeoutDuration"])
+			msg := "Proxies were pushed in test mode for all experiments successfully."
+			if err = notifications.SendSlackMessage(slackCtx, nConfig, msg); err != nil {
+				log.Error(err)
+			}
+			slackCancel()
+		}
 		return nil
 	}
 
@@ -299,16 +307,6 @@ func cleanup(exptStatus map[string]bool, exptConfigs []experimentutil.ExptConfig
 	if err = os.Remove(viper.GetString("logs.errfile")); err != nil {
 		log.Error("Could not remove general error logfile.  Please clean up manually")
 		finalCleanupSuccess = false
-	}
-
-	if viper.GetBool("test") {
-		slackCtx, slackCancel := context.WithTimeout(context.Background(), tConfig["slacktimeoutDuration"])
-		msg := "Proxies were pushed in test mode for all experiments successfully."
-		if err = notifications.SendSlackMessage(slackCtx, nConfig, msg); err != nil {
-			log.Error(err)
-			finalCleanupSuccess = false
-		}
-		slackCancel()
 	}
 
 	if !finalCleanupSuccess {
