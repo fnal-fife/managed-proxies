@@ -16,6 +16,7 @@ const (
 type goodNode string
 
 func (g goodNode) pingNode(ctx context.Context, p PingConfig) error {
+	fmt.Println("Running fake pingNode")
 	return nil
 }
 
@@ -33,7 +34,7 @@ func TestPingNode(t *testing.T) {
 	ctx := context.Background()
 
 	var p = PingConfig{
-		"foo": "bar",
+		"pingargs": "-c 1 {{.Node}}",
 	}
 
 	// Control test
