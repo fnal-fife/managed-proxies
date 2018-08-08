@@ -14,11 +14,11 @@ import (
 	"github.com/spf13/viper"
 )
 
-// setAdminEmail TODO
+// setAdminEmail sets the notifications config objects' From and To fields to the config file's admin value
 func setAdminEmail(pnConfig *notifications.Config) {
 	pnConfig.From = pnConfig.ConfigInfo["admin_email"]
 	pnConfig.To = []string{pnConfig.ConfigInfo["admin_email"]}
-
+	log.Debug("Set notifications config email values to admin defaults")
 	return
 }
 
@@ -41,7 +41,6 @@ func createExptConfig(expt string) (experimentutil.ExptConfig, error) {
 	if exptSubConfig.IsSet("vomsgroup") {
 		vomsprefix = exptSubConfig.GetString("vomsgroup")
 	} else {
-		//vomsprefix = "fermilab:/fermilab/" + expt + "/"
 		vomsprefix = viper.GetString("vomsproxyinit.defaultvomsprefixroot") + expt + "/"
 	}
 
@@ -75,7 +74,7 @@ func createExptConfig(expt string) (experimentutil.ExptConfig, error) {
 		PingConfig:     pConfig,
 		SSHConfig:      sConfig,
 	}
-
+	log.WithFields(logrus.Fields{"experiment": c.Name}).Debug("Set up experiment config")
 	return c, nil
 
 }
@@ -99,18 +98,23 @@ func manageExperimentChannels(ctx context.Context, exptConfigs []experimentutil.
 			// successful status is sent, and when the channel closes after cleanup.  If we timeout, just move on.
 			// Expt channel is buffered anyway, so if the worker tries to send later and there's no receiver,
 			// garbage collection will take care of it
+			log.WithFields(logrus.Fields{"experiment": eConfig.Name}).Debug("Starting worker")
 			c := experimentutil.Worker(exptContext, eConfig, log, promPush)
 			select {
 			case status := <-c: // Grab status from channel
+				log.WithFields(logrus.Fields{"experiment": eConfig.Name}).Debug("Received status")
 				agg <- status
+				log.WithFields(logrus.Fields{"experiment": eConfig.Name}).Debug("Put status into aggregation channel")
 				<-c // Block until channel closes, which means experiment worker is done with everything
+				log.WithFields(logrus.Fields{"experiment": eConfig.Name}).Debug("Experiment channel closed.  Returning.")
 			case <-exptContext.Done():
 				if err := exptContext.Err(); err == context.DeadlineExceeded {
-					log.Error("Timed out waiting for experiment success info to be reported. Someone from USDC should " +
+					msg := "Timed out waiting for experiment success info to be reported. Someone from USDC should " +
 						"look into this and cleanup if needed.  See " +
-						"https://cdcvs.fnal.gov/redmine/projects/discompsupp/wiki/MANAGEDPROXIES for instructions.")
+						"https://cdcvs.fnal.gov/redmine/projects/discompsupp/wiki/MANAGEDPROXIES for instructions."
+					log.WithFields(logrus.Fields{"experiment": eConfig.Name}).Error(msg)
 				} else {
-					log.Error(err)
+					log.WithFields(logrus.Fields{"experiment": eConfig.Name}).Error(err)
 				}
 			}
 		}(eConfig)
@@ -134,7 +138,7 @@ func checkUser(authuser string) error {
 	if err != nil {
 		return errors.New("Could not lookup current user.  Exiting")
 	}
-	log.Info("Running script as ", cuser.Username)
+	log.Debug("Running script as ", cuser.Username)
 	if cuser.Username != authuser {
 		return fmt.Errorf("This must be run as %s.  Trying to run as %s", authuser, cuser.Username)
 	}

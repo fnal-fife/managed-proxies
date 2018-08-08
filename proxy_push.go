@@ -7,7 +7,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
-	"os/user"
 	"strconv"
 	"strings"
 	"time"
@@ -119,7 +118,7 @@ func init() {
 	// Now that our log is set up and we've got a valid config, handle all init (fatal) errors using the following func
 	// that logs the error, sends a slack message and an email, cleans up, and then exits.
 	initErrorNotify := func(m string) {
-		log.Error(m)
+		log.WithFields(logrus.Fields{"caller": "main.init"}).Error(m)
 		nConfig.Subject = "Error setting up proxy push"
 
 		// Durations are hard-coded here since we haven't parsed them out yet
@@ -140,15 +139,8 @@ func init() {
 	}
 
 	// Check that we're running as the right user
-	cuser, err := user.Current()
-	if err != nil {
-		initErrorNotify("Could not lookup current user.  Exiting")
-	}
-	log.Info("Running script as ", cuser.Username)
-	if cuser.Username != viper.GetString("global.should_runuser") {
-		msg := fmt.Sprintf("This must be run as %s.  Trying to run as %s",
-			viper.GetString("global.should_runuser"), cuser.Username)
-		initErrorNotify(msg)
+	if err = checkUser(viper.GetString("global.should_runuser")); err != nil {
+		initErrorNotify(err.Error())
 	}
 
 	// Parse our timeouts, store them into timeoutDurationMap for later use
@@ -189,6 +181,8 @@ func init() {
 	for key, value := range viper.GetStringMapString("ssh") {
 		sConfig[key] = value
 	}
+
+	log.WithFields(logrus.Fields{"caller": "main.init"}).Debug("Read in config file to config structs")
 
 	// Set up prometheus pusher
 
@@ -273,7 +267,7 @@ func cleanup(exptStatus map[string]bool, exptConfigs []experimentutil.ExptConfig
 			slackCtx, slackCancel := context.WithTimeout(context.Background(), tConfig["slacktimeoutDuration"])
 			msg := "Proxies were pushed in test mode for all tested experiments successfully."
 			if err = notifications.SendSlackMessage(slackCtx, nConfig, msg); err != nil {
-				log.Error(err)
+				log.WithFields(logrus.Fields{"caller": "main.cleanup"}).Error("Error sending slack message")
 			}
 			slackCancel()
 		}
@@ -292,20 +286,20 @@ func cleanup(exptStatus map[string]bool, exptConfigs []experimentutil.ExptConfig
 	setAdminEmail(&nConfig)
 	emailCtx, emailCancel := context.WithTimeout(context.Background(), tConfig["emailtimeoutDuration"])
 	if err = notifications.SendEmail(emailCtx, nConfig, msg); err != nil {
-		log.Error(err)
+		log.WithFields(logrus.Fields{"caller": "main.cleanup"}).Error("Error sending email")
 		finalCleanupSuccess = false
 	}
 	emailCancel()
 
 	slackCtx, slackCancel := context.WithTimeout(context.Background(), tConfig["slacktimeoutDuration"])
 	if err = notifications.SendSlackMessage(slackCtx, nConfig, msg); err != nil {
-		log.Error(err)
+		log.WithFields(logrus.Fields{"caller": "main.cleanup"}).Error("Error sending slack message")
 		finalCleanupSuccess = false
 	}
 	slackCancel()
 
 	if err = os.Remove(viper.GetString("logs.errfile")); err != nil {
-		log.Error("Could not remove general error logfile.  Please clean up manually")
+		log.WithFields(logrus.Fields{"caller": "main.cleanup"}).Error("Could not remove general error logfile.  Please clean up manually")
 		finalCleanupSuccess = false
 	}
 
@@ -349,7 +343,7 @@ func main() {
 
 	// Setup is done here.  Push the time
 	if err := promPush.PushPromDuration(startSetup, "setup"); err != nil {
-		log.Errorf("Error recording time to setup, %s", err.Error())
+		log.WithFields(logrus.Fields{"caller": "main"}).Errorf("Error recording time to setup, %s", err.Error())
 	}
 
 	startProxyPush = time.Now()
@@ -365,7 +359,7 @@ func main() {
 			if !chanOpen {
 				err := cleanup(exptSuccesses, exptConfigs)
 				if err != nil {
-					log.Error(err)
+					log.WithFields(logrus.Fields{"caller": "main"}).Error("Unable to cleanup")
 				}
 				return
 			}
@@ -374,12 +368,12 @@ func main() {
 		case <-ctx.Done():
 			// Timeout
 			if e := ctx.Err(); e == context.DeadlineExceeded {
-				log.Error("Hit the global timeout!")
+				log.WithFields(logrus.Fields{"caller": "main"}).Error("Hit the global timeout!")
 			} else {
-				log.Error(e)
+				log.WithFields(logrus.Fields{"caller": "main"}).Error(e)
 			}
 			if err := cleanup(exptSuccesses, exptConfigs); err != nil {
-				log.Error(err)
+				log.WithFields(logrus.Fields{"caller": "main"}).Error("Unable to cleanup")
 			}
 			return
 		}

@@ -10,8 +10,6 @@ import (
 	"strings"
 	"sync"
 	"text/template"
-
-	log "github.com/sirupsen/logrus"
 )
 
 // getProxyer is an interface that wraps up the getProxy method.  It is meant to be used in methods that obtain a VOMS proxy
@@ -105,22 +103,12 @@ func (v *vomsProxy) getProxy(ctx context.Context, vConfig VPIConfig) (string, er
 	t := template.Must(template.New("vpiTemplate").Parse(vConfig["vpicommand"]))
 	err := t.Execute(&vpiArgsTemplateOut, vpiMap)
 	if err != nil {
-		log.WithFields(log.Fields{
-			"FQAN":     v.fqan,
-			"account":  v.account,
-			"certfile": v.certfile,
-		}).Error(err)
 		return outfile, err
 	}
 
 	vpiArgsString := vpiArgsTemplateOut.String()
 	vpiArgs := strings.Fields(vpiArgsString)
 
-	//	vpiargs := []string{"-rfc", "-valid", "24:00", "-voms",
-	//		v.fqan, "-cert", v.certfile,
-	//		"-key", v.keyfile, "-out", outfilePath}
-
-	//TODO
 	fmt.Println(vConfig["executable"], vpiArgs)
 
 	//cmd := exec.CommandContext(ctx, "/usr/bin/voms-proxy-init", vpiargs...)
