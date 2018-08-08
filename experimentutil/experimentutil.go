@@ -20,7 +20,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-const exptErrFilenamef string = "golang_proxy_push_%s.log" // CHANGE ME BEFORE PRODUCTION - temp file per experiment that will be emailed to experiment
+const exptErrFilenamef string = "golang_proxy_push_%s.log" // temp file per experiment that will be emailed to experiment
 
 var genLog *logrus.Logger
 var rwmuxErr, rwmuxLog, rwmuxDebug sync.RWMutex // mutexes to be used when copying experiment logs into master and error log
@@ -78,6 +78,15 @@ type ExptConfig struct {
 
 // Setup and cleanup
 
+// setupNotificationsConfig sets the values for the notifications.config sub-type of ExptConfig to the appropriate values for the experiment
+func setupNotificationsConfig(pExptConfig *ExptConfig) {
+	pExptConfig.NConfig.From = pExptConfig.NConfig.ConfigInfo["admin_email"]
+	if !pExptConfig.IsTest {
+		pExptConfig.NConfig.To = pExptConfig.ExptEmails
+	}
+	pExptConfig.NConfig.Subject = "Managed Proxy Push errors for " + pExptConfig.Name
+}
+
 // Format defines how any logger using the ExptErrorFormatter should emit its
 // log records.  We expect to see [date] [experiment] [level] [message]
 func (f *ExptErrorFormatter) Format(entry *logrus.Entry) ([]byte, error) {
@@ -93,15 +102,6 @@ func (f *ExptErrorFormatter) Format(entry *logrus.Entry) ([]byte, error) {
 	logLine := fmt.Sprintf("[%s] [%s] [%s]: %s", entry.Time, expt, entry.Level, entry.Message)
 	logByte := []byte(logLine)
 	return append(logByte, '\n'), nil
-}
-
-// setupNotificationsConfig TODO
-func setupNotificationsConfig(pExptConfig *ExptConfig) {
-	pExptConfig.NConfig.From = pExptConfig.NConfig.ConfigInfo["admin_email"]
-	if !pExptConfig.IsTest {
-		pExptConfig.NConfig.To = pExptConfig.ExptEmails
-	}
-	pExptConfig.NConfig.Subject = "Managed Proxy Push errors for " + pExptConfig.Name
 }
 
 // exptLogInit sets up the logrus instance for the experiment worker
@@ -157,11 +157,6 @@ func exptLogInit(ctx context.Context, ename string, lConfig LogsConfig) (*logrus
 // getKerbTicket runs kinit to get a kerberos ticket
 func getKerbTicket(ctx context.Context, krbConfig KerbConfig) error {
 	os.Setenv("KRB5CCNAME", krbConfig["krb5ccname"])
-
-	//	kerbcmdargs := []string{"-k", "-t",
-	//		"/opt/gen_keytabs/config/gcso_monitor.keytab",
-	//		"monitor/gcso/fermigrid.fnal.gov@FNAL.GOV"}
-
 	kerbcmdargs := strings.Fields(krbConfig["kinitargs"])
 
 	cmd := exec.CommandContext(ctx, krbConfig["kinitexecutable"], kerbcmdargs...)
@@ -182,7 +177,7 @@ func checkKeys(ctx context.Context, eConfig ExptConfig) error {
 	}
 
 	if len(eConfig.Nodes) == 0 || len(eConfig.Accounts) == 0 {
-		return errors.New(`Input file improperly formatted for %s (accounts or nodes don't 
+		return errors.New(`Input file improperly formatted (accounts or nodes don't 
 			exist for this experiment). Please check the config file on fifeutilgpvm01.
 			 I will skip this experiment for now`)
 	}
@@ -199,8 +194,10 @@ func (expt *ExperimentSuccess) experimentCleanup(ctx context.Context, exptConfig
 
 	dir, err := os.Getwd()
 	if err != nil {
-		return errors.New(`Could not get current working directory.  Aborting cleanup.  
-					Please check working directory and manually clean up log files`)
+		msg := `Could not get current working directory.  Aborting cleanup.  
+					Please check working directory and manually clean up log files`
+		genLog.WithFields(logrus.Fields{"experiment": exptConfig.Name, "caller": "experimentCleanup"}).Error(msg)
+		return errors.New(msg)
 	}
 
 	expterrfilepath := path.Join(dir, fmt.Sprintf(exptErrFilenamef, expt.Name))
@@ -210,8 +207,11 @@ func (expt *ExperimentSuccess) experimentCleanup(ctx context.Context, exptConfig
 		// No experiment error logfile
 		if _, err = os.Stat(path); os.IsNotExist(err) {
 			return nil
+		} else {
+			genLog.WithFields(logrus.Fields{"experiment": exptConfig.Name, "caller": "experimentCleanup"}).Error(err)
 		}
 		if err := os.Remove(path); err != nil {
+			genLog.WithFields(logrus.Fields{"experiment": exptConfig.Name, "caller": "experimentCleanup"}).Error(err)
 			return fmt.Errorf("Could not remove experiment error log %s.  Please clean up manually", path)
 		}
 		return nil
@@ -220,34 +220,31 @@ func (expt *ExperimentSuccess) experimentCleanup(ctx context.Context, exptConfig
 	// Experiment failed
 	if !expt.Success {
 		// Try to send email, which also deletes expt file, returns error
-		// var err error = nil // Dummy
-		// err := sendEmail(expt.Name, exptlogfilepath, emailSlice)
-		// err := errors.New("Dummy error for email") // Take this line out and replace it with
 		if exptConfig.IsTest {
 			return nil // Don't do anything - we're testing.
 		}
 		data, err := ioutil.ReadFile(expterrfilepath)
 		if err != nil {
+			genLog.WithFields(logrus.Fields{"experiment": exptConfig.Name, "caller": "experimentCleanup"}).Error(err)
 			return err
 		}
 
 		msg := string(data)
 
-		//		t, ok := viper.Get("emailTimeoutDuration").(time.Duration)
-		//		if !ok {
-		//			return errors.New("emailTimeoutDuration is not a time.Duration object")
-		//		}
 		emailCtx, emailCancel := context.WithTimeout(ctx, exptConfig.TimeoutsConfig["emailtimeoutDuration"])
 		defer emailCancel()
 		if err := notifications.SendEmail(emailCtx, exptConfig.NConfig, msg); err != nil {
+			genLog.WithFields(logrus.Fields{"experiment": exptConfig.Name, "caller": "experimentCleanup"}).Error(err)
+			msg := "Error sending email.  Will archive error file"
+			genLog.WithFields(logrus.Fields{"experiment": exptConfig.Name, "caller": "experimentCleanup"}).Error(msg)
 			newfilename := fmt.Sprintf("%s-%s", expterrfilepath, time.Now().Format(time.RFC3339))
 			newpath := path.Join(dir, newfilename)
 
 			if err := os.Rename(expterrfilepath, newpath); err != nil {
-				return fmt.Errorf("Could not move file %s to %s.  The error was %v", expterrfilepath, newpath, err)
+				genLog.WithFields(logrus.Fields{"experiment": exptConfig.Name, "caller": "experimentCleanup"}).Error(err)
+				return fmt.Errorf("Could not move file %s to %s.", expterrfilepath, newpath)
 			}
-			return fmt.Errorf("Could not send email for experiment %s.  Archived error file at %s. "+
-				"The error was %v", expt.Name, newpath, err)
+			return fmt.Errorf("Could not send email for experiment %s.  Archived error file at %s.", expt.Name, newpath)
 		}
 	}
 	return nil
@@ -264,6 +261,8 @@ func Worker(ctx context.Context, eConfig ExptConfig, genLog *logrus.Logger, b no
 
 	exptLog, err := exptLogInit(ctx, eConfig.Name, eConfig.LogsConfig)
 	if err != nil { // We either have panicked or it's a context error.  If it's the latter, we really don't care here
+		msg := "Error setting up experiment log.  Will log in general log"
+		genLog.WithFields(logrus.Fields{"experiment": eConfig.Name}).Error(msg)
 		exptLog = genLog.WithField("experiment", eConfig.Name)
 	}
 
@@ -279,12 +278,6 @@ func Worker(ctx context.Context, eConfig ExptConfig, genLog *logrus.Logger, b no
 		}
 
 		// General Setup
-		//		exptKey := fmt.Sprintf("experiments.%s", expt.Name)
-		//		if !viper.IsSet(exptKey) {
-		//			exptLog.Errorf("Invalid experiment %s", expt.Name)
-		//			declareExptFailure()
-		//			return
-		//		}
 		setupNotificationsConfig(&eConfig)
 		successfulCopies := make(map[string][]string)
 		failedCopies := make(map[string]map[string]struct{})
@@ -313,18 +306,14 @@ func Worker(ctx context.Context, eConfig ExptConfig, genLog *logrus.Logger, b no
 
 		// If check of exptConfig keys fails, experiment fails immediately
 		if err := checkKeys(ctx, eConfig); err != nil {
-			exptLog.Error(err)
+			exptLog.WithFields(logrus.Fields{"experiment": eConfig.Name}).Error(err)
 			declareExptFailure()
 			return
 		}
 		exptLog.Debug("Config keys are valid")
 
-		//		t, ok := viper.Get("pingTimeoutDuration").(time.Duration)
-		//		if !ok {
-		//			genLog.Error("pingTimeoutDuration is not a time.Duration object")
-		//			declareExptFailure()
-		//			return
-		//		}
+		// Ping nodes to make sure they're up
+
 		pingCtx, pingCancel := context.WithTimeout(ctx, eConfig.TimeoutsConfig["pingtimeoutDuration"])
 		configNodes := make([]pingNoder, 0, len(eConfig.Nodes))
 		for _, n := range eConfig.Nodes {
@@ -366,16 +355,10 @@ func Worker(ctx context.Context, eConfig ExptConfig, genLog *logrus.Logger, b no
 				"We'll still try to copy proxies there.", strings.Join(badNodesSlice, ", "))
 		}
 
+		// voms-proxy-init
 		// If voms-proxy-init fails, we'll just continue on.  We'll still try to push proxies,
 		// since they're valid for 24 hours
-		//		t, ok = viper.Get("vpiTimeoutDuration").(time.Duration)
-		//		if !ok {
-		//			genLog.Error("vpiTimeoutDuration is not a time.Duration object")
-		//			declareExptFailure()
-		//			return
-		//		}
 		vpiCtx, vpiCancel := context.WithTimeout(ctx, eConfig.TimeoutsConfig["vpitimeoutDuration"])
-		// vomsProxyObjects := make([]getProxyer, len(eConfig.Accounts))
 		vomsProxyObjects := createVomsProxyObjects(vpiCtx, eConfig)
 		vpiChan := getProxies(vpiCtx, eConfig.VPIConfig, vomsProxyObjects...)
 		// Listen until we either timeout or vpiChan is closed
@@ -405,20 +388,11 @@ func Worker(ctx context.Context, eConfig ExptConfig, genLog *logrus.Logger, b no
 			}
 		}
 
-		//		t, ok = viper.Get("copyTimeoutDuration").(time.Duration)
-		//		if !ok {
-		//			genLog.Error("copyTimeoutDuration is not a time.Duration object")
-		//			declareExptFailure()
-		//			return
-		//		}
+		// Proxy transfer
 		copyCtx, copyCancel := context.WithTimeout(ctx, eConfig.TimeoutsConfig["copytimeoutDuration"])
-		//		proxyTransferInfoObjects := make([]pushProxyer, len(exptConfig.GetStringSlice("nodes"))*len(exptConfig.GetStringMapString("accounts")))
-		//		proxyTransferInfoObjects := make([]pushProxyer, len(exptConfig.GetStringSlice("nodes"))*len(exptConfig.GetStringMapString("accounts")))
 		proxyTransferInfoObjects := createProxyTransferInfoObjects(copyCtx, eConfig, badNodesSlice)
 		copyChan := copyProxies(copyCtx, eConfig.SSHConfig, proxyTransferInfoObjects...)
-		// if expt.Name == "darkside" {
-		// 	time.Sleep(time.Duration(25) * time.Second)
-		// }
+
 		// Listen until we either timeout or the copyChan is closed
 	copyLoop:
 		for {
@@ -479,10 +453,9 @@ func Worker(ctx context.Context, eConfig ExptConfig, genLog *logrus.Logger, b no
 		// experiment log file
 		exptLog.Info("Cleaning up ", expt.Name)
 		if err := expt.experimentCleanup(ctx, eConfig); err != nil {
-			genLog.WithField("experiment", expt.Name).Errorf("Error cleaning up %s: %s", expt.Name, err)
-			// genLog.Errorf("Error cleaning up %s: %s", expt.Name, err)
+			genLog.WithField("experiment", expt.Name).Error("Error cleaning up experiment")
 		} else {
-			genLog.WithField("experiment", expt.Name).Infof("Finished cleaning up with no errors")
+			genLog.WithField("experiment", expt.Name).Info("Finished cleaning up with no errors")
 		}
 	}()
 	return c

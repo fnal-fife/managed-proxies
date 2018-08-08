@@ -71,7 +71,6 @@ func (n node) pingNode(ctx context.Context, pConfig PingConfig) error {
 		return err
 	}
 
-	// pingargs := []string{"-W", "5", "-c", "1", string(n)}
 	cmd := exec.CommandContext(ctx, pingExecutable, pingArgs...)
 	if cmdOut, cmdErr := cmd.CombinedOutput(); cmdErr != nil {
 		if e := ctx.Err(); e != nil {

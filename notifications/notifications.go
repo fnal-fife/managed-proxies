@@ -43,7 +43,6 @@ func addHelperMessage(msg, expt string) string {
 // SendEmail sends emails to both experiments and admins, depending on the input (exptName = "" gives admin email).
 // func SendEmail(ctx context.Context, nConfig Config, exptName, msg string) error {
 func SendEmail(ctx context.Context, nConfig Config, msg string) error {
-	// var recipients []string
 	port, err := strconv.Atoi(nConfig.ConfigInfo["smtpport"])
 	if err != nil {
 		return err
@@ -55,18 +54,7 @@ func SendEmail(ctx context.Context, nConfig Config, msg string) error {
 	}
 	message := addHelperMessage(msg, nConfig.Experiment)
 
-	//	if exptName == "" {
-	//		exptName = "all experiments"  Send email for all experiments to admin
-	//		recipients = viper.GetStringSlice("notifications.admin_email")
-	//	} else {
-	//		emailsKeyLookup := "experiments." + exptName + ".emails"
-	//		recipients = viper.GetStringSlice(emailsKeyLookup)
-	//	}
-
-	// subject := "Managed Proxy Push errors for " + exptName
-
 	m := gomail.NewMessage()
-	// m.SetHeader("From", "fife-group@fnal.gov")
 	m.SetHeader("From", nConfig.From)
 	m.SetHeader("To", nConfig.To...)
 	m.SetHeader("Subject", nConfig.Subject)
@@ -109,13 +97,7 @@ func SendSlackMessage(ctx context.Context, nConfig Config, message string) error
 	req.Header.Set("Content-Type", "application/json")
 	req = req.WithContext(ctx)
 
-	// Actually send the request
-	//	d, ok := viper.Get("slackTimeoutDuration").(time.Duration)
-	//	if !ok {
-	//		return errors.New("slackTimeoutDuration is not a time.Duration object")
-	//	}
 	client := http.DefaultClient
-	// client := &http.Client{Timeout: d}
 	resp, err := client.Do(req)
 	if err != nil {
 		return err

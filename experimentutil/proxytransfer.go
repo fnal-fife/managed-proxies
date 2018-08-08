@@ -44,10 +44,6 @@ type copyProxiesStatus struct {
 // change permission operations share a context that dictates their deadline.
 func copyProxies(ctx context.Context, sConfig SSHConfig, proxyTransfers ...pushProxyer) <-chan copyProxiesStatus {
 	numSlots := len(proxyTransfers)
-	//	sshopts := []string{"-o", "ConnectTimeout=30",
-	//		"-o", "ServerAliveInterval=30",
-	//		"-o", "ServerAliveCountMax=1"}
-
 	sshOpts := strings.Fields(sConfig["sshopts"])
 
 	c := make(chan copyProxiesStatus, numSlots)
@@ -143,10 +139,6 @@ func (pt *proxyTransferInfo) copyProxy(ctx context.Context, sshOpts []string, sc
 	scpArgs := sshOpts
 	scpArgs = append(scpArgs, strings.Fields(scpArgsString)...)
 
-	// accountNode := pt.account + "@" + pt.node + ".fnal.gov"
-
-	//scpargs := append(sshopts, pt.proxyFilePathSrc, accountNode+":"+newProxyPath)
-
 	scpExecutable, err := exec.LookPath("scp")
 	if err != nil {
 		return err
@@ -173,7 +165,6 @@ func (pt *proxyTransferInfo) chmodProxy(ctx context.Context, sshOpts []string, c
 	var chmodArgsTemplateOut bytes.Buffer
 
 	newProxyPath := pt.proxyFileNameDest + ".new"
-	// accountNode := pt.account + "@" + pt.node + ".fnal.gov"
 	var chmodMap = map[string]string{
 		"Account":        pt.account,
 		"Node":           pt.node,
@@ -191,8 +182,6 @@ func (pt *proxyTransferInfo) chmodProxy(ctx context.Context, sshOpts []string, c
 	chmodArgs := sshOpts
 	chmodArgs = append(chmodArgs, strings.Fields(chmodArgsString)...)
 
-	//	sshargs := append(sshopts, accountNode,
-	//"chmod 400 "+newProxyPath+" ; mv -f "+newProxyPath+" "+pt.proxyFileNameDest)
 	sshExecutable, err := exec.LookPath("ssh")
 	if err != nil {
 		return err
