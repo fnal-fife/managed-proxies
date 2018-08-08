@@ -99,7 +99,6 @@ func (v *vomsProxy) getProxy(ctx context.Context, vConfig VPIConfig) (string, er
 		"OutfilePath": outfilePath,
 	}
 
-	// vpi.filename = outfile
 	t := template.Must(template.New("vpiTemplate").Parse(vConfig["vpicommand"]))
 	err := t.Execute(&vpiArgsTemplateOut, vpiMap)
 	if err != nil {
@@ -109,9 +108,6 @@ func (v *vomsProxy) getProxy(ctx context.Context, vConfig VPIConfig) (string, er
 	vpiArgsString := vpiArgsTemplateOut.String()
 	vpiArgs := strings.Fields(vpiArgsString)
 
-	fmt.Println(vConfig["executable"], vpiArgs)
-
-	//cmd := exec.CommandContext(ctx, "/usr/bin/voms-proxy-init", vpiargs...)
 	cmd := exec.CommandContext(ctx, vConfig["executable"], vpiArgs...)
 	if cmdErr := cmd.Run(); cmdErr != nil {
 		if e := ctx.Err(); e != nil {
