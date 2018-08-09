@@ -125,8 +125,7 @@ experiments:
     dir: /opt
     emails: [kirby@fnal.gov, greenlee@fnal.gov, wtang8@utk.edu]
     nodes: [uboonegpvm01, uboonegpvm02, uboonegpvm03, uboonegpvm04, uboonegpvm05, uboonegpvm06,
-      uboonegpvm07, uboonepubsgpvm01, uboonepubsgpvm02, uboonepubsgpvm03, uboonepubsgpvm04,
-      uboonepubsgpvm05, uboonepubsgpvm06, uboonetmp02]
+      uboonegpvm07, uboonepubsgpvm01, uboonetmp02]
     accounts:
       uboonepro: Production
   p-argoneutcode:
