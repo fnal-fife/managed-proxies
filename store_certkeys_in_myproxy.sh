@@ -40,7 +40,7 @@ fi
 
 # read cigetcertopts from the production fifebatch server, then store in production
 
-default_retrievers="/DC=org/DC=opensciencegrid/O=Open Science Grid/OU=Services/CN=(fifebatch|(hepcjobsub0(1|2))).fnal.gov"
+default_retrievers="/DC=org/DC=opensciencegrid/O=Open Science Grid/OU=Services/CN=(fifebatch|(hepcjobsub0(1|2))|jobsubdevgpvm01).fnal.gov"
 cigetcertopts=`curl -f -s --capath /etc/grid-security/certificates  https://fifebatch.fnal.gov/cigetcertopts.txt`
 RESULT=$?
 if [ $RESULT -eq 0 ]; then
