@@ -5,7 +5,7 @@ proxy_push.yml except for those under the p-* entries"""
 import subprocess
 
 CONFIG = 'proxy_push.yml'
-STORE_KEYS_SCRIPT = './store_certkeys_in_myproxy.sh'
+STORE_KEYS_SCRIPT = './store_certkeys_in_myproxy'
 
 def run_store_certkeys(account):
     """Run ./store_certkeys_in_myproxy <account>.  Return True if success, 
