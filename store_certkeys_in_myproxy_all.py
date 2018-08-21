@@ -5,14 +5,15 @@ proxy_push.yml except for those under the p-* entries"""
 import subprocess
 
 CONFIG = 'proxy_push.yml'
+STORE_KEYS_SCRIPT = './store_certkeys_in_myproxy'
 
 def run_store_certkeys(account):
     """Run ./store_certkeys_in_myproxy <account>.  Return True if success, 
     False if not"""
     print account
     try:
-        cmd_list = ["./store_certkeys_in_myproxy", account]
-        subprocess.check_call(["./store_certkeys_in_myproxy", account])
+        cmd_list = [STORE_KEYS_SCRIPT, account]
+        subprocess.check_call(cmd_list)
     except subprocess.CalledProcessError as e:
         print '{0} failed with error {1}'.format(" ".join(cmd_list), e)
         return False
