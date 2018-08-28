@@ -22,7 +22,7 @@ import (
 
 const exptErrFilenamef string = "golang_proxy_push_%s.log" // temp file per experiment that will be emailed to experiment
 
-var genLog *logrus.Logger
+// var genLog *logrus.Logger
 var rwmuxErr, rwmuxLog, rwmuxDebug sync.RWMutex // mutexes to be used when copying experiment logs into master and error log
 
 // ExperimentSuccess stores information on whether all the processes involved in generating, copying, and changing
@@ -187,7 +187,7 @@ func checkKeys(ctx context.Context, eConfig ExptConfig) error {
 // experimentCleanup manages the cleanup operations for an experiment, such as sending emails if necessary,
 // and copying, removing or archiving the logs
 // TODO:  maybe a unit test for this
-func (expt *ExperimentSuccess) experimentCleanup(ctx context.Context, exptConfig ExptConfig) error {
+func (expt *ExperimentSuccess) experimentCleanup(ctx context.Context, exptConfig ExptConfig, genLog *logrus.Logger) error {
 	if e := ctx.Err(); e != nil {
 		return e
 	}
@@ -452,7 +452,7 @@ func Worker(ctx context.Context, eConfig ExptConfig, genLog *logrus.Logger, b no
 		// We're logging the cleanup in the general log so that we don't create an extraneous
 		// experiment log file
 		exptLog.Info("Cleaning up ", expt.Name)
-		if err := expt.experimentCleanup(ctx, eConfig); err != nil {
+		if err := expt.experimentCleanup(ctx, eConfig, genLog); err != nil {
 			genLog.WithField("experiment", expt.Name).Error("Error cleaning up experiment")
 		} else {
 			genLog.WithField("experiment", expt.Name).Info("Finished cleaning up with no errors")
