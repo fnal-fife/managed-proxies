@@ -207,7 +207,7 @@ func (expt *ExperimentSuccess) experimentCleanup(ctx context.Context, exptConfig
 		// No experiment error logfile
 		if _, err = os.Stat(path); os.IsNotExist(err) {
 			return nil
-		} else {
+		} else if err != nil {
 			genLog.WithFields(logrus.Fields{"experiment": exptConfig.Name, "caller": "experimentCleanup"}).Error(err)
 		}
 		if err := os.Remove(path); err != nil {
