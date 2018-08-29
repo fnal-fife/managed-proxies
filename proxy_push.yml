@@ -123,7 +123,7 @@ experiments:
       sbndpro: Production
   uboone:
     dir: /opt
-    emails: [kirby@fnal.gov, greenlee@fnal.gov, wtang8@utk.edu]
+    emails: [greenlee@fnal.gov, wtang8@utk.edu, renlu23@nmsu.edu]
     nodes: [uboonegpvm01, uboonegpvm02, uboonegpvm03, uboonegpvm04, uboonegpvm05, uboonegpvm06,
       uboonegpvm07, uboonepubsgpvm01, uboonebuild02]
     accounts:
