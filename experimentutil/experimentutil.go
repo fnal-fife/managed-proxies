@@ -21,7 +21,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-const exptErrFilenamef string = "golang_proxy_push_%s.log" // temp file per experiment that will be emailed to experiment
+// const exptErrFilenamef string = "golang_proxy_push_%s.log" // temp file per experiment that will be emailed to experiment
 
 // var genLog *logrus.Logger
 var rwmuxErr, rwmuxLog, rwmuxDebug sync.RWMutex // mutexes to be used when copying experiment logs into master and error log
@@ -207,7 +207,8 @@ func (expt *ExperimentSuccess) experimentCleanup(ctx context.Context, exptConfig
 		return errors.New(msg)
 	}
 
-	expterrfilepath := path.Join(dir, fmt.Sprintf(exptErrFilenamef, expt.Name))
+	// expterrfilepath := path.Join(dir, fmt.Sprintf(exptErrFilenamef, expt.Name))
+	expterrfilepath := proxyPushLogger.GetExptErrorLogfileName(expt.Name)
 
 	// Cleanup that must occur no matter what
 	defer func(path string) error {
