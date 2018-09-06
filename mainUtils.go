@@ -15,14 +15,6 @@ import (
 	"github.com/spf13/viper"
 )
 
-// setAdminEmail sets the notifications config objects' From and To fields to the config file's admin value
-func setAdminEmail(pnConfig *notifications.Config) {
-	pnConfig.From = pnConfig.ConfigInfo["admin_email"]
-	pnConfig.To = []string{pnConfig.ConfigInfo["admin_email"]}
-	log.Debug("Set notifications config email values to admin defaults")
-	return
-}
-
 // createExptConfig takes the config information from the global file and creates an exptConfig object
 func createExptConfig(expt string) (experimentutil.ExptConfig, error) {
 	var vomsprefix, certfile, keyfile string
@@ -145,4 +137,12 @@ func checkUser(authuser string) error {
 		return fmt.Errorf("This must be run as %s.  Trying to run as %s", authuser, cuser.Username)
 	}
 	return nil
+}
+
+// setAdminEmail sets the notifications config objects' From and To fields to the config file's admin value
+func setAdminEmail(pnConfig *notifications.Config) {
+	pnConfig.From = pnConfig.ConfigInfo["admin_email"]
+	pnConfig.To = []string{pnConfig.ConfigInfo["admin_email"]}
+	log.Debug("Set notifications config email values to admin defaults")
+	return
 }
