@@ -203,7 +203,7 @@ func (expt *ExperimentSuccess) experimentCleanup(ctx context.Context, exptConfig
 	if err != nil {
 		msg := `Could not get current working directory.  Aborting cleanup.  
 					Please check working directory and manually clean up log files`
-		exptConfig.Logger.Error(msg)
+		exptConfig.Logger.Error(err)
 		return errors.New(msg)
 	}
 
@@ -219,7 +219,9 @@ func (expt *ExperimentSuccess) experimentCleanup(ctx context.Context, exptConfig
 		}
 		if err := os.Remove(path); err != nil {
 			exptConfig.Logger.Error(err)
-			return fmt.Errorf("Could not remove experiment error log %s.  Please clean up manually", path)
+			msg := fmt.Errorf("Could not remove experiment error log %s.  Please clean up manually", path)
+			exptConfig.Logger.Error(msg)
+			return msg
 		}
 		return nil
 	}(expterrfilepath)
@@ -373,10 +375,17 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 		for {
 			select {
 			case <-vpiCtx.Done():
-				eConfig.Logger.WithFields(logrus.Fields{
-					"caller": "experimentutil.Worker",
-					"action": "voms-proxy-init",
-				}).Error(vpiCtx.Err())
+				if e := vpiCtx.Err(); e == context.DeadlineExceeded {
+					eConfig.Logger.WithFields(logrus.Fields{
+						"caller": "experimentutil.Worker",
+						"action": "voms-proxy-init",
+					}).Error("Timeout obtaining VOMS proxies")
+				} else {
+					eConfig.Logger.WithFields(logrus.Fields{
+						"caller": "experimentutil.Worker",
+						"action": "voms-proxy-init",
+					}).Error(e)
+				}
 				vpiCancel()
 				break vpiLoop
 			case vpi, chanOpen := <-vpiChan: // receive on vpiChan
@@ -404,10 +413,17 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 		for {
 			select {
 			case <-copyCtx.Done():
-				eConfig.Logger.WithFields(logrus.Fields{
-					"caller": "experimentutil.Worker",
-					"action": "copy proxies",
-				}).Error(copyCtx.Err())
+				if e := copyCtx.Err(); e == context.DeadlineExceeded {
+					eConfig.Logger.WithFields(logrus.Fields{
+						"caller": "experimentutil.Worker",
+						"action": "copy proxies",
+					}).Error("Hit timeout copying proxies")
+				} else {
+					eConfig.Logger.WithFields(logrus.Fields{
+						"caller": "experimentutil.Worker",
+						"action": "copy proxies",
+					}).Error(e)
+				}
 				expt.Success = false
 				copyCancel()
 				break copyLoop
@@ -460,10 +476,11 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 				nodesSlice = append(nodesSlice, n)
 			}
 			sort.Strings(nodesSlice)
+			nodesString := strings.Join(nodesSlice, ", ")
 			eConfig.Logger.WithFields(logrus.Fields{
 				"role":  role,
-				"nodes": strings.Join(nodesSlice, ", "),
-			}).Errorf("Failed copies")
+				"nodes": nodesString,
+			}).Errorf("Failed copies for role %s were %s", role, nodesString)
 		}
 
 		eConfig.Logger.Info("Finished processing experiment")
