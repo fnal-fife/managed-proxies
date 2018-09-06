@@ -80,8 +80,8 @@ func (f *ExptErrorFormatter) Format(entry *logrus.Entry) ([]byte, error) {
 	return append(logByte, '\n'), nil
 }
 
-// This returns the filename of the experiment error file.  It's only a func so that other
-// packages can use it
+// GetExptErrorLogfileName returns the filename of the experiment error file.  It's only a func so
+// that other packages can use it
 func GetExptErrorLogfileName(expt string) string {
 	return fmt.Sprintf(exptErrorFilenamef, expt)
 }

@@ -17,7 +17,6 @@ import (
 
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/notifications"
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/proxyPushLogger"
-	//"github.com/rifflock/lfshook"
 	"github.com/sirupsen/logrus"
 )
 
@@ -41,12 +40,6 @@ type ExptErrorFormatter struct {
 type (
 	// TimeoutsConfig is a map of the timeouts passed in from the config file
 	TimeoutsConfig map[string]time.Duration
-
-	// DELETE ME
-	// LogsConfig is a map of the location of the logfiles
-	//LogsConfig map[string]string
-	// /DELETE ME
-
 	// VPIConfig contains information needed to run the voms-proxy-init command
 	VPIConfig map[string]string
 	// KerbConfig contains information needed to run kinit
@@ -82,199 +75,11 @@ type ExptConfig struct {
 
 // Experiment worker-specific functions
 
-// Setup and cleanup
-
-// setupNotificationsConfig sets the values for the notifications.config sub-type of ExptConfig to the appropriate values for the experiment
-func setupNotificationsConfig(pExptConfig *ExptConfig) {
-	pExptConfig.NConfig.From = pExptConfig.NConfig.ConfigInfo["admin_email"]
-	if !pExptConfig.IsTest {
-		pExptConfig.NConfig.To = pExptConfig.ExptEmails
-	}
-	pExptConfig.NConfig.Subject = "Managed Proxy Push errors for " + pExptConfig.Name
-}
-
-// Format defines how any logger using the ExptErrorFormatter should emit its
-// log records.  We expect to see [date] [experiment] [level] [message]
-func (f *ExptErrorFormatter) Format(entry *logrus.Entry) ([]byte, error) {
-	var expt string
-	if val, ok := entry.Data["experiment"]; ok {
-		if expt, ok = val.(string); !ok {
-			return nil, errors.New("entry.Data[\"experiment\"] Failed type assertion")
-		}
-	} else {
-		expt = "No Experiment"
-	}
-
-	logLine := fmt.Sprintf("[%s] [%s] [%s]: %s", entry.Time, expt, entry.Level, entry.Message)
-	logByte := []byte(logLine)
-	return append(logByte, '\n'), nil
-}
-
-//// exptLogInit sets up the logrus instance for the experiment worker
-//// It returns a pointer to a logrus.Entry object that can be used to log events.
-//func exptLogInit(ctx context.Context, ename string, lConfig LogsConfig) (*logrus.Entry, error) {
-//	if e := ctx.Err(); e != nil {
-//		return nil, e
-//	}
-//
-//	var Log = logrus.New()
-//	expterrlog := fmt.Sprintf(exptErrFilenamef, ename)
-//
-//	Log.SetLevel(logrus.DebugLevel)
-//
-//	Log.AddHook(lfshook.NewHook(lfshook.PathMap{
-//		logrus.DebugLevel: lConfig["debugfile"],
-//		logrus.InfoLevel:  lConfig["debugfile"],
-//		logrus.WarnLevel:  lConfig["debugfile"],
-//		logrus.ErrorLevel: lConfig["debugfile"],
-//		logrus.FatalLevel: lConfig["debugfile"],
-//		logrus.PanicLevel: lConfig["debugfile"],
-//	}, &logrus.TextFormatter{FullTimestamp: true}))
-//
-//	Log.AddHook(lfshook.NewHook(lfshook.PathMap{
-//		logrus.InfoLevel:  lConfig["logfile"],
-//		logrus.WarnLevel:  lConfig["logfile"],
-//		logrus.ErrorLevel: lConfig["logfile"],
-//		logrus.FatalLevel: lConfig["logfile"],
-//		logrus.PanicLevel: lConfig["logfile"],
-//	}, &logrus.TextFormatter{FullTimestamp: true}))
-//
-//	// General Error Log that will get sent to Admins
-//	Log.AddHook(lfshook.NewHook(lfshook.PathMap{
-//		logrus.ErrorLevel: lConfig["errfile"],
-//		logrus.FatalLevel: lConfig["errfile"],
-//		logrus.PanicLevel: lConfig["errfile"],
-//	}, new(ExptErrorFormatter)))
-//
-//	// Experiment-specific error log that gets emailed if populated
-//	Log.AddHook(lfshook.NewHook(lfshook.PathMap{
-//		logrus.ErrorLevel: expterrlog,
-//		logrus.FatalLevel: expterrlog,
-//		logrus.PanicLevel: expterrlog,
-//	}, new(ExptErrorFormatter)))
-//
-//	exptlogger := Log.WithField("experiment", ename)
-//	exptlogger.Info("Set up experiment logger")
-//
-//	return exptlogger, nil
-//
-//}
-
-// getKerbTicket runs kinit to get a kerberos ticket
-func getKerbTicket(ctx context.Context, krbConfig KerbConfig) error {
-	os.Setenv("KRB5CCNAME", krbConfig["krb5ccname"])
-	kerbcmdargs := strings.Fields(krbConfig["kinitargs"])
-
-	cmd := exec.CommandContext(ctx, krbConfig["kinitexecutable"], kerbcmdargs...)
-	if cmdOut, cmdErr := cmd.CombinedOutput(); cmdErr != nil {
-		if ctx.Err() == context.DeadlineExceeded {
-			return ctx.Err()
-		}
-		return fmt.Errorf("Obtaining a kerberos ticket failed.  May be unable to "+
-			"push proxies.  The error was %s: %s", cmdErr, cmdOut)
-	}
-	return nil
-}
-
-// checkKeys looks at the portion of the configuration passed in and makes sure the required keys are present
-func checkKeys(ctx context.Context, eConfig ExptConfig) error {
-	if e := ctx.Err(); e != nil {
-		return e
-	}
-
-	if len(eConfig.Nodes) == 0 || len(eConfig.Accounts) == 0 {
-		return errors.New(`Input file improperly formatted (accounts or nodes don't 
-			exist for this experiment). Please check the config file on fifeutilgpvm01.
-			 I will skip this experiment for now`)
-	}
-	return nil
-}
-
-// experimentCleanup manages the cleanup operations for an experiment, such as sending emails if necessary,
-// and copying, removing or archiving the logs
-// TODO:  maybe a unit test for this
-func (expt *ExperimentSuccess) experimentCleanup(ctx context.Context, exptConfig ExptConfig) error {
-	if e := ctx.Err(); e != nil {
-		return e
-	}
-	exptConfig.Logger = exptConfig.Logger.WithField("caller", "experimentutil.experimentCleanup")
-
-	dir, err := os.Getwd()
-	if err != nil {
-		msg := `Could not get current working directory.  Aborting cleanup.  
-					Please check working directory and manually clean up log files`
-		exptConfig.Logger.Error(err)
-		return errors.New(msg)
-	}
-
-	// expterrfilepath := path.Join(dir, fmt.Sprintf(exptErrFilenamef, expt.Name))
-	expterrfilepath := proxyPushLogger.GetExptErrorLogfileName(expt.Name)
-
-	// Cleanup that must occur no matter what
-	defer func(path string) error {
-		// No experiment error logfile
-		if _, err = os.Stat(path); os.IsNotExist(err) {
-			return nil
-		} else if err != nil {
-			exptConfig.Logger.Error(err)
-		}
-		if err := os.Remove(path); err != nil {
-			exptConfig.Logger.Error(err)
-			msg := fmt.Errorf("Could not remove experiment error log %s.  Please clean up manually", path)
-			exptConfig.Logger.Error(msg)
-			return msg
-		}
-		return nil
-	}(expterrfilepath)
-
-	// Experiment failed
-	if !expt.Success {
-		// Try to send email, which also deletes expt file, returns error
-		if exptConfig.IsTest {
-			return nil // Don't do anything - we're testing.
-		}
-		data, err := ioutil.ReadFile(expterrfilepath)
-		if err != nil {
-			exptConfig.Logger.Error(err)
-			return err
-		}
-
-		msg := string(data)
-
-		emailCtx, emailCancel := context.WithTimeout(ctx, exptConfig.TimeoutsConfig["emailtimeoutDuration"])
-		defer emailCancel()
-		if err := notifications.SendEmail(emailCtx, exptConfig.NConfig, msg); err != nil {
-			exptConfig.Logger.Error(err)
-			msg := "Error sending email.  Will archive error file"
-			exptConfig.Logger.Error(msg)
-			newfilename := fmt.Sprintf("%s-%s", expterrfilepath, time.Now().Format(time.RFC3339))
-			newpath := path.Join(dir, newfilename)
-
-			if err := os.Rename(expterrfilepath, newpath); err != nil {
-				exptConfig.Logger.Error(err)
-				return fmt.Errorf("Could not move file %s to %s.", expterrfilepath, newpath)
-			}
-			return fmt.Errorf("Could not send email for experiment %s.  Archived error file at %s.", expt.Name, newpath)
-		}
-	}
-	return nil
-}
-
 // Worker is the main function that manages the processes involved in generating and copying VOMS proxies to
 // an experiment's nodes.  It returns a channel on which it reports the status of that experiment's proxy push.
-// genlog is the logrus.logger that gets passed in that's meant to capture the non-experiment specific messages
-// that might be printed from this module
 func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPush) <-chan ExperimentSuccess {
-	//var exptLog *logrus.Entry
 	c := make(chan ExperimentSuccess, 2)
 	expt := ExperimentSuccess{eConfig.Name, true} // Initialize
-
-	//exptLog, err := exptLogInit(ctx, eConfig.Name, eConfig.LogsConfig)
-	//	if err != nil { // We either have panicked or it's a context error.  If it's the latter, we really don't care here
-	//		msg := "Error setting up experiment log.  Will log in general log"
-	//		genLog.WithFields(logrus.Fields{"experiment": eConfig.Name}).Error(msg)
-	//		exptLog = genLog.WithField("experiment", eConfig.Name)
-	//	}
 
 	eConfig.Logger.Debug("Now processing ", eConfig.Name)
 
@@ -497,4 +302,114 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 		}
 	}()
 	return c
+}
+
+// Setup and cleanup
+
+// experimentCleanup manages the cleanup operations for an experiment, such as sending emails if necessary,
+// and copying, removing or archiving the logs
+// TODO:  maybe a unit test for this
+func (expt *ExperimentSuccess) experimentCleanup(ctx context.Context, exptConfig ExptConfig) error {
+	if e := ctx.Err(); e != nil {
+		return e
+	}
+	exptConfig.Logger = exptConfig.Logger.WithField("caller", "experimentutil.experimentCleanup")
+
+	dir, err := os.Getwd()
+	if err != nil {
+		msg := `Could not get current working directory.  Aborting cleanup.  
+					Please check working directory and manually clean up log files`
+		exptConfig.Logger.Error(err)
+		return errors.New(msg)
+	}
+
+	expterrfilepath := proxyPushLogger.GetExptErrorLogfileName(expt.Name)
+
+	// Cleanup that must occur no matter what
+	defer func(path string) error {
+		// No experiment error logfile
+		if _, err = os.Stat(path); os.IsNotExist(err) {
+			return nil
+		} else if err != nil {
+			exptConfig.Logger.Error(err)
+		}
+		if err := os.Remove(path); err != nil {
+			exptConfig.Logger.Error(err)
+			msg := fmt.Errorf("Could not remove experiment error log %s.  Please clean up manually", path)
+			exptConfig.Logger.Error(msg)
+			return msg
+		}
+		return nil
+	}(expterrfilepath)
+
+	// Experiment failed
+	if !expt.Success {
+		// Try to send email, which also deletes expt file, returns error
+		if exptConfig.IsTest {
+			return nil // Don't do anything - we're testing.
+		}
+		data, err := ioutil.ReadFile(expterrfilepath)
+		if err != nil {
+			exptConfig.Logger.Error(err)
+			return err
+		}
+
+		msg := string(data)
+
+		emailCtx, emailCancel := context.WithTimeout(ctx, exptConfig.TimeoutsConfig["emailtimeoutDuration"])
+		defer emailCancel()
+		if err := notifications.SendEmail(emailCtx, exptConfig.NConfig, msg); err != nil {
+			exptConfig.Logger.Error(err)
+			msg := "Error sending email.  Will archive error file"
+			exptConfig.Logger.Error(msg)
+			newfilename := fmt.Sprintf("%s-%s", expterrfilepath, time.Now().Format(time.RFC3339))
+			newpath := path.Join(dir, newfilename)
+
+			if err := os.Rename(expterrfilepath, newpath); err != nil {
+				exptConfig.Logger.Error(err)
+				return fmt.Errorf("Could not move file %s to %s.", expterrfilepath, newpath)
+			}
+			return fmt.Errorf("Could not send email for experiment %s.  Archived error file at %s.", expt.Name, newpath)
+		}
+	}
+	return nil
+}
+
+// setupNotificationsConfig sets the values for the notifications.config sub-type of ExptConfig to the appropriate values for the experiment
+func setupNotificationsConfig(pExptConfig *ExptConfig) {
+	pExptConfig.NConfig.From = pExptConfig.NConfig.ConfigInfo["admin_email"]
+	if !pExptConfig.IsTest {
+		pExptConfig.NConfig.To = pExptConfig.ExptEmails
+	}
+	pExptConfig.NConfig.Subject = "Managed Proxy Push errors for " + pExptConfig.Name
+}
+
+// getKerbTicket runs kinit to get a kerberos ticket
+func getKerbTicket(ctx context.Context, krbConfig KerbConfig) error {
+	os.Setenv("KRB5CCNAME", krbConfig["krb5ccname"])
+	kerbcmdargs := strings.Fields(krbConfig["kinitargs"])
+
+	cmd := exec.CommandContext(ctx, krbConfig["kinitexecutable"], kerbcmdargs...)
+	if cmdOut, cmdErr := cmd.CombinedOutput(); cmdErr != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return ctx.Err()
+		}
+		return fmt.Errorf("Obtaining a kerberos ticket failed.  May be unable to "+
+			"push proxies.  The error was %s: %s", cmdErr, cmdOut)
+	}
+	return nil
+}
+
+// checkKeys looks at the portion of the configuration passed in and makes sure the required keys are present
+func checkKeys(ctx context.Context, eConfig ExptConfig) error {
+	if e := ctx.Err(); e != nil {
+		return e
+	}
+
+	if len(eConfig.Nodes) == 0 || len(eConfig.Accounts) == 0 {
+		return errors.New(`Input file improperly formatted (accounts or nodes don't 
+			exist for this experiment). Please check the config file on fifeutilgpvm01.
+			 I will skip this experiment for now`)
+	}
+	return nil
 }

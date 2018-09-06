@@ -62,37 +62,6 @@ func init() {
 		panic(fmt.Errorf("Fatal error config file: %s", err))
 	}
 
-	// From here on out, we're logging to the log file too
-	// Set up our global logger
-
-	//	log.Level = logrus.DebugLevel
-
-	//	// Error Log
-	//	log.AddHook(lfshook.NewHook(lfshook.PathMap{
-	//		logrus.ErrorLevel: viper.GetString("logs.errfile"),
-	//		logrus.FatalLevel: viper.GetString("logs.errfile"),
-	//		logrus.PanicLevel: viper.GetString("logs.errfile"),
-	//	}, new(experimentutil.ExptErrorFormatter)))
-
-	// Master Log
-	//	log.AddHook(lfshook.NewHook(lfshook.PathMap{
-	//		logrus.InfoLevel:  viper.GetString("logs.logfile"),
-	//		logrus.WarnLevel:  viper.GetString("logs.logfile"),
-	//		logrus.ErrorLevel: viper.GetString("logs.logfile"),
-	//		logrus.FatalLevel: viper.GetString("logs.logfile"),
-	//		logrus.PanicLevel: viper.GetString("logs.logfile"),
-	//	}, &logrus.TextFormatter{FullTimestamp: true}))
-	//
-	//	// Debug Log
-	//	log.AddHook(lfshook.NewHook(lfshook.PathMap{
-	//		logrus.DebugLevel: viper.GetString("logs.debugfile"),
-	//		logrus.InfoLevel:  viper.GetString("logs.debugfile"),
-	//		logrus.WarnLevel:  viper.GetString("logs.debugfile"),
-	//		logrus.ErrorLevel: viper.GetString("logs.debugfile"),
-	//		logrus.FatalLevel: viper.GetString("logs.debugfile"),
-	//		logrus.PanicLevel: viper.GetString("logs.debugfile"),
-	//	}, &logrus.TextFormatter{FullTimestamp: true}))
-
 	// Set up the logConfig to pass to other packages
 	lConfig = make(proxyPushLogger.LogsConfig)
 	for key, value := range viper.GetStringMapString("logs") {
