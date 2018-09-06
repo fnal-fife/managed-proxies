@@ -204,7 +204,8 @@ global:
 
 # Prometheus monitoring config
 prometheus:
-  host: "http://fermicloud149.fnal.gov:9091"
+  #host: "http://fermicloud149.fnal.gov:9091"
+  host: "http://lssrv01.fnal.gov:9091"
   jobname: "proxy_push_tracker"
   
 
