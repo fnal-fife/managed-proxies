@@ -10,7 +10,6 @@ import (
 	"strconv"
 	"strings"
 
-	//"github.com/spf13/viper"
 	gomail "gopkg.in/gomail.v2"
 )
 
@@ -70,6 +69,7 @@ func SendEmail(ctx context.Context, nConfig Config, msg string) error {
 	select {
 	case e := <-c:
 		if e == nil {
+			// TODO:  This needs to become a logging statement somehow
 			fmt.Printf("Sent emails to %s\n", strings.Join(nConfig.To, ", "))
 		}
 		return e
