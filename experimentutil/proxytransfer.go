@@ -111,6 +111,8 @@ func createProxyTransferInfoObjects(ctx context.Context, eConfig ExptConfig, bad
 				proxyFileNameDest: finalProxyPath}
 
 			p = append(p, &pInfo)
+			eConfig.Logger.WithField(
+				"proxyTransferInfo", pInfo).Debug("Created proxy transfer object")
 		}
 	}
 	return

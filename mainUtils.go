@@ -9,18 +9,11 @@ import (
 
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/experimentutil"
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/notifications"
+	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/proxyPushLogger"
 	"github.com/jinzhu/copier"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 )
-
-// setAdminEmail sets the notifications config objects' From and To fields to the config file's admin value
-func setAdminEmail(pnConfig *notifications.Config) {
-	pnConfig.From = pnConfig.ConfigInfo["admin_email"]
-	pnConfig.To = []string{pnConfig.ConfigInfo["admin_email"]}
-	log.Debug("Set notifications config email values to admin defaults")
-	return
-}
 
 // createExptConfig takes the config information from the global file and creates an exptConfig object
 func createExptConfig(expt string) (experimentutil.ExptConfig, error) {
@@ -73,8 +66,9 @@ func createExptConfig(expt string) (experimentutil.ExptConfig, error) {
 		KerbConfig:     krbConfig,
 		PingConfig:     pConfig,
 		SSHConfig:      sConfig,
+		Logger:         proxyPushLogger.New(expt, lConfig),
 	}
-	log.WithFields(logrus.Fields{"experiment": c.Name}).Debug("Set up experiment config")
+	c.Logger.Debug("Set up experiment config")
 	return c, nil
 
 }
@@ -99,7 +93,7 @@ func manageExperimentChannels(ctx context.Context, exptConfigs []experimentutil.
 			// Expt channel is buffered anyway, so if the worker tries to send later and there's no receiver,
 			// garbage collection will take care of it
 			log.WithFields(logrus.Fields{"experiment": eConfig.Name}).Debug("Starting worker")
-			c := experimentutil.Worker(exptContext, eConfig, log, promPush)
+			c := experimentutil.Worker(exptContext, eConfig, promPush)
 			select {
 			case status := <-c: // Grab status from channel
 				log.WithFields(logrus.Fields{"experiment": eConfig.Name}).Debug("Received status")
@@ -143,4 +137,12 @@ func checkUser(authuser string) error {
 		return fmt.Errorf("This must be run as %s.  Trying to run as %s", authuser, cuser.Username)
 	}
 	return nil
+}
+
+// setAdminEmail sets the notifications config objects' From and To fields to the config file's admin value
+func setAdminEmail(pnConfig *notifications.Config) {
+	pnConfig.From = pnConfig.ConfigInfo["admin_email"]
+	pnConfig.To = []string{pnConfig.ConfigInfo["admin_email"]}
+	log.Debug("Set notifications config email values to admin defaults")
+	return
 }
