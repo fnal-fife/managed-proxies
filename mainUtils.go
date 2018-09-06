@@ -46,6 +46,7 @@ func createExptConfig(expt string) (experimentutil.ExptConfig, error) {
 
 	n := notifications.Config{}
 	copier.Copy(&n, &nConfig)
+	n.Experiment = expt
 
 	c = experimentutil.ExptConfig{
 		Name:           expt,
