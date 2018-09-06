@@ -16,7 +16,8 @@ import (
 	"time"
 
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/notifications"
-	"github.com/rifflock/lfshook"
+	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/proxyPushLogger"
+	//"github.com/rifflock/lfshook"
 	"github.com/sirupsen/logrus"
 )
 
@@ -40,8 +41,12 @@ type ExptErrorFormatter struct {
 type (
 	// TimeoutsConfig is a map of the timeouts passed in from the config file
 	TimeoutsConfig map[string]time.Duration
+
+	// DELETE ME
 	// LogsConfig is a map of the location of the logfiles
-	LogsConfig map[string]string
+	//LogsConfig map[string]string
+	// /DELETE ME
+
 	// VPIConfig contains information needed to run the voms-proxy-init command
 	VPIConfig map[string]string
 	// KerbConfig contains information needed to run kinit
@@ -67,11 +72,12 @@ type ExptConfig struct {
 	IsTest      bool
 	NConfig     notifications.Config
 	TimeoutsConfig
-	LogsConfig
+	LogsConfig proxyPushLogger.LogsConfig
 	VPIConfig
 	KerbConfig
 	PingConfig
 	SSHConfig
+	Logger *logrus.Entry
 }
 
 // Experiment worker-specific functions
@@ -104,55 +110,55 @@ func (f *ExptErrorFormatter) Format(entry *logrus.Entry) ([]byte, error) {
 	return append(logByte, '\n'), nil
 }
 
-// exptLogInit sets up the logrus instance for the experiment worker
-// It returns a pointer to a logrus.Entry object that can be used to log events.
-func exptLogInit(ctx context.Context, ename string, lConfig LogsConfig) (*logrus.Entry, error) {
-	if e := ctx.Err(); e != nil {
-		return nil, e
-	}
-
-	var Log = logrus.New()
-	expterrlog := fmt.Sprintf(exptErrFilenamef, ename)
-
-	Log.SetLevel(logrus.DebugLevel)
-
-	Log.AddHook(lfshook.NewHook(lfshook.PathMap{
-		logrus.DebugLevel: lConfig["debugfile"],
-		logrus.InfoLevel:  lConfig["debugfile"],
-		logrus.WarnLevel:  lConfig["debugfile"],
-		logrus.ErrorLevel: lConfig["debugfile"],
-		logrus.FatalLevel: lConfig["debugfile"],
-		logrus.PanicLevel: lConfig["debugfile"],
-	}, &logrus.TextFormatter{FullTimestamp: true}))
-
-	Log.AddHook(lfshook.NewHook(lfshook.PathMap{
-		logrus.InfoLevel:  lConfig["logfile"],
-		logrus.WarnLevel:  lConfig["logfile"],
-		logrus.ErrorLevel: lConfig["logfile"],
-		logrus.FatalLevel: lConfig["logfile"],
-		logrus.PanicLevel: lConfig["logfile"],
-	}, &logrus.TextFormatter{FullTimestamp: true}))
-
-	// General Error Log that will get sent to Admins
-	Log.AddHook(lfshook.NewHook(lfshook.PathMap{
-		logrus.ErrorLevel: lConfig["errfile"],
-		logrus.FatalLevel: lConfig["errfile"],
-		logrus.PanicLevel: lConfig["errfile"],
-	}, new(ExptErrorFormatter)))
-
-	// Experiment-specific error log that gets emailed if populated
-	Log.AddHook(lfshook.NewHook(lfshook.PathMap{
-		logrus.ErrorLevel: expterrlog,
-		logrus.FatalLevel: expterrlog,
-		logrus.PanicLevel: expterrlog,
-	}, new(ExptErrorFormatter)))
-
-	exptlogger := Log.WithField("experiment", ename)
-	exptlogger.Info("Set up experiment logger")
-
-	return exptlogger, nil
-
-}
+//// exptLogInit sets up the logrus instance for the experiment worker
+//// It returns a pointer to a logrus.Entry object that can be used to log events.
+//func exptLogInit(ctx context.Context, ename string, lConfig LogsConfig) (*logrus.Entry, error) {
+//	if e := ctx.Err(); e != nil {
+//		return nil, e
+//	}
+//
+//	var Log = logrus.New()
+//	expterrlog := fmt.Sprintf(exptErrFilenamef, ename)
+//
+//	Log.SetLevel(logrus.DebugLevel)
+//
+//	Log.AddHook(lfshook.NewHook(lfshook.PathMap{
+//		logrus.DebugLevel: lConfig["debugfile"],
+//		logrus.InfoLevel:  lConfig["debugfile"],
+//		logrus.WarnLevel:  lConfig["debugfile"],
+//		logrus.ErrorLevel: lConfig["debugfile"],
+//		logrus.FatalLevel: lConfig["debugfile"],
+//		logrus.PanicLevel: lConfig["debugfile"],
+//	}, &logrus.TextFormatter{FullTimestamp: true}))
+//
+//	Log.AddHook(lfshook.NewHook(lfshook.PathMap{
+//		logrus.InfoLevel:  lConfig["logfile"],
+//		logrus.WarnLevel:  lConfig["logfile"],
+//		logrus.ErrorLevel: lConfig["logfile"],
+//		logrus.FatalLevel: lConfig["logfile"],
+//		logrus.PanicLevel: lConfig["logfile"],
+//	}, &logrus.TextFormatter{FullTimestamp: true}))
+//
+//	// General Error Log that will get sent to Admins
+//	Log.AddHook(lfshook.NewHook(lfshook.PathMap{
+//		logrus.ErrorLevel: lConfig["errfile"],
+//		logrus.FatalLevel: lConfig["errfile"],
+//		logrus.PanicLevel: lConfig["errfile"],
+//	}, new(ExptErrorFormatter)))
+//
+//	// Experiment-specific error log that gets emailed if populated
+//	Log.AddHook(lfshook.NewHook(lfshook.PathMap{
+//		logrus.ErrorLevel: expterrlog,
+//		logrus.FatalLevel: expterrlog,
+//		logrus.PanicLevel: expterrlog,
+//	}, new(ExptErrorFormatter)))
+//
+//	exptlogger := Log.WithField("experiment", ename)
+//	exptlogger.Info("Set up experiment logger")
+//
+//	return exptlogger, nil
+//
+//}
 
 // getKerbTicket runs kinit to get a kerberos ticket
 func getKerbTicket(ctx context.Context, krbConfig KerbConfig) error {
@@ -187,16 +193,17 @@ func checkKeys(ctx context.Context, eConfig ExptConfig) error {
 // experimentCleanup manages the cleanup operations for an experiment, such as sending emails if necessary,
 // and copying, removing or archiving the logs
 // TODO:  maybe a unit test for this
-func (expt *ExperimentSuccess) experimentCleanup(ctx context.Context, exptConfig ExptConfig, genLog *logrus.Logger) error {
+func (expt *ExperimentSuccess) experimentCleanup(ctx context.Context, exptConfig ExptConfig) error {
 	if e := ctx.Err(); e != nil {
 		return e
 	}
+	exptConfig.Logger = exptConfig.Logger.WithField("caller", "experimentutil.experimentCleanup")
 
 	dir, err := os.Getwd()
 	if err != nil {
 		msg := `Could not get current working directory.  Aborting cleanup.  
 					Please check working directory and manually clean up log files`
-		genLog.WithFields(logrus.Fields{"experiment": exptConfig.Name, "caller": "experimentCleanup"}).Error(msg)
+		exptConfig.Logger.Error(msg)
 		return errors.New(msg)
 	}
 
@@ -208,10 +215,10 @@ func (expt *ExperimentSuccess) experimentCleanup(ctx context.Context, exptConfig
 		if _, err = os.Stat(path); os.IsNotExist(err) {
 			return nil
 		} else if err != nil {
-			genLog.WithFields(logrus.Fields{"experiment": exptConfig.Name, "caller": "experimentCleanup"}).Error(err)
+			exptConfig.Logger.Error(err)
 		}
 		if err := os.Remove(path); err != nil {
-			genLog.WithFields(logrus.Fields{"experiment": exptConfig.Name, "caller": "experimentCleanup"}).Error(err)
+			exptConfig.Logger.Error(err)
 			return fmt.Errorf("Could not remove experiment error log %s.  Please clean up manually", path)
 		}
 		return nil
@@ -225,7 +232,7 @@ func (expt *ExperimentSuccess) experimentCleanup(ctx context.Context, exptConfig
 		}
 		data, err := ioutil.ReadFile(expterrfilepath)
 		if err != nil {
-			genLog.WithFields(logrus.Fields{"experiment": exptConfig.Name, "caller": "experimentCleanup"}).Error(err)
+			exptConfig.Logger.Error(err)
 			return err
 		}
 
@@ -234,14 +241,14 @@ func (expt *ExperimentSuccess) experimentCleanup(ctx context.Context, exptConfig
 		emailCtx, emailCancel := context.WithTimeout(ctx, exptConfig.TimeoutsConfig["emailtimeoutDuration"])
 		defer emailCancel()
 		if err := notifications.SendEmail(emailCtx, exptConfig.NConfig, msg); err != nil {
-			genLog.WithFields(logrus.Fields{"experiment": exptConfig.Name, "caller": "experimentCleanup"}).Error(err)
+			exptConfig.Logger.Error(err)
 			msg := "Error sending email.  Will archive error file"
-			genLog.WithFields(logrus.Fields{"experiment": exptConfig.Name, "caller": "experimentCleanup"}).Error(msg)
+			exptConfig.Logger.Error(msg)
 			newfilename := fmt.Sprintf("%s-%s", expterrfilepath, time.Now().Format(time.RFC3339))
 			newpath := path.Join(dir, newfilename)
 
 			if err := os.Rename(expterrfilepath, newpath); err != nil {
-				genLog.WithFields(logrus.Fields{"experiment": exptConfig.Name, "caller": "experimentCleanup"}).Error(err)
+				exptConfig.Logger.Error(err)
 				return fmt.Errorf("Could not move file %s to %s.", expterrfilepath, newpath)
 			}
 			return fmt.Errorf("Could not send email for experiment %s.  Archived error file at %s.", expt.Name, newpath)
@@ -254,19 +261,19 @@ func (expt *ExperimentSuccess) experimentCleanup(ctx context.Context, exptConfig
 // an experiment's nodes.  It returns a channel on which it reports the status of that experiment's proxy push.
 // genlog is the logrus.logger that gets passed in that's meant to capture the non-experiment specific messages
 // that might be printed from this module
-func Worker(ctx context.Context, eConfig ExptConfig, genLog *logrus.Logger, b notifications.BasicPromPush) <-chan ExperimentSuccess {
-	var exptLog *logrus.Entry
+func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPush) <-chan ExperimentSuccess {
+	//var exptLog *logrus.Entry
 	c := make(chan ExperimentSuccess, 2)
 	expt := ExperimentSuccess{eConfig.Name, true} // Initialize
 
-	exptLog, err := exptLogInit(ctx, eConfig.Name, eConfig.LogsConfig)
-	if err != nil { // We either have panicked or it's a context error.  If it's the latter, we really don't care here
-		msg := "Error setting up experiment log.  Will log in general log"
-		genLog.WithFields(logrus.Fields{"experiment": eConfig.Name}).Error(msg)
-		exptLog = genLog.WithField("experiment", eConfig.Name)
-	}
+	//exptLog, err := exptLogInit(ctx, eConfig.Name, eConfig.LogsConfig)
+	//	if err != nil { // We either have panicked or it's a context error.  If it's the latter, we really don't care here
+	//		msg := "Error setting up experiment log.  Will log in general log"
+	//		genLog.WithFields(logrus.Fields{"experiment": eConfig.Name}).Error(msg)
+	//		exptLog = genLog.WithField("experiment", eConfig.Name)
+	//	}
 
-	exptLog.Debug("Now processing ", eConfig.Name)
+	eConfig.Logger.Debug("Now processing ", eConfig.Name)
 
 	go func() {
 		defer close(c) // All expt operations are done (either successful including cleanup or at error)
@@ -293,7 +300,7 @@ func Worker(ctx context.Context, eConfig ExptConfig, genLog *logrus.Logger, b no
 		}
 
 		if _, ok := eConfig.KerbConfig["krb5ccname"]; !ok {
-			exptLog.Error("Could not obtain KRB5CCNAME environmental variable from config. " +
+			eConfig.Logger.Error("Could not obtain KRB5CCNAME environmental variable from config. " +
 				"Please check the config file on fifeutilgpvm01.")
 			declareExptFailure()
 			return
@@ -301,16 +308,16 @@ func Worker(ctx context.Context, eConfig ExptConfig, genLog *logrus.Logger, b no
 		// If we can't get a kerb ticket, log error and keep going.
 		// We might have an old one that's still valid.
 		if err := getKerbTicket(ctx, eConfig.KerbConfig); err != nil {
-			exptLog.Warn(err)
+			eConfig.Logger.Warn(err)
 		}
 
 		// If check of exptConfig keys fails, experiment fails immediately
 		if err := checkKeys(ctx, eConfig); err != nil {
-			exptLog.WithFields(logrus.Fields{"experiment": eConfig.Name}).Error(err)
+			eConfig.Logger.Error(err)
 			declareExptFailure()
 			return
 		}
-		exptLog.Debug("Config keys are valid")
+		eConfig.Logger.Debug("Config keys are valid")
 
 		// Ping nodes to make sure they're up
 
@@ -326,10 +333,10 @@ func Worker(ctx context.Context, eConfig ExptConfig, genLog *logrus.Logger, b no
 			select {
 			case <-pingCtx.Done():
 				if e := pingCtx.Err(); e == context.DeadlineExceeded {
-					exptLog.Errorf("Hit the ping timeout: %s", e)
+					eConfig.Logger.Errorf("Hit the ping timeout: %s", e)
 
 				} else {
-					exptLog.Error(e)
+					eConfig.Logger.Error(e)
 				}
 				pingCancel()
 				break pingLoop
@@ -342,15 +349,15 @@ func Worker(ctx context.Context, eConfig ExptConfig, genLog *logrus.Logger, b no
 					if n, ok := testnode.pingNoder.(node); ok {
 						badNodesSlice = append(badNodesSlice, string(n))
 					} else {
-						exptLog.Errorf("Could not coerce interface pingNoder value %v to type node", testnode.pingNoder)
+						eConfig.Logger.Errorf("Could not coerce interface pingNoder value %v to type node", testnode.pingNoder)
 					}
-					exptLog.Error(testnode.err)
+					eConfig.Logger.Error(testnode.err)
 				}
 			}
 		}
 
 		if len(badNodesSlice) > 0 {
-			exptLog.Errorf("The node(s) %s didn't return a response to ping after 5 "+
+			eConfig.Logger.Errorf("The node(s) %s didn't return a response to ping after 5 "+
 				"seconds.  Please investigate, and see if the nodes are up. "+
 				"We'll still try to copy proxies there.", strings.Join(badNodesSlice, ", "))
 		}
@@ -366,12 +373,10 @@ func Worker(ctx context.Context, eConfig ExptConfig, genLog *logrus.Logger, b no
 		for {
 			select {
 			case <-vpiCtx.Done():
-				if e := vpiCtx.Err(); e == context.DeadlineExceeded {
-					exptLog.Errorf("Hit the voms-proxy-init timeout for %s: %s.  Check log for details. "+
-						"Continuing to next proxy.\n", expt.Name, e)
-				} else {
-					exptLog.Error(e)
-				}
+				eConfig.Logger.WithFields(logrus.Fields{
+					"caller": "experimentutil.Worker",
+					"action": "voms-proxy-init",
+				}).Error(vpiCtx.Err())
 				vpiCancel()
 				break vpiLoop
 			case vpi, chanOpen := <-vpiChan: // receive on vpiChan
@@ -380,10 +385,11 @@ func Worker(ctx context.Context, eConfig ExptConfig, genLog *logrus.Logger, b no
 					break vpiLoop
 				}
 				if vpi.err != nil {
-					exptLog.Error(vpi.err)
+					eConfig.Logger.Error(vpi.err)
 					expt.Success = false
 				} else {
-					exptLog.Debug("Generated voms proxy: ", vpi.filename)
+					eConfig.Logger.WithField(
+						"vomsProxyFilename", vpi.filename).Debug("Generated voms proxy")
 				}
 			}
 		}
@@ -398,12 +404,10 @@ func Worker(ctx context.Context, eConfig ExptConfig, genLog *logrus.Logger, b no
 		for {
 			select {
 			case <-copyCtx.Done():
-				if e := copyCtx.Err(); e == context.DeadlineExceeded {
-					exptLog.Error("Experiment hit the timeout when waiting to push proxy to one of the nodes. " +
-						"Please check the logs for details")
-				} else {
-					exptLog.Error(e)
-				}
+				eConfig.Logger.WithFields(logrus.Fields{
+					"caller": "experimentutil.Worker",
+					"action": "copy proxies",
+				}).Error(copyCtx.Err())
 				expt.Success = false
 				copyCancel()
 				break copyLoop
@@ -413,17 +417,27 @@ func Worker(ctx context.Context, eConfig ExptConfig, genLog *logrus.Logger, b no
 					break copyLoop
 				}
 				if pushproxy.err != nil {
-					exptLog.Error(pushproxy.err)
+					eConfig.Logger.WithFields(logrus.Fields{
+						"caller": "experimentutil.Worker",
+						"action": "copy proxies",
+					}).Error(pushproxy.err)
 					expt.Success = false
 				} else {
 					successfulCopies[pushproxy.role] = append(successfulCopies[pushproxy.role], pushproxy.node)
 					delete(failedCopies[pushproxy.role], pushproxy.node)
 					if err := b.PushNodeRoleTimestamp(expt.Name, pushproxy.node, pushproxy.role); err != nil {
-						genLog.WithField("experiment", expt.Name).Warnf(
-							"Could not report success metrics to prometheus for [node, role] = [%s, %s]", pushproxy.node, pushproxy.role)
+						eConfig.Logger.WithFields(logrus.Fields{
+							"caller": "experimentutil.Worker",
+							"action": "prometheus metric push",
+							"node":   pushproxy.node,
+							"role":   pushproxy.role,
+						}).Warn(
+							"Could not report success metrics to prometheus")
 					} else {
-						exptLog.WithField("experiment", expt.Name).Debugf(
-							"Pushed prometheus success timestamp for [node, role] = [%s, %s]", pushproxy.node, pushproxy.role)
+						eConfig.Logger.WithFields(logrus.Fields{
+							"node": pushproxy.node,
+							"role": pushproxy.role,
+						}).Debug("Pushed prometheus success timestamp")
 					}
 				}
 			}
@@ -431,7 +445,10 @@ func Worker(ctx context.Context, eConfig ExptConfig, genLog *logrus.Logger, b no
 
 		for role, nodes := range successfulCopies {
 			sort.Strings(nodes)
-			exptLog.Debugf("Successful copies for role %s were %v", role, nodes)
+			eConfig.Logger.WithFields(logrus.Fields{
+				"role":  role,
+				"nodes": strings.Join(nodes, ", "),
+			}).Debugf("Successful copies")
 		}
 
 		for role, nodes := range failedCopies {
@@ -443,19 +460,22 @@ func Worker(ctx context.Context, eConfig ExptConfig, genLog *logrus.Logger, b no
 				nodesSlice = append(nodesSlice, n)
 			}
 			sort.Strings(nodesSlice)
-			exptLog.Errorf("Failed copies for role %s were %v", role, nodesSlice)
+			eConfig.Logger.WithFields(logrus.Fields{
+				"role":  role,
+				"nodes": strings.Join(nodesSlice, ", "),
+			}).Errorf("Failed copies")
 		}
 
-		exptLog.Info("Finished processing ", expt.Name)
+		eConfig.Logger.Info("Finished processing experiment")
 		c <- expt
 
 		// We're logging the cleanup in the general log so that we don't create an extraneous
 		// experiment log file
-		exptLog.Info("Cleaning up ", expt.Name)
-		if err := expt.experimentCleanup(ctx, eConfig, genLog); err != nil {
-			genLog.WithField("experiment", expt.Name).Error("Error cleaning up experiment")
+		eConfig.Logger.Info("Cleaning up experiment")
+		if err := expt.experimentCleanup(ctx, eConfig); err != nil {
+			eConfig.Logger.Error("Error cleaning up experiment")
 		} else {
-			genLog.WithField("experiment", expt.Name).Info("Finished cleaning up with no errors")
+			eConfig.Logger.Info("Finished cleaning up with no errors")
 		}
 	}()
 	return c

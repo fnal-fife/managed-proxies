@@ -9,6 +9,7 @@ import (
 
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/experimentutil"
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/notifications"
+	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/proxyPushLogger"
 	"github.com/jinzhu/copier"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
@@ -73,8 +74,9 @@ func createExptConfig(expt string) (experimentutil.ExptConfig, error) {
 		KerbConfig:     krbConfig,
 		PingConfig:     pConfig,
 		SSHConfig:      sConfig,
+		Logger:         proxyPushLogger.New(expt, lConfig),
 	}
-	log.WithFields(logrus.Fields{"experiment": c.Name}).Debug("Set up experiment config")
+	c.Logger.Debug("Set up experiment config")
 	return c, nil
 
 }
@@ -99,7 +101,7 @@ func manageExperimentChannels(ctx context.Context, exptConfigs []experimentutil.
 			// Expt channel is buffered anyway, so if the worker tries to send later and there's no receiver,
 			// garbage collection will take care of it
 			log.WithFields(logrus.Fields{"experiment": eConfig.Name}).Debug("Starting worker")
-			c := experimentutil.Worker(exptContext, eConfig, log, promPush)
+			c := experimentutil.Worker(exptContext, eConfig, promPush)
 			select {
 			case status := <-c: // Grab status from channel
 				log.WithFields(logrus.Fields{"experiment": eConfig.Name}).Debug("Received status")
