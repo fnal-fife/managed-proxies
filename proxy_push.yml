@@ -97,7 +97,7 @@ experiments:
       minervadat: Data
   minos:
     dir: /opt
-    emails: [kreymer@fnal.gov, wingmc@fnal.gov]
+    emails: [kreymer@fnal.gov, wingmc@fnal.gov, sbhat@fnal.gov]
     nodes: [minosdatagpvm01, minosgpvm05]
     accounts:
       minospro: Production
