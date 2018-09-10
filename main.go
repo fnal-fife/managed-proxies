@@ -257,6 +257,7 @@ func cleanup(exptStatus map[string]bool, exptConfigs []experimentutil.ExptConfig
 	msg := string(data)
 
 	setAdminEmail(&nConfig)
+	nConfig.Subject = "Managed Proxy Service Errors for all experiments"
 	emailCtx, emailCancel := context.WithTimeout(context.Background(), tConfig["emailtimeoutDuration"])
 	if err = notifications.SendEmail(emailCtx, nConfig, msg); err != nil {
 		log.WithFields(logrus.Fields{"caller": "main.cleanup"}).Error("Error sending email")
