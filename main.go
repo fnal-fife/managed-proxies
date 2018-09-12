@@ -298,7 +298,11 @@ func main() {
 			log.WithFields(logrus.Fields{
 				"experiment": viper.GetString("experiment"),
 				"caller":     "main",
-			}).Fatal("Error setting up experiment configuration slice.  As this is the only experiment, we will exit now.")
+			}).Error("Error setting up experiment configuration slice.  As this is the only experiment, we will cleanup now.")
+			if err := cleanup(exptSuccesses, exptConfigs); err != nil {
+				log.WithFields(logrus.Fields{"caller": "main"}).Error("Unable to cleanup")
+			}
+			os.Exit(1)
 		}
 		exptConfigs = append(exptConfigs, eConfig)
 	} else {
