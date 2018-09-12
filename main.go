@@ -276,9 +276,13 @@ func cleanup(exptStatus map[string]bool, exptConfigs []experimentutil.ExptConfig
 		log.WithFields(logrus.Fields{"caller": "main.cleanup"}).Error("Could not remove general error logfile.  Please clean up manually")
 		finalCleanupSuccess = false
 	}
+	log.WithFields(logrus.Fields{
+		"caller":   "main.cleanup",
+		"filename": viper.GetString("logs.errfile"),
+	}).Debug("Removed general error logfile")
 
 	if !finalCleanupSuccess {
-		return errors.New("Could not clean up.  Please review")
+		return errors.New("Could not clean up completely.  Please review")
 	}
 
 	return nil
