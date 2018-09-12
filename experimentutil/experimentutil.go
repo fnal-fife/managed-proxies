@@ -339,6 +339,7 @@ func (expt *ExperimentSuccess) experimentCleanup(ctx context.Context, exptConfig
 			exptConfig.Logger.Error(msg)
 			return msg
 		}
+		exptConfig.Logger.WithField("filename", path).Debug("Removed experiment error file")
 		return nil
 	}(expterrfilepath)
 
