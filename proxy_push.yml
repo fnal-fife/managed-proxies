@@ -117,7 +117,7 @@ experiments:
       novapro: Production
   sbnd:
     dir: /opt
-    emails: [petrillo@fnal.gov]
+    emails: [vito@fnal.gov]
     nodes: [sbndgpvm01, sbndgpvm02, sbndgpvm03, sbndsamgpvm01]
     accounts:
       sbndpro: Production
