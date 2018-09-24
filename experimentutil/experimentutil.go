@@ -56,7 +56,6 @@ type ExptConfig struct {
 	CertBaseDir string
 	Krb5ccname  string
 	DestDir     string
-	ExptEmails  []string
 	Nodes       []string
 	Accounts    map[string]string
 	VomsPrefix  string
@@ -93,7 +92,7 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 		}
 
 		// General Setup
-		setupNotificationsConfig(&eConfig)
+		//setupNotificationsConfig(&eConfig)
 		successfulCopies := make(map[string][]string)
 		failedCopies := make(map[string]map[string]struct{})
 		badNodesSlice := make([]string, 0, len(eConfig.Nodes))
@@ -360,30 +359,30 @@ func (expt *ExperimentSuccess) experimentCleanup(ctx context.Context, exptConfig
 		emailCtx, emailCancel := context.WithTimeout(ctx, exptConfig.TimeoutsConfig["emailtimeoutDuration"])
 		defer emailCancel()
 		if err := notifications.SendEmail(emailCtx, exptConfig.NConfig, msg); err != nil {
-			exptConfig.Logger.Error(err)
-			msg := "Error sending email.  Will archive error file"
-			exptConfig.Logger.Error(msg)
+			exptConfig.Logger.Error("Error cleaning up.  Will archive error file.")
 			newfilename := fmt.Sprintf("%s-%s", expterrfilepath, time.Now().Format(time.RFC3339))
 			newpath := path.Join(dir, newfilename)
 
 			if err := os.Rename(expterrfilepath, newpath); err != nil {
 				exptConfig.Logger.Error(err)
-				return fmt.Errorf("Could not move file %s to %s.", expterrfilepath, newpath)
+				exptConfig.Logger.Errorf("Could not move file %s to %s.", expterrfilepath, newpath)
+				return err
 			}
-			return fmt.Errorf("Could not send email for experiment %s.  Archived error file at %s.", expt.Name, newpath)
+			return fmt.Errorf("could not send email for experiment %s.  Archived error file at %s", expt.Name, newpath)
 		}
 	}
 	return nil
 }
 
 // setupNotificationsConfig sets the values for the notifications.config sub-type of ExptConfig to the appropriate values for the experiment
-func setupNotificationsConfig(pExptConfig *ExptConfig) {
-	pExptConfig.NConfig.From = pExptConfig.NConfig.ConfigInfo["admin_email"]
-	if !pExptConfig.IsTest {
-		pExptConfig.NConfig.To = pExptConfig.ExptEmails
-	}
-	pExptConfig.NConfig.Subject = "Managed Proxy Push errors for " + pExptConfig.Name
-}
+//func setupNotificationsConfig(pExptConfig *ExptConfig) {
+//	pExptConfig.NConfig.From = pExptConfig.NConfig.ConfigInfo["admin_email"]
+//	if !pExptConfig.IsTest {
+//		pExptConfig.NConfig.To = pExptConfig.ExptEmails
+//	}
+//	pExptConfig.NConfig.Subject = "Managed Proxy Push errors for " + pExptConfig.Name
+//	pExptConfig.NConfig.Logger = pExptConfig.Logger
+//}
 
 // getKerbTicket runs kinit to get a kerberos ticket
 func getKerbTicket(ctx context.Context, krbConfig KerbConfig) error {
