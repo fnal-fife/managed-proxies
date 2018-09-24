@@ -87,6 +87,7 @@ func init() {
 	nConfig.ConfigInfo["smtphost"] = viper.GetString("global.smtphost")
 	nConfig.ConfigInfo["smtpport"] = strconv.Itoa(viper.GetInt("global.smtpport"))
 	setAdminEmail(&nConfig)
+	nConfig.Logger = log
 
 	// Now that our log is set up and we've got a valid config, handle all init (fatal) errors using the following func
 	// that logs the error, sends a slack message and an email, cleans up, and then exits.

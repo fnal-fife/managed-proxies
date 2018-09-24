@@ -44,16 +44,21 @@ func createExptConfig(expt string) (experimentutil.ExptConfig, error) {
 		keyfile = exptSubConfig.GetString("keyfile")
 	}
 
+	// Notifications setup
 	n := notifications.Config{}
 	copier.Copy(&n, &nConfig)
 	n.Experiment = expt
+	n.From = viper.GetString("admin_email")
+	if !viper.GetBool("test") {
+		n.To = exptSubConfig.GetStringSlice("emails")
+	}
+	n.Subject = "Managed Proxy Push errors for " + expt
 
 	c = experimentutil.ExptConfig{
 		Name:           expt,
 		CertBaseDir:    viper.GetString("global.cert_base_dir"),
 		Krb5ccname:     viper.GetString("global.krb5ccname"),
 		DestDir:        exptSubConfig.GetString("dir"),
-		ExptEmails:     exptSubConfig.GetStringSlice("emails"),
 		Nodes:          exptSubConfig.GetStringSlice("nodes"),
 		Accounts:       exptSubConfig.GetStringMapString("accounts"),
 		VomsPrefix:     vomsprefix,
@@ -69,6 +74,10 @@ func createExptConfig(expt string) (experimentutil.ExptConfig, error) {
 		SSHConfig:      sConfig,
 		Logger:         proxyPushLogger.New(expt, lConfig),
 	}
+
+	// Put this on to set the notifications logger
+	c.NConfig.Logger = c.Logger
+
 	c.Logger.Debug("Set up experiment config")
 	return c, nil
 
