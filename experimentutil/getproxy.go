@@ -17,48 +17,6 @@ type getProxyer interface {
 	getProxy(context.Context, VPIConfig) (string, error)
 }
 
-// vomsProxy stores the information needed to uniquely identify the elements of a VOMS proxy.
-type vomsProxy struct {
-	fqan     string
-	role     string
-	account  string
-	certfile string
-	keyfile  string
-}
-
-// vomsProxyInitStatus stores information about an attempt to run voms-proxy-init to generate a VOMS proxy.
-// If there was an error, it's stored in err.
-type vomsProxyInitStatus struct {
-	filename string
-	err      error
-}
-
-// getProxies launches goroutines that run getProxy to generate the appropriate proxies on the local machine.
-// Calling getProxies will generate voms X509 proxies of all of the proxies passed in as getProxyer objects.  It returns
-// a channel, on which it reports the status of each attempt
-func getProxies(ctx context.Context, vConfig VPIConfig, proxies ...getProxyer) <-chan vomsProxyInitStatus {
-	c := make(chan vomsProxyInitStatus, len(proxies))
-	var wg sync.WaitGroup
-	wg.Add(len(proxies))
-
-	for _, v := range proxies {
-		go func(v getProxyer) {
-			defer wg.Done()
-			outfile, err := v.getProxy(ctx, vConfig)
-			vpi := vomsProxyInitStatus{outfile, err}
-			c <- vpi
-		}(v)
-	}
-
-	// Wait for all goroutines to finish, then close channel so that expt Worker can proceed
-	go func() {
-		defer close(c)
-		wg.Wait()
-	}()
-
-	return c
-}
-
 // createVomsProxyObjects takes the configuration information for an experiment and generates a slice of vomsProxy objects
 // for that experiment
 func createVomsProxyObjects(ctx context.Context, eConfig ExptConfig) (vSlice []getProxyer) {
@@ -82,6 +40,15 @@ func createVomsProxyObjects(ctx context.Context, eConfig ExptConfig) (vSlice []g
 		vSlice = append(vSlice, &v)
 	}
 	return
+}
+
+// vomsProxy stores the information needed to uniquely identify the elements of a VOMS proxy.
+type vomsProxy struct {
+	fqan     string
+	role     string
+	account  string
+	certfile string
+	keyfile  string
 }
 
 // getProxy receives a *vomsProxy object, and uses its properties to run voms-proxy-init to generate a VOMS Proxy.
@@ -118,4 +85,37 @@ func (v *vomsProxy) getProxy(ctx context.Context, vConfig VPIConfig) (string, er
 		return "", errors.New(err)
 	}
 	return outfile, nil
+}
+
+// vomsProxyInitStatus stores information about an attempt to run voms-proxy-init to generate a VOMS proxy.
+// If there was an error, it's stored in err.
+type vomsProxyInitStatus struct {
+	filename string
+	err      error
+}
+
+// getProxies launches goroutines that run getProxy to generate the appropriate proxies on the local machine.
+// Calling getProxies will generate voms X509 proxies of all of the proxies passed in as getProxyer objects.  It returns
+// a channel, on which it reports the status of each attempt
+func getProxies(ctx context.Context, vConfig VPIConfig, proxies ...getProxyer) <-chan vomsProxyInitStatus {
+	c := make(chan vomsProxyInitStatus, len(proxies))
+	var wg sync.WaitGroup
+	wg.Add(len(proxies))
+
+	for _, v := range proxies {
+		go func(v getProxyer) {
+			defer wg.Done()
+			outfile, err := v.getProxy(ctx, vConfig)
+			vpi := vomsProxyInitStatus{outfile, err}
+			c <- vpi
+		}(v)
+	}
+
+	// Wait for all goroutines to finish, then close channel so that expt Worker can proceed
+	go func() {
+		defer close(c)
+		wg.Wait()
+	}()
+
+	return c
 }
