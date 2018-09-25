@@ -48,7 +48,7 @@ func createExptConfig(expt string) (experimentutil.ExptConfig, error) {
 	n := notifications.Config{}
 	copier.Copy(&n, &nConfig)
 	n.Experiment = expt
-	n.From = viper.GetString("admin_email")
+	n.From = viper.GetString("notifications.admin_email")
 	if !viper.GetBool("test") {
 		n.To = exptSubConfig.GetStringSlice("emails")
 	}
