@@ -3,9 +3,11 @@
 proxy_push.yml except for those under the p-* entries"""
 
 import subprocess
+import os.path 
 
 CONFIG = 'proxy_push.yml'
 STORE_KEYS_SCRIPT = './store_certkeys_in_myproxy'
+
 
 def run_store_certkeys(account):
     """Run ./store_certkeys_in_myproxy <account>.  Return True if success, 
@@ -55,7 +57,23 @@ def main():
     results = {}
     for account in accounts:
         results[account] = run_store_certkeys(account)
+
+    # Now do the CI-service certs
+    ci_accounts = set()
+    ci_dicts = (value 
+                for key, value in config['experiments'].iteritems()
+                if "p-" in key      # want p-larreco, p-larsoft, etc.
+                )
+    ci_cert_paths = (d['certfile'] for d in ci_dicts)
+    ci_cert_filenames = (os.path.basename(p) for p in ci_cert_paths)
+    ci_account_names = (f.split('.')[0] for f in ci_cert_filenames)
     
+    for acct_name in ci_account_names:
+        ci_accounts.add(acct_name)
+
+    for account in ci_accounts:
+        results[account] = run_store_certkeys(account)
+
     all_succeeded = True
     for account, success in results.iteritems():
         if not success:
