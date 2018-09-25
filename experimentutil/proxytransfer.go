@@ -19,68 +19,6 @@ type pushProxyer interface {
 	createCopyProxiesStatus() copyProxiesStatus
 }
 
-// proxyTransferInfo contains the information needed to describe where on the source host to find the proxy, and where on the destination host to push that proxy
-type proxyTransferInfo struct {
-	account           string
-	role              string
-	node              string
-	nodeDown          bool
-	proxyFileName     string
-	proxyFilePathSrc  string
-	proxyFileNameDest string
-}
-
-// copyProxiesStatus stores information that uniquely identifies a VOMS proxy within an experiment (account, role) and
-// the node to which it was attempted to be copied.  If there was an error doing so, it's stored in err.
-type copyProxiesStatus struct {
-	node    string
-	account string
-	role    string
-	err     error
-}
-
-// copyProxies copies the proxies from the local machine to the experiment nodes as specified by pushProxyer variadic and
-// changes their permissions. It returns a channel on which it reports the status of those operations.  The copy and
-// change permission operations share a context that dictates their deadline.
-func copyProxies(ctx context.Context, sConfig SSHConfig, proxyTransfers ...pushProxyer) <-chan copyProxiesStatus {
-	numSlots := len(proxyTransfers)
-	sshOpts := strings.Fields(sConfig["sshopts"])
-
-	c := make(chan copyProxiesStatus, numSlots)
-	var wg sync.WaitGroup
-
-	wg.Add(numSlots)
-
-	for _, p := range proxyTransfers {
-		go func(p pushProxyer) {
-			cps := p.createCopyProxiesStatus()
-			defer wg.Done()
-
-			if cps.err = p.copyProxy(ctx, sshOpts, sConfig["scpargs"]); cps.err != nil {
-				if e := ctx.Err(); e == nil {
-					cps.err = errors.New(cps.err.Error())
-				}
-				c <- cps
-				return
-			}
-			if cps.err = p.chmodProxy(ctx, sshOpts, sConfig["chmodargs"]); cps.err != nil {
-				if e := ctx.Err(); e == nil {
-					cps.err = errors.New(cps.err.Error())
-				}
-			}
-			c <- cps
-		}(p)
-	}
-
-	// Wait for all goroutines to finish, then close channel so that expt Worker can proceed
-	go func() {
-		defer close(c)
-		wg.Wait()
-	}()
-
-	return c
-}
-
 // createProxyTransferInfoObjects uses the configuration information to create a string of pushProxyer objects containing source and
 // destination information for VOMS proxies
 func createProxyTransferInfoObjects(ctx context.Context, eConfig ExptConfig, badNodesSlice []string) (p []pushProxyer) {
@@ -116,6 +54,17 @@ func createProxyTransferInfoObjects(ctx context.Context, eConfig ExptConfig, bad
 		}
 	}
 	return
+}
+
+// proxyTransferInfo contains the information needed to describe where on the source host to find the proxy, and where on the destination host to push that proxy
+type proxyTransferInfo struct {
+	account           string
+	role              string
+	node              string
+	nodeDown          bool
+	proxyFileName     string
+	proxyFilePathSrc  string
+	proxyFileNameDest string
 }
 
 // copyProxy uses scp to copy the proxy to the destination node, putting it in a file specified by pt.proxyFileNameDest
@@ -214,4 +163,55 @@ func (pt *proxyTransferInfo) generateBadNodeMsg() (msg string) {
 			"group reboot the node.", pt.node)
 	}
 	return
+}
+
+// copyProxiesStatus stores information that uniquely identifies a VOMS proxy within an experiment (account, role) and
+// the node to which it was attempted to be copied.  If there was an error doing so, it's stored in err.
+type copyProxiesStatus struct {
+	node    string
+	account string
+	role    string
+	err     error
+}
+
+// copyProxies copies the proxies from the local machine to the experiment nodes as specified by pushProxyer variadic and
+// changes their permissions. It returns a channel on which it reports the status of those operations.  The copy and
+// change permission operations share a context that dictates their deadline.
+func copyProxies(ctx context.Context, sConfig SSHConfig, proxyTransfers ...pushProxyer) <-chan copyProxiesStatus {
+	numSlots := len(proxyTransfers)
+	sshOpts := strings.Fields(sConfig["sshopts"])
+
+	c := make(chan copyProxiesStatus, numSlots)
+	var wg sync.WaitGroup
+
+	wg.Add(numSlots)
+
+	for _, p := range proxyTransfers {
+		go func(p pushProxyer) {
+			cps := p.createCopyProxiesStatus()
+			defer wg.Done()
+
+			if cps.err = p.copyProxy(ctx, sshOpts, sConfig["scpargs"]); cps.err != nil {
+				if e := ctx.Err(); e == nil {
+					cps.err = errors.New(cps.err.Error())
+				}
+				c <- cps
+				return
+			}
+			if cps.err = p.chmodProxy(ctx, sshOpts, sConfig["chmodargs"]); cps.err != nil {
+				if e := ctx.Err(); e == nil {
+					cps.err = errors.New(cps.err.Error())
+				}
+			}
+			c <- cps
+		}(p)
+	}
+
+	// Wait for all goroutines to finish, then close channel so that expt Worker can proceed
+	go func() {
+		defer close(c)
+		wg.Wait()
+	}()
+
+	return c
 }

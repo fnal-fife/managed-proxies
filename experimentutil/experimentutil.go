@@ -32,11 +32,6 @@ type ExperimentSuccess struct {
 	Success bool
 }
 
-// ExptErrorFormatter is a struct that implements the logrus.Formatter interface.  It's for experiment logs that will be emailed to experiments in
-// case of error
-type ExptErrorFormatter struct {
-}
-
 type (
 	// TimeoutsConfig is a map of the timeouts passed in from the config file
 	TimeoutsConfig map[string]time.Duration
@@ -373,16 +368,6 @@ func (expt *ExperimentSuccess) experimentCleanup(ctx context.Context, exptConfig
 	}
 	return nil
 }
-
-// setupNotificationsConfig sets the values for the notifications.config sub-type of ExptConfig to the appropriate values for the experiment
-//func setupNotificationsConfig(pExptConfig *ExptConfig) {
-//	pExptConfig.NConfig.From = pExptConfig.NConfig.ConfigInfo["admin_email"]
-//	if !pExptConfig.IsTest {
-//		pExptConfig.NConfig.To = pExptConfig.ExptEmails
-//	}
-//	pExptConfig.NConfig.Subject = "Managed Proxy Push errors for " + pExptConfig.Name
-//	pExptConfig.NConfig.Logger = pExptConfig.Logger
-//}
 
 // getKerbTicket runs kinit to get a kerberos ticket
 func getKerbTicket(ctx context.Context, krbConfig KerbConfig) error {

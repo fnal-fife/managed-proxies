@@ -73,7 +73,6 @@ func init() {
 	log.Debugf("Using config file %s", viper.GetString("configfile"))
 
 	// Set up notifications
-	// nConfig = make(notifications.Config)
 	nConfig.ConfigInfo = make(map[string]string)
 	nKey := "notifications"
 	// Test flag sets which notifications section from config we want to use.
@@ -290,9 +289,7 @@ func cleanup(exptStatus map[string]bool, exptConfigs []experimentutil.ExptConfig
 }
 
 func main() {
-	exptSuccesses := make(map[string]bool) // map of successful expts
-	//expts := make([]string, 0, len(viper.GetStringMap("experiments"))) // Slice of experiments we will actually process
-
+	exptSuccesses := make(map[string]bool)                                                      // map of successful expts
 	exptConfigs := make([]experimentutil.ExptConfig, 0, len(viper.GetStringMap("experiments"))) // Slice of experiments we will actually process
 
 	// Get our list of experiments from the config file, create exptConfig objects
