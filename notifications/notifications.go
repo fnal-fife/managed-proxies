@@ -73,6 +73,7 @@ func SendEmail(ctx context.Context, nConfig Config, msg string) error {
 	case e := <-c:
 		if e != nil {
 			nConfig.Logger.WithField("recipient", strings.Join(nConfig.To, ", ")).Errorf("Error sending email: %s", e)
+			nConfig.Logger.Debug(nConfig)
 		} else {
 			nConfig.Logger.WithField("recipient", strings.Join(nConfig.To, ", ")).Info("Sent email")
 		}
