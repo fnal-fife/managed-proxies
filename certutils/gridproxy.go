@@ -1,16 +1,30 @@
 package proxyutils
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
 
 type GridProxy struct {
 	Path string
 	DN   string
+	//Valid?
 }
 
-func getGridProxy(s serviceCert, outfile string) *GridProxy {
-	// TODO:  Need to actually do something here
+func NewGridProxy(s *serviceCert, valid time.Duration) (*GridProxy, error) {
+	//TODO implement this.  Want to set time here, maybe.  If so, pass into runGridProxyInit
+	// TODO Run checks in this method to make sure we can actually run grid-proxy-init
+	// Sanity-check time and set default time if no time given.
+
+	g := s.runGridProxyInit(valid)
+	return g, nil
+}
+
+func (s *serviceCert) runGridProxyInit(valid time.Duration) *GridProxy {
+	// TODO:  Need to actually do grid-proxy-init here
+	// Set tempfile here
 	fmt.Println("vim-go")
-	g := GridProxy{outfile, ""}
+	g := GridProxy{"/tmp/blah", ""}
 	return &g
 }
 
