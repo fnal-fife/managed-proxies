@@ -5,19 +5,27 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"text/template"
 	"time"
 )
 
-const defaultValidity = "24h"
+const (
+	defaultValidity  = "24h"
+	gpiArgs          = "-cert {{.CertPath}} -key {{.KeyPath}} -out {{.OutFile}} -valid {{.Valid}}"
+	myproxystoreArgs = "-certfile {{.CertFile}} -keyfile {{.KeyFile}} -s {{.Server}} -xZ {{.Retrievers}} -l {{.Owner}} -t {{.Hours}}"
+	//These will move to a config file
+	myproxyServer = "fermicloud343.fnal.gov"
+)
 
 var (
 	gridProxyExecutables = map[string]string{
 		"grid-proxy-init": "",
+		"myproxy-store":   "",
 	}
-	gpiArgs     = "-cert {{.CertPath}} -key {{.KeyPath}} -out {{.OutFile}} -valid {{.Valid}}"
-	gpiTemplate = template.Must(template.New("grid-proxy-init").Parse(gpiArgs))
+	gpiTemplate          = template.Must(template.New("grid-proxy-init").Parse(gpiArgs))
+	myproxystoreTemplate = template.Must(template.New("myproxy-store").Parse(myproxystoreArgs))
 )
 
 func init() {
@@ -35,6 +43,7 @@ func init() {
 type GridProxy struct {
 	Path string
 	DN   string
+	*serviceCert
 }
 
 func NewGridProxy(s *serviceCert, valid time.Duration) (*GridProxy, error) {
@@ -51,16 +60,6 @@ func NewGridProxy(s *serviceCert, valid time.Duration) (*GridProxy, error) {
 		return &GridProxy{}, err
 	}
 	return g, nil
-}
-
-// fmtDurationForGPI does TODO .Modified from https://stackoverflow.com/questions/47341278/how-to-format-a-duration-in-golang/47342272#47342272
-func fmtDurationForGPI(d time.Duration) string {
-	// TODO:  Unit test this.  Throw different combos of hours, minutes, and decimal entries.  Days should fail.
-	d = d.Round(time.Minute)
-	h := d / time.Hour
-	d -= h * time.Hour
-	m := d / time.Minute
-	return fmt.Sprintf("%d:%02d", h, m)
 }
 
 func (s *serviceCert) runGridProxyInit(valid time.Duration) (*GridProxy, error) {
@@ -104,7 +103,7 @@ func (s *serviceCert) runGridProxyInit(valid time.Duration) (*GridProxy, error) 
 	}
 	fmt.Println(out)
 
-	g := GridProxy{Path: outfile}
+	g := GridProxy{Path: outfile, serviceCert: s}
 
 	_dn, err := getCertSubject(g.Path)
 	if err != nil {
@@ -128,8 +127,64 @@ func (g *GridProxy) Remove() error {
 	return err
 }
 
-func (g *GridProxy) runMyProxyStore(server, retrievers, hours string, s serviceCert) error {
+func (g *GridProxy) StoreInMyProxy(server string, valid time.Duration) error {
+	var b strings.Builder
+
+	hours := strconv.FormatFloat(valid.Hours(), 'f', -1, 32)
+
+	retrievers, err := getRetrievers()
+	if err != nil {
+		fmt.Println(err)
+		return err
+	}
+
+	cArgs := struct{ CertFile, KeyFile, Server, Retrievers, Owner, Hours string }{
+		CertFile:   g.Path,
+		KeyFile:    g.Path,
+		Server:     server,
+		Retrievers: retrievers,
+		Owner:      g.serviceCert.DN,
+		Hours:      hours,
+	}
+
+	if err := myproxystoreTemplate.Execute(&b, cArgs); err != nil {
+		fmt.Println("Could not execute myproxy-store template")
+		return err
+	}
+
+	args := strings.Fields(b.String())
+
+	env := []string{
+		fmt.Sprintf("X509_USER_CERT=%s", g.serviceCert.certPath),
+		fmt.Sprintf("X509_USER_KEY=%s", g.serviceCert.keyPath),
+	}
+
+	cmd := exec.Command(gridProxyExecutables["myproxy-store"], args...)
+	cmd.Env = env
+	out, err := cmd.Output()
+	if err != nil {
+		fmt.Println("Could not execute myproxy-store command.")
+		fmt.Println(err)
+		return err
+	}
+	fmt.Println(out)
+
+	if err := g.Remove(); err != nil {
+		fmt.Printf("Could not clean up temp grid proxy at %s.  Please clean up manually.\n", g.Path)
+		return err
+	}
+	fmt.Println("Temp grid proxy removed")
 	return nil
 }
 
 // Somewhere else, define an interface myProxyer that has a runMyProxyStore func.  Have the func that eventually runs runMyProxyStore run it on the interface.
+
+// fmtDurationForGPI does TODO .Modified from https://stackoverflow.com/questions/47341278/how-to-format-a-duration-in-golang/47342272#47342272
+func fmtDurationForGPI(d time.Duration) string {
+	// TODO:  Unit test this.  Throw different combos of hours, minutes, and decimal entries.  Days should fail.
+	d = d.Round(time.Minute)
+	h := d / time.Hour
+	d -= h * time.Hour
+	m := d / time.Minute
+	return fmt.Sprintf("%d:%02d", h, m)
+}
