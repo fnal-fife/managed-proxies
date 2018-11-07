@@ -17,7 +17,7 @@ type serviceCert struct {
 }
 
 var (
-	requiredExecutables = map[string]string{
+	serviceCertExecutables = map[string]string{
 		"openssl": "",
 	}
 	opensslArgs         = "x509 -noout -subject -in {{.CertPath}}"
@@ -27,12 +27,12 @@ var (
 
 func init() {
 	// Make sure our required executables are in $PATH
-	for exe := range requiredExecutables {
+	for exe := range serviceCertExecutables {
 		if pth, err := exec.LookPath(exe); err != nil {
 			fmt.Printf("%s was not found in $PATH.  Exiting", exe)
 			os.Exit(1)
 		} else {
-			requiredExecutables[exe] = pth
+			serviceCertExecutables[exe] = pth
 		}
 	}
 }
@@ -63,7 +63,7 @@ func getCertSubject(certPath string) (string, error) {
 	args := strings.Fields(b.String())
 
 	// TODO This will become a CommandContext
-	cmd := exec.Command(requiredExecutables["openssl"], args...)
+	cmd := exec.Command(serviceCertExecutables["openssl"], args...)
 	out, err := cmd.Output()
 	if err != nil {
 		fmt.Println("Could not execute openssl command.")
