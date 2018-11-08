@@ -1,7 +1,10 @@
 package proxyutils
 
-import "time"
+import (
+	"context"
+	"time"
+)
 
 type myProxyer interface {
-	StoreInMyProxy(server string, valid time.Duration) error
+	StoreInMyProxy(ctx context.Context, server string, valid time.Duration) error
 }

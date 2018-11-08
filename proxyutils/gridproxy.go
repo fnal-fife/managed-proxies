@@ -1,6 +1,7 @@
 package proxyutils
 
 import (
+	"context"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -14,7 +15,7 @@ import (
 const (
 	defaultValidity  = "24h"
 	gpiArgs          = "-cert {{.CertPath}} -key {{.KeyPath}} -out {{.OutFile}} -valid {{.Valid}}"
-	myproxystoreArgs = "--certfile {{.CertFile}} --keyfile {{.KeyFile}} -s {{.Server}} -xZ {{.Retrievers}} -l {{.Owner}} -t {{.Hours}}"
+	myproxystoreArgs = "--certfile {{.CertFile}} --keyfile {{.KeyFile}} -s {{.Server}} -xZ \"{{.Retrievers}}\" -l \"{{.Owner}}\" -t {{.Hours}}"
 	//These will move to a config file
 	myproxyServer = "fermicloud343.fnal.gov"
 )
@@ -126,12 +127,12 @@ func (g *GridProxy) Remove() error {
 	return err
 }
 
-func (g *GridProxy) StoreInMyProxy(server string, valid time.Duration) error {
+func (g *GridProxy) StoreInMyProxy(ctx context.Context, server string, valid time.Duration) error {
 	var b strings.Builder
 
 	hours := strconv.FormatFloat(valid.Hours(), 'f', -1, 32)
 
-	retrievers, err := getRetrievers()
+	retrievers, err := getRetrievers(ctx)
 	if err != nil {
 		fmt.Println(err)
 		return err
