@@ -3,6 +3,7 @@ package proxyutils
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
@@ -66,43 +67,49 @@ func startHTTPSClient() {
 
 }
 
-func getCigetcertopts(server, endpoint string) ([]byte, error) {
+func getCigetcertopts(ctx context.Context, server, endpoint string) ([]byte, error) {
 	// Set serverString here, (e.g. https://jobsubserver.fnal.gov:1234/), since that will be constant for the
 	// run.
 	data := make([]byte, 0)
 	queryEndpoint := fmt.Sprintf("https://%s/%s", server, endpoint)
+
 	req, err := http.NewRequest("GET", queryEndpoint, nil)
 	if err != nil {
 		fmt.Println(err)
 		return data, err
 	}
+	req = req.WithContext(ctx)
 
-	c := make(chan struct {
-		resp *http.Response
-		err  error
-	}, 1)
-
+	//	c := make(chan struct {
+	//		resp *http.Response
+	//		err  error
+	//	}, 1)
+	//
 	var r *http.Response
 
-	go func() {
-		resp, err := HTTPSClient.Do(req)
-		c <- struct {
-			resp *http.Response
-			err  error
-		}{resp, err}
-	}()
-
-	select {
-	//	case <-ctx.Done():
-	//		transport.CancelRequest(req)
-	//		rstruct := <-c
-	case rstruct := <-c:
-		if rstruct.err != nil {
-			fmt.Println(rstruct.err)
-			return data, err
-		}
-		r = rstruct.resp
+	if r, err = HTTPSClient.Do(req); err != nil {
+		fmt.Println(err)
+		return data, err
 	}
+
+	//
+	//
+	//	go func() {
+	//		resp, err := HTTPSClient.Do(req)
+	//		c <- struct {
+	//			resp *http.Response
+	//			err  error
+	//		}{resp, err}
+	//	}()
+	//
+	//	select {
+	//	case <-ctx.Done():
+	//		rstruct := <-c
+	//	case rstruct := <-c:
+	//		if rstruct.err != nil {
+	//		}
+	//		r = rstruct.resp
+	//	}
 
 	defer r.Body.Close()
 
@@ -116,10 +123,10 @@ func getCigetcertopts(server, endpoint string) ([]byte, error) {
 
 }
 
-func getRetrievers() (string, error) {
+func getRetrievers(ctx context.Context) (string, error) {
 	startHTTPSClient()
 
-	data, err := getCigetcertopts(jobsubServer, cigetcertoptsEndpoint)
+	data, err := getCigetcertopts(ctx, jobsubServer, cigetcertoptsEndpoint)
 	if err != nil {
 		fmt.Println("Error getting cigetcertopts from jobsub server")
 		return "", err
