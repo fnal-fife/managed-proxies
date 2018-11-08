@@ -14,7 +14,7 @@ import (
 const (
 	defaultValidity  = "24h"
 	gpiArgs          = "-cert {{.CertPath}} -key {{.KeyPath}} -out {{.OutFile}} -valid {{.Valid}}"
-	myproxystoreArgs = "-certfile {{.CertFile}} -keyfile {{.KeyFile}} -s {{.Server}} -xZ {{.Retrievers}} -l {{.Owner}} -t {{.Hours}}"
+	myproxystoreArgs = "--certfile {{.CertFile}} --keyfile {{.KeyFile}} -s {{.Server}} -xZ {{.Retrievers}} -l {{.Owner}} -t {{.Hours}}"
 	//These will move to a config file
 	myproxyServer = "fermicloud343.fnal.gov"
 )
@@ -47,7 +47,6 @@ type GridProxy struct {
 }
 
 func NewGridProxy(s *serviceCert, valid time.Duration) (*GridProxy, error) {
-	//TODO implement this.  Want to set time here, maybe.  If so, pass into runGridProxyInit
 	// TODO Run checks in this method to make sure we can actually run grid-proxy-init
 	// Sanity-check time and set default time if no time given.
 	if valid.Seconds() == 0 {
@@ -161,20 +160,13 @@ func (g *GridProxy) StoreInMyProxy(server string, valid time.Duration) error {
 
 	cmd := exec.Command(gridProxyExecutables["myproxy-store"], args...)
 	cmd.Env = env
-	out, err := cmd.Output()
+	fmt.Println(cmd)
+	out, err := cmd.CombinedOutput()
 	if err != nil {
 		fmt.Println("Could not execute myproxy-store command.")
-		fmt.Println(err)
-		return err
 	}
-	fmt.Println(out)
-
-	if err := g.Remove(); err != nil {
-		fmt.Printf("Could not clean up temp grid proxy at %s.  Please clean up manually.\n", g.Path)
-		return err
-	}
-	fmt.Println("Temp grid proxy removed")
-	return nil
+	fmt.Println(string(out))
+	return err
 }
 
 // Somewhere else, define an interface myProxyer that has a runMyProxyStore func.  Have the func that eventually runs runMyProxyStore run it on the interface.
