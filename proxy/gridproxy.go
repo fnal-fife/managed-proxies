@@ -47,14 +47,14 @@ type GridProxy struct {
 	*serviceCert
 }
 
-func NewGridProxy(s *serviceCert, valid time.Duration) (*GridProxy, error) {
+func NewGridProxy(ctx context.Context, s *serviceCert, valid time.Duration) (*GridProxy, error) {
 	// TODO Run checks in this method to make sure we can actually run grid-proxy-init
 	// Sanity-check time and set default time if no time given.
 	if valid.Seconds() == 0 {
 		valid, _ = time.ParseDuration(defaultValidity)
 	}
 
-	g, err := s.runGridProxyInit(valid)
+	g, err := s.runGridProxyInit(ctx, valid)
 	if err != nil {
 		fmt.Println("Could not run grid-proxy-init on service cert.")
 		return &GridProxy{}, err
@@ -62,7 +62,7 @@ func NewGridProxy(s *serviceCert, valid time.Duration) (*GridProxy, error) {
 	return g, nil
 }
 
-func (s *serviceCert) runGridProxyInit(valid time.Duration) (*GridProxy, error) {
+func (s *serviceCert) runGridProxyInit(ctx context.Context, valid time.Duration) (*GridProxy, error) {
 	var b strings.Builder
 
 	_outfile, err := ioutil.TempFile("", "store_managed_proxy_")
@@ -97,8 +97,7 @@ func (s *serviceCert) runGridProxyInit(valid time.Duration) (*GridProxy, error) 
 		return &GridProxy{}, err
 	}
 
-	//TODO:  Make this a CommandContext
-	cmd := exec.Command(gridProxyExecutables["grid-proxy-init"], args...)
+	cmd := exec.CommandContext(ctx, gridProxyExecutables["grid-proxy-init"], args...)
 	out, err := cmd.Output()
 	if err != nil {
 		fmt.Println("Could not execute grid-proxy-init command")
@@ -109,7 +108,7 @@ func (s *serviceCert) runGridProxyInit(valid time.Duration) (*GridProxy, error) 
 
 	g := GridProxy{Path: outfile, serviceCert: s}
 
-	_dn, err := getCertSubject(g.Path)
+	_dn, err := getCertSubject(ctx, g.Path)
 	if err != nil {
 		fmt.Println("Could not get proxy subject from grid proxy")
 		fmt.Println(err)
@@ -167,7 +166,7 @@ func (g *GridProxy) StoreInMyProxy(ctx context.Context, server string, valid tim
 		fmt.Sprintf("X509_USER_KEY=%s", g.serviceCert.keyPath),
 	}
 
-	cmd := exec.Command(gridProxyExecutables["myproxy-store"], args...)
+	cmd := exec.CommandContext(ctx, gridProxyExecutables["myproxy-store"], args...)
 	cmd.Env = env
 	out, err := cmd.CombinedOutput()
 	if err != nil {
