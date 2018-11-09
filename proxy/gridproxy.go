@@ -10,8 +10,6 @@ import (
 	"strings"
 	"text/template"
 	"time"
-
-	"github.com/google/shlex"
 )
 
 const (
@@ -93,7 +91,11 @@ func (s *serviceCert) runGridProxyInit(valid time.Duration) (*GridProxy, error) 
 		return &GridProxy{}, err
 	}
 
-	args := strings.Fields(b.String())
+	args, err := getArgsFromTemplate(b.String())
+	if err != nil {
+		fmt.Println("Could not get myproxy-store command arguments from template")
+		return &GridProxy{}, err
+	}
 
 	//TODO:  Make this a CommandContext
 	cmd := exec.Command(gridProxyExecutables["grid-proxy-init"], args...)
@@ -154,19 +156,11 @@ func (g *GridProxy) StoreInMyProxy(ctx context.Context, server string, valid tim
 		return err
 	}
 
-	//args := strings.Fields(b.String())
-	args, err := shlex.Split(b.String())
+	args, err := getArgsFromTemplate(b.String())
 	if err != nil {
-		fmt.Println("Could not split myproxy-store commands according to shlex rules")
+		fmt.Println("Could not get myproxy-store command arguments from template")
 		return err
 	}
-
-	debugSlice := make([]string, 0)
-	for num, f := range args {
-		debugSlice = append(debugSlice, strconv.Itoa(num), f)
-	}
-	//TODO:  This becomes a debug logging statement
-	fmt.Printf("Enumerated args to %s are: %v\n", gridProxyExecutables["myproxy-store"], debugSlice)
 
 	env := []string{
 		fmt.Sprintf("X509_USER_CERT=%s", g.serviceCert.certPath),
@@ -175,7 +169,6 @@ func (g *GridProxy) StoreInMyProxy(ctx context.Context, server string, valid tim
 
 	cmd := exec.Command(gridProxyExecutables["myproxy-store"], args...)
 	cmd.Env = env
-	fmt.Println(cmd)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		fmt.Println("Could not execute myproxy-store command.")

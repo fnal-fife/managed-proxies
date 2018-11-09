@@ -60,7 +60,11 @@ func getCertSubject(certPath string) (string, error) {
 		return "", err
 	}
 
-	args := strings.Fields(b.String())
+	args, err := getArgsFromTemplate(b.String())
+	if err != nil {
+		fmt.Println("Could not get myproxy-store command arguments from template")
+		return "", err
+	}
 
 	// TODO This will become a CommandContext
 	cmd := exec.Command(serviceCertExecutables["openssl"], args...)
