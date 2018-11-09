@@ -10,12 +10,6 @@ import (
 	"text/template"
 )
 
-type serviceCert struct {
-	certPath string
-	keyPath  string
-	DN       string
-}
-
 var (
 	serviceCertExecutables = map[string]string{
 		"openssl": "",
@@ -25,9 +19,29 @@ var (
 	DNFromSubjectRegexp = regexp.MustCompile("^subject=(.+)$")
 )
 
-func init() {
-	checkForExecutables(serviceCertExecutables)
+type Cert interface {
+	getDN(context.Context) (string, error)
+	getCertPath() string
+	getKeyPath() string
 }
+
+type serviceCert struct {
+	certPath string
+	keyPath  string
+	DN       string
+}
+
+func (s *serviceCert) getDN(ctx context.Context) (string, error) {
+	dn, err := getCertSubject(ctx, s.certPath)
+	if err != nil {
+		fmt.Println(err)
+		return "", err
+	}
+	return dn, nil
+}
+
+func (s *serviceCert) getCertPath() string { return s.certPath }
+func (s *serviceCert) getKeyPath() string  { return s.keyPath }
 
 func NewServiceCert(ctx context.Context, certPath, keyPath string) (*serviceCert, error) {
 	fmt.Println("Ingesting service cert")
@@ -76,4 +90,8 @@ func getCertSubject(ctx context.Context, certPath string) (string, error) {
 	DN := strings.TrimSpace(DNMatches[0][1])
 	return DN, nil
 
+}
+
+func init() {
+	checkForExecutables(serviceCertExecutables)
 }
