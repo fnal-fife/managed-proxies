@@ -21,6 +21,12 @@
 
 [[projects]]
   branch = "master"
+  name = "github.com/google/shlex"
+  packages = ["."]
+  revision = "c34317bd91bf98fab745d77b03933cf8769299fe"
+
+[[projects]]
+  branch = "master"
   name = "github.com/hashicorp/hcl"
   packages = [
     ".",
@@ -194,6 +200,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "ab27af73a69e31f3d0f089963ba1ece8bbe68d3e900210350545581ba04c20e0"
+  inputs-digest = "67dcb7413a3a10b9e770be19a6bac8a19c23bb6acfd9feb3cb4da8d412c0d045"
   solver-name = "gps-cdcl"
   solver-version = 1
