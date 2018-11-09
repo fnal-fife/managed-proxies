@@ -30,15 +30,7 @@ var (
 )
 
 func init() {
-	// Make sure our required executables are in $PATH
-	for exe := range gridProxyExecutables {
-		if pth, err := exec.LookPath(exe); err != nil {
-			fmt.Printf("%s was not found in $PATH.  Exiting", exe)
-			os.Exit(1)
-		} else {
-			gridProxyExecutables[exe] = pth
-		}
-	}
+	checkForExecutables(gridProxyExecutables)
 }
 
 type GridProxy struct {
@@ -48,8 +40,6 @@ type GridProxy struct {
 }
 
 func NewGridProxy(ctx context.Context, s *serviceCert, valid time.Duration) (*GridProxy, error) {
-	// TODO Run checks in this method to make sure we can actually run grid-proxy-init
-	// Sanity-check time and set default time if no time given.
 	if valid.Seconds() == 0 {
 		valid, _ = time.ParseDuration(defaultValidity)
 	}

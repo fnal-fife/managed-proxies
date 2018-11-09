@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -27,15 +26,7 @@ var (
 )
 
 func init() {
-	// Make sure our required executables are in $PATH
-	for exe := range serviceCertExecutables {
-		if pth, err := exec.LookPath(exe); err != nil {
-			fmt.Printf("%s was not found in $PATH.  Exiting", exe)
-			os.Exit(1)
-		} else {
-			serviceCertExecutables[exe] = pth
-		}
-	}
+	checkForExecutables(serviceCertExecutables)
 }
 
 func NewServiceCert(ctx context.Context, certPath, keyPath string) (*serviceCert, error) {
