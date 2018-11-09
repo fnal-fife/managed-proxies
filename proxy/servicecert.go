@@ -92,6 +92,4 @@ func getCertSubject(ctx context.Context, certPath string) (string, error) {
 
 }
 
-func init() {
-	checkForExecutables(serviceCertExecutables)
-}
+func init() { checkForExecutables(serviceCertExecutables) }
