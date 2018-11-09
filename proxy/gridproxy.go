@@ -1,4 +1,4 @@
-package proxyutils
+package proxy
 
 import (
 	"context"
@@ -10,6 +10,8 @@ import (
 	"strings"
 	"text/template"
 	"time"
+
+	"github.com/google/shlex"
 )
 
 const (
@@ -152,7 +154,19 @@ func (g *GridProxy) StoreInMyProxy(ctx context.Context, server string, valid tim
 		return err
 	}
 
-	args := strings.Fields(b.String())
+	//args := strings.Fields(b.String())
+	args, err := shlex.Split(b.String())
+	if err != nil {
+		fmt.Println("Could not split myproxy-store commands according to shlex rules")
+		return err
+	}
+
+	debugSlice := make([]string, 0)
+	for num, f := range args {
+		debugSlice = append(debugSlice, strconv.Itoa(num), f)
+	}
+	//TODO:  This becomes a debug logging statement
+	fmt.Printf("Enumerated args to %s are: %v\n", gridProxyExecutables["myproxy-store"], debugSlice)
 
 	env := []string{
 		fmt.Sprintf("X509_USER_CERT=%s", g.serviceCert.certPath),

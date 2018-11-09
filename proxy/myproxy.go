@@ -1,4 +1,4 @@
-package proxyutils
+package proxy
 
 import (
 	"context"
