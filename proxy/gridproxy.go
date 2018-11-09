@@ -29,27 +29,103 @@ var (
 	myproxystoreTemplate = template.Must(template.New("myproxy-store").Parse(myproxystoreArgs))
 )
 
-func init() {
-	checkForExecutables(gridProxyExecutables)
-}
-
 type GridProxy struct {
 	Path string
 	DN   string
-	*serviceCert
+	Cert
 }
 
-func NewGridProxy(ctx context.Context, s *serviceCert, valid time.Duration) (*GridProxy, error) {
+func NewGridProxy(ctx context.Context, gp gridProxyer, valid time.Duration) (*GridProxy, error) {
 	if valid.Seconds() == 0 {
 		valid, _ = time.ParseDuration(defaultValidity)
 	}
 
-	g, err := s.runGridProxyInit(ctx, valid)
+	g, err := gp.runGridProxyInit(ctx, valid)
 	if err != nil {
 		fmt.Println("Could not run grid-proxy-init on service cert.")
 		return &GridProxy{}, err
 	}
 	return g, nil
+}
+
+func (g *GridProxy) Remove() error {
+	err := os.Remove(g.Path)
+
+	if os.IsNotExist(err) {
+		fmt.Println("Grid Proxy file does not exist")
+	} else if err != nil {
+		fmt.Println(err)
+	}
+
+	return err
+}
+
+func (g *GridProxy) StoreInMyProxy(ctx context.Context, server string, valid time.Duration) error {
+	var b strings.Builder
+
+	hours := strconv.FormatFloat(valid.Hours(), 'f', -1, 32)
+
+	retrievers, err := getRetrievers(ctx)
+	if err != nil {
+		fmt.Println(err)
+		return err
+	}
+
+	owner, err := g.Cert.getDN(ctx)
+	if err != nil {
+		fmt.Println(err)
+		return err
+	}
+
+	cArgs := struct{ CertFile, KeyFile, Server, Retrievers, Owner, Hours string }{
+		CertFile:   g.Path,
+		KeyFile:    g.Path,
+		Server:     server,
+		Retrievers: retrievers,
+		Owner:      owner,
+		Hours:      hours,
+	}
+
+	if err := myproxystoreTemplate.Execute(&b, cArgs); err != nil {
+		fmt.Println("Could not execute myproxy-store template")
+		return err
+	}
+
+	args, err := getArgsFromTemplate(b.String())
+	if err != nil {
+		fmt.Println("Could not get myproxy-store command arguments from template")
+		return err
+	}
+
+	env := []string{
+		fmt.Sprintf("X509_USER_CERT=%s", g.Cert.getCertPath()),
+		fmt.Sprintf("X509_USER_KEY=%s", g.Cert.getKeyPath()),
+	}
+
+	cmd := exec.CommandContext(ctx, gridProxyExecutables["myproxy-store"], args...)
+	cmd.Env = env
+	if err := cmd.Run(); err != nil {
+		fmt.Println("Could not execute myproxy-store command.")
+		//TODO
+		fmt.Println(err)
+	}
+	return err
+}
+
+func (g *GridProxy) getCertPath() string { return g.Cert.getCertPath() }
+func (g *GridProxy) getKeyPath() string  { return g.Cert.getKeyPath() }
+
+func (g *GridProxy) getDN(ctx context.Context) (string, error) {
+	dn, err := getCertSubject(ctx, g.Path)
+	if err != nil {
+		fmt.Println(err)
+		return "", err
+	}
+	return dn, nil
+}
+
+type gridProxyer interface {
+	runGridProxyInit(context.Context, time.Duration) (*GridProxy, error)
 }
 
 func (s *serviceCert) runGridProxyInit(ctx context.Context, valid time.Duration) (*GridProxy, error) {
@@ -95,9 +171,9 @@ func (s *serviceCert) runGridProxyInit(ctx context.Context, valid time.Duration)
 		return &GridProxy{}, err
 	}
 
-	g := GridProxy{Path: outfile, serviceCert: s}
+	g := GridProxy{Path: outfile, Cert: s}
 
-	_dn, err := getCertSubject(ctx, g.Path)
+	_dn, err := g.getDN(ctx)
 	if err != nil {
 		fmt.Println("Could not get proxy subject from grid proxy")
 		fmt.Println(err)
@@ -105,64 +181,6 @@ func (s *serviceCert) runGridProxyInit(ctx context.Context, valid time.Duration)
 	}
 	g.DN = _dn
 	return &g, nil
-}
-
-func (g *GridProxy) Remove() error {
-	err := os.Remove(g.Path)
-
-	if os.IsNotExist(err) {
-		fmt.Println("Grid Proxy file does not exist")
-	} else if err != nil {
-		fmt.Println(err)
-	}
-
-	return err
-}
-
-func (g *GridProxy) StoreInMyProxy(ctx context.Context, server string, valid time.Duration) error {
-	var b strings.Builder
-
-	hours := strconv.FormatFloat(valid.Hours(), 'f', -1, 32)
-
-	retrievers, err := getRetrievers(ctx)
-	if err != nil {
-		fmt.Println(err)
-		return err
-	}
-
-	cArgs := struct{ CertFile, KeyFile, Server, Retrievers, Owner, Hours string }{
-		CertFile:   g.Path,
-		KeyFile:    g.Path,
-		Server:     server,
-		Retrievers: retrievers,
-		Owner:      g.serviceCert.DN,
-		Hours:      hours,
-	}
-
-	if err := myproxystoreTemplate.Execute(&b, cArgs); err != nil {
-		fmt.Println("Could not execute myproxy-store template")
-		return err
-	}
-
-	args, err := getArgsFromTemplate(b.String())
-	if err != nil {
-		fmt.Println("Could not get myproxy-store command arguments from template")
-		return err
-	}
-
-	env := []string{
-		fmt.Sprintf("X509_USER_CERT=%s", g.serviceCert.certPath),
-		fmt.Sprintf("X509_USER_KEY=%s", g.serviceCert.keyPath),
-	}
-
-	cmd := exec.CommandContext(ctx, gridProxyExecutables["myproxy-store"], args...)
-	cmd.Env = env
-	if err := cmd.Run(); err != nil {
-		fmt.Println("Could not execute myproxy-store command.")
-		//TODO
-		fmt.Println(err)
-	}
-	return err
 }
 
 // Somewhere else, define an interface myProxyer that has a runMyProxyStore func.  Have the func that eventually runs runMyProxyStore run it on the interface.
@@ -175,4 +193,8 @@ func fmtDurationForGPI(d time.Duration) string {
 	d -= h * time.Hour
 	m := d / time.Minute
 	return fmt.Sprintf("%d:%02d", h, m)
+}
+
+func init() {
+	checkForExecutables(gridProxyExecutables)
 }
