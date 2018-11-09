@@ -88,13 +88,12 @@ func (s *serviceCert) runGridProxyInit(ctx context.Context, valid time.Duration)
 	}
 
 	cmd := exec.CommandContext(ctx, gridProxyExecutables["grid-proxy-init"], args...)
-	out, err := cmd.Output()
-	if err != nil {
+	if err := cmd.Run(); err != nil {
 		fmt.Println("Could not execute grid-proxy-init command")
+		//TODO
 		fmt.Println(err)
 		return &GridProxy{}, err
 	}
-	fmt.Println(out)
 
 	g := GridProxy{Path: outfile, serviceCert: s}
 
@@ -158,11 +157,11 @@ func (g *GridProxy) StoreInMyProxy(ctx context.Context, server string, valid tim
 
 	cmd := exec.CommandContext(ctx, gridProxyExecutables["myproxy-store"], args...)
 	cmd.Env = env
-	out, err := cmd.CombinedOutput()
-	if err != nil {
+	if err := cmd.Run(); err != nil {
 		fmt.Println("Could not execute myproxy-store command.")
+		//TODO
+		fmt.Println(err)
 	}
-	fmt.Println(string(out))
 	return err
 }
 

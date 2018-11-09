@@ -62,6 +62,7 @@ func getCertSubject(ctx context.Context, certPath string) (string, error) {
 	out, err := cmd.Output()
 	if err != nil {
 		fmt.Println("Could not execute openssl command.")
+		//TODO
 		fmt.Println(err)
 		return "", err
 	}
