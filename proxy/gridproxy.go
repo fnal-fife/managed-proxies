@@ -40,7 +40,7 @@ func NewGridProxy(ctx context.Context, gp gridProxyer, valid time.Duration) (*Gr
 		valid, _ = time.ParseDuration(defaultValidity)
 	}
 
-	g, err := gp.runGridProxyInit(ctx, valid)
+	g, err := gp.getGridProxy(ctx, valid)
 	if err != nil {
 		fmt.Println("Could not run grid-proxy-init on service cert.")
 		return &GridProxy{}, err
@@ -125,13 +125,13 @@ func (g *GridProxy) getDN(ctx context.Context) (string, error) {
 }
 
 type gridProxyer interface {
-	runGridProxyInit(context.Context, time.Duration) (*GridProxy, error)
+	getGridProxy(context.Context, time.Duration) (*GridProxy, error)
 }
 
-func (s *serviceCert) runGridProxyInit(ctx context.Context, valid time.Duration) (*GridProxy, error) {
+func (s *serviceCert) getGridProxy(ctx context.Context, valid time.Duration) (*GridProxy, error) {
 	var b strings.Builder
 
-	_outfile, err := ioutil.TempFile("", "store_managed_proxy_")
+	_outfile, err := ioutil.TempFile("", "managed_proxy_grid_")
 	if err != nil {
 		fmt.Println("Couldn't get tempfile")
 		return &GridProxy{}, err
@@ -140,12 +140,7 @@ func (s *serviceCert) runGridProxyInit(ctx context.Context, valid time.Duration)
 
 	validDurationStr := fmtDurationForGPI(valid)
 
-	cArgs := struct {
-		CertPath string
-		KeyPath  string
-		OutFile  string
-		Valid    string
-	}{
+	cArgs := struct{ CertPath, KeyPath, OutFile, Valid string }{
 		CertPath: s.certPath,
 		KeyPath:  s.keyPath,
 		OutFile:  outfile,
@@ -159,7 +154,7 @@ func (s *serviceCert) runGridProxyInit(ctx context.Context, valid time.Duration)
 
 	args, err := getArgsFromTemplate(b.String())
 	if err != nil {
-		fmt.Println("Could not get myproxy-store command arguments from template")
+		fmt.Println("Could not get grid-proxy-init command arguments from template")
 		return &GridProxy{}, err
 	}
 
@@ -195,6 +190,4 @@ func fmtDurationForGPI(d time.Duration) string {
 	return fmt.Sprintf("%d:%02d", h, m)
 }
 
-func init() {
-	checkForExecutables(gridProxyExecutables)
-}
+func init() { checkForExecutables(gridProxyExecutables) }
