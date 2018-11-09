@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -37,9 +38,9 @@ func init() {
 	}
 }
 
-func NewServiceCert(certPath, keyPath string) (*serviceCert, error) {
+func NewServiceCert(ctx context.Context, certPath, keyPath string) (*serviceCert, error) {
 	fmt.Println("Ingesting service cert")
-	dn, err := getCertSubject(certPath)
+	dn, err := getCertSubject(ctx, certPath)
 	if err != nil {
 		fmt.Println("Could not get DN for cert")
 		return &serviceCert{}, err
@@ -48,7 +49,7 @@ func NewServiceCert(certPath, keyPath string) (*serviceCert, error) {
 	return &serviceCert{certPath, keyPath, dn}, nil
 }
 
-func getCertSubject(certPath string) (string, error) {
+func getCertSubject(ctx context.Context, certPath string) (string, error) {
 	var b strings.Builder
 
 	cArgs := struct{ CertPath string }{
@@ -66,8 +67,7 @@ func getCertSubject(certPath string) (string, error) {
 		return "", err
 	}
 
-	// TODO This will become a CommandContext
-	cmd := exec.Command(serviceCertExecutables["openssl"], args...)
+	cmd := exec.CommandContext(ctx, serviceCertExecutables["openssl"], args...)
 	out, err := cmd.Output()
 	if err != nil {
 		fmt.Println("Could not execute openssl command.")
