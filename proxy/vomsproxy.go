@@ -17,16 +17,19 @@ type VomsProxy struct {
 }
 
 const (
-	vpiArgs = "-rfc -valid 24:00 -voms {{.VomsFQAN}} -cert {{.CertFile}} -key {{.KeyFile}} -out {{.OutfilePath}}"
+	vpiArgs   = "-rfc -valid 24:00 -voms {{.VomsFQAN}} -cert {{.CertFile}} -key {{.KeyFile}} -out {{.OutfilePath}}"
+	sshOpts   = "-o ConnectTimeout=30 -o ServerAliveInterval=30 -o ServerAliveCountMax=1"
+	rsyncArgs = "-p -e \"{{.SSHExe}} {{.SSHOpts}}\" --chmod=u=r,go= {{.SourcePath}} {{.Account}}@{{.Node}}.fnal.gov:{{.DestPath}}"
 )
 
 var (
 	vomsProxyExecutables = map[string]string{
 		"voms-proxy-init": "",
-		"scp":             "",
+		"rsync":           "",
 		"ssh":             "",
 	}
-	vpiTemplate = template.Must(template.New("voms-proxy-init").Parse(vpiArgs))
+	vpiTemplate   = template.Must(template.New("voms-proxy-init").Parse(vpiArgs))
+	rsyncTemplate = template.Must(template.New("rsync").Parse(rsyncArgs))
 )
 
 type vomsProxyer interface {
@@ -112,16 +115,47 @@ func (v *VomsProxy) getDN(ctx context.Context) (string, error) {
 }
 
 type proxyTransferer interface {
-	copyProxy(node, account, destdir string) error
-	chmodProxy(node, account, destdir string) error
+	CopyProxy(ctx context.Context, node, account, dest string) error
 }
 
-func (v *VomsProxy) copyProxy(node, account, destdir string) error {
+func (v *VomsProxy) CopyProxy(ctx context.Context, node, account, dest string) error {
+	if err := rsyncFile(ctx, v.Path, node, account, dest, sshOpts); err != nil {
+		fmt.Println(err)
+		return err
+	}
 	return nil
 }
 
-func (v *VomsProxy) chmodProxy(node, account, destdir string) error {
+func rsyncFile(ctx context.Context, source, node, account, dest string, sshOptions string) error {
+	var b strings.Builder
+
+	cArgs := struct{ SSHExe, SSHOpts, SourcePath, Account, Node, DestPath string }{
+		SSHExe:     vomsProxyExecutables["ssh"],
+		SSHOpts:    sshOptions,
+		SourcePath: source,
+		Account:    account,
+		Node:       node,
+		DestPath:   dest,
+	}
+
+	if err := rsyncTemplate.Execute(&b, cArgs); err != nil {
+		fmt.Println("Could not execute rsyncTemplate")
+		return err
+	}
+
+	args, err := getArgsFromTemplate(b.String())
+	if err != nil {
+		fmt.Println("Could not get rsync command arguments from template")
+		return err
+	}
+
+	cmd := exec.CommandContext(ctx, vomsProxyExecutables["rsync"], args...)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		fmt.Println(string(out), string(err.Error()))
+		return err
+	}
 	return nil
+
 }
 
 // Both of these should be called from an interface rather than the actual object.  Then we can unit test more easily i.e. pushProxyer.copyProxy(....)
