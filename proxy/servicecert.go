@@ -68,7 +68,7 @@ func getCertSubject(ctx context.Context, certPath string) (string, error) {
 
 	args, err := getArgsFromTemplate(b.String())
 	if err != nil {
-		fmt.Println("Could not get myproxy-store command arguments from template")
+		fmt.Println("Could not get openssl command arguments from template")
 		return "", err
 	}
 
