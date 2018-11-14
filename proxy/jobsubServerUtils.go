@@ -14,18 +14,17 @@ import (
 	"regexp"
 )
 
-const (
-	// These will all move to a config file
-	caPath                = "/etc/grid-security/certificates/"
-	jobsubServer          = "fifebatch.fnal.gov"
-	cigetcertoptsEndpoint = "cigetcertopts.txt"
-	defaultRetrievers     = "(/DC=com/DC=DigiCert-Grid|/DC=org/DC=opensciencegrid)/O=Open Science Grid/OU=Services/CN=fermicloud(0|1|2|3|4|5|6|7|8|9)(0|1|2|3|4|5|6|7|8|9)(0|1|2|3|4|5|6|7|8|9).fnal.gov"
-)
+//const (
+//	// These will all move to a config file
+//	caPath                = "/etc/grid-security/certificates/"
+//	jobsubServer          = "fifebatch.fnal.gov"
+//	cigetcertoptsEndpoint = "cigetcertopts.txt"
+//	defaultRetrievers     = "(/DC=com/DC=DigiCert-Grid|/DC=org/DC=opensciencegrid)/O=Open Science Grid/OU=Services/CN=fermicloud(0|1|2|3|4|5|6|7|8|9)(0|1|2|3|4|5|6|7|8|9)(0|1|2|3|4|5|6|7|8|9).fnal.gov"
+//)
 
 var HTTPSClient *http.Client
 
-// TODO:  return error?
-func startHTTPSClient() {
+func StartHTTPSClient(caPath string) error {
 	// HTTPS client
 	caCertSlice := make([]string, 0)
 	caCertPool := x509.NewCertPool()
@@ -34,9 +33,7 @@ func startHTTPSClient() {
 	// Load CA certs
 	caFiles, err := ioutil.ReadDir(caPath)
 	if err != nil {
-		//log.Error(err)
-		fmt.Println(err)
-
+		return err
 	}
 
 	for _, f := range caFiles {
@@ -49,8 +46,7 @@ func startHTTPSClient() {
 	for _, f := range caCertSlice {
 		caCert, err := ioutil.ReadFile(f)
 		if err != nil {
-			//	log.Error(err)
-			fmt.Println(err)
+			return err
 		}
 		caCertPool.AppendCertsFromPEM(caCert)
 	}
@@ -65,71 +61,17 @@ func startHTTPSClient() {
 	transport := &http.Transport{TLSClientConfig: tlsConfig}
 	HTTPSClient = &http.Client{Transport: transport}
 
+	return nil
 }
 
-func getCigetcertopts(ctx context.Context, server, endpoint string) ([]byte, error) {
-	// Set serverString here, (e.g. https://jobsubserver.fnal.gov:1234/), since that will be constant for the
-	// run.
-	data := make([]byte, 0)
-	queryEndpoint := fmt.Sprintf("https://%s/%s", server, endpoint)
-
-	req, err := http.NewRequest("GET", queryEndpoint, nil)
-	if err != nil {
-		fmt.Println(err)
-		return data, err
-	}
-	req = req.WithContext(ctx)
-
-	//	c := make(chan struct {
-	//		resp *http.Response
-	//		err  error
-	//	}, 1)
-	//
-	var r *http.Response
-
-	if r, err = HTTPSClient.Do(req); err != nil {
-		fmt.Println(err)
-		return data, err
+func GetRetrievers(ctx context.Context, jobsubServer, cigetcertOptsEndpoint string) (string, error) {
+	if HTTPSClient == nil {
+		return "", errors.New("HTTPS Client was not started")
 	}
 
-	//
-	//
-	//	go func() {
-	//		resp, err := HTTPSClient.Do(req)
-	//		c <- struct {
-	//			resp *http.Response
-	//			err  error
-	//		}{resp, err}
-	//	}()
-	//
-	//	select {
-	//	case <-ctx.Done():
-	//		rstruct := <-c
-	//	case rstruct := <-c:
-	//		if rstruct.err != nil {
-	//		}
-	//		r = rstruct.resp
-	//	}
-
-	defer r.Body.Close()
-
-	data, err = ioutil.ReadAll(r.Body)
+	data, err := getCigetcertopts(ctx, jobsubServer, cigetcertOptsEndpoint)
 	if err != nil {
-		fmt.Println(err)
-		data = []byte{}
-		return data, err
-	}
-	return data, err
-
-}
-
-func getRetrievers(ctx context.Context) (string, error) {
-	startHTTPSClient()
-
-	data, err := getCigetcertopts(ctx, jobsubServer, cigetcertoptsEndpoint)
-	if err != nil {
-		fmt.Println("Error getting cigetcertopts from jobsub server")
-		return "", err
+		return "", fmt.Errorf("Error getting cigetcertopts from jobsub server: %s", err.Error())
 	}
 
 	retrieversRegExp := regexp.MustCompile("^--myproxyretrievers='(.+)'$")
@@ -156,9 +98,36 @@ func getRetrievers(ctx context.Context) (string, error) {
 	return retrieversSlice[0], nil
 }
 
-func checkRetrievers(retrievers, defaultRetrievers string) error {
+func CheckRetrievers(retrievers, defaultRetrievers string) error {
 	if retrievers != defaultRetrievers {
 		return errors.New("Attention:  The retrievers on the jobsub server do not match the default retrievers")
 	}
 	return nil
+}
+
+func getCigetcertopts(ctx context.Context, server, endpoint string) ([]byte, error) {
+	data := make([]byte, 0)
+	queryEndpoint := fmt.Sprintf("https://%s/%s", server, endpoint)
+
+	req, err := http.NewRequest("GET", queryEndpoint, nil)
+	if err != nil {
+		fmt.Println(err)
+		return data, err
+	}
+	req = req.WithContext(ctx)
+
+	var r *http.Response
+
+	if r, err = HTTPSClient.Do(req); err != nil {
+		return []byte{}, err
+	}
+
+	defer r.Body.Close()
+
+	data, err = ioutil.ReadAll(r.Body)
+	if err != nil {
+		data = []byte{}
+		return data, err
+	}
+	return data, err
 }
