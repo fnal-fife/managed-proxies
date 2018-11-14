@@ -34,7 +34,6 @@ type serviceCert struct {
 func (s *serviceCert) getDN(ctx context.Context) (string, error) {
 	dn, err := getCertSubject(ctx, s.certPath)
 	if err != nil {
-		fmt.Println(err)
 		return "", err
 	}
 	return dn, nil
@@ -44,13 +43,11 @@ func (s *serviceCert) getCertPath() string { return s.certPath }
 func (s *serviceCert) getKeyPath() string  { return s.keyPath }
 
 func NewServiceCert(ctx context.Context, certPath, keyPath string) (*serviceCert, error) {
-	fmt.Println("Ingesting service cert")
 	dn, err := getCertSubject(ctx, certPath)
 	if err != nil {
-		fmt.Println("Could not get DN for cert")
+		err := fmt.Errorf("Could not get DN for cert: %s", err.Error())
 		return &serviceCert{}, err
 	}
-
 	return &serviceCert{certPath, keyPath, dn}, nil
 }
 
@@ -62,22 +59,20 @@ func getCertSubject(ctx context.Context, certPath string) (string, error) {
 	}
 
 	if err := opensslTemplate.Execute(&b, cArgs); err != nil {
-		fmt.Println("Could not execute openssl template.")
+		err := fmt.Errorf("Could not execute openssl template: %s.", err.Error())
 		return "", err
 	}
 
 	args, err := getArgsFromTemplate(b.String())
 	if err != nil {
-		fmt.Println("Could not get openssl command arguments from template")
+		err := fmt.Errorf("Could not get openssl command arguments from template: %s", err.Error())
 		return "", err
 	}
 
 	cmd := exec.CommandContext(ctx, serviceCertExecutables["openssl"], args...)
 	out, err := cmd.Output()
 	if err != nil {
-		fmt.Println("Could not execute openssl command.")
-		//TODO
-		fmt.Println(err)
+		err := fmt.Errorf("Could not execute openssl command: %s.", err.Error())
 		return "", err
 	}
 
