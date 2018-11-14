@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -49,8 +50,7 @@ func (s *serviceCert) getVomsProxy(ctx context.Context, vomsFQAN string) (*VomsP
 
 	_outfile, err := ioutil.TempFile("", "managed_proxy_voms_")
 	if err != nil {
-		fmt.Println("Couldn't get tempfile")
-		return &VomsProxy{}, err
+		return &VomsProxy{}, fmt.Errorf("Couldn't get tempfile, %s", err.Error())
 	}
 	outfile := _outfile.Name()
 
@@ -62,53 +62,40 @@ func (s *serviceCert) getVomsProxy(ctx context.Context, vomsFQAN string) (*VomsP
 	}
 
 	if err := vpiTemplate.Execute(&b, cArgs); err != nil {
-		fmt.Println("Could not execute voms-proxy-init template.")
-		return &VomsProxy{}, err
+		return &VomsProxy{}, fmt.Errorf("Could not execute voms-proxy-init template: %s", err.Error())
 	}
 
 	args, err := getArgsFromTemplate(b.String())
 	if err != nil {
-		fmt.Println("Could not get voms-proxy-init command arguments from template")
-		return &VomsProxy{}, err
+		return &VomsProxy{}, fmt.Errorf("Could not get voms-proxy-init command arguments from template: %s", err.Error())
 	}
 
 	cmd := exec.CommandContext(ctx, vomsProxyExecutables["voms-proxy-init"], args...)
 	if err := cmd.Run(); err != nil {
-		fmt.Println("Could not execute voms-proxy-init command")
-		//TODO
-		fmt.Println(err)
-		return &VomsProxy{}, err
+		return &VomsProxy{}, fmt.Errorf("Could not execute voms-proxy-init command: %s", err.Error())
 	}
 
 	v := VomsProxy{Path: outfile, FQAN: vomsFQAN}
 
 	_dn, err := v.getDN(ctx)
 	if err != nil {
-		fmt.Println("Could not get proxy subject from voms proxy")
-		fmt.Println(err)
-		return &VomsProxy{}, err
+		return &VomsProxy{}, fmt.Errorf("Could not get proxy subject from voms proxy: %s", err.Error())
 	}
 	v.DN = _dn
 	return &v, nil
 }
 
 func (v *VomsProxy) Remove() error {
-
-	err := os.Remove(v.Path)
-
-	if os.IsNotExist(err) {
-		fmt.Println("VOMS Proxy file does not exist")
-	} else if err != nil {
-		fmt.Println(err)
+	if err := os.Remove(v.Path); os.IsNotExist(err) {
+		return errors.New("VOMS Proxy file does not exist")
+	} else {
+		return err
 	}
-
-	return err
 }
 
 func (v *VomsProxy) getDN(ctx context.Context) (string, error) {
 	dn, err := getCertSubject(ctx, v.Path)
 	if err != nil {
-		fmt.Println(err)
 		return "", err
 	}
 	return dn, nil
@@ -119,11 +106,7 @@ type proxyTransferer interface {
 }
 
 func (v *VomsProxy) CopyProxy(ctx context.Context, node, account, dest string) error {
-	if err := rsyncFile(ctx, v.Path, node, account, dest, sshOpts); err != nil {
-		fmt.Println(err)
-		return err
-	}
-	return nil
+	return rsyncFile(ctx, v.Path, node, account, dest, sshOpts)
 }
 
 func rsyncFile(ctx context.Context, source, node, account, dest string, sshOptions string) error {
@@ -139,20 +122,17 @@ func rsyncFile(ctx context.Context, source, node, account, dest string, sshOptio
 	}
 
 	if err := rsyncTemplate.Execute(&b, cArgs); err != nil {
-		fmt.Println("Could not execute rsyncTemplate")
-		return err
+		return fmt.Errorf("Could not execute rsyncTemplate: %s", err.Error())
 	}
 
 	args, err := getArgsFromTemplate(b.String())
 	if err != nil {
-		fmt.Println("Could not get rsync command arguments from template")
-		return err
+		return fmt.Errorf("Could not get rsync command arguments from template: %s", err.Error())
 	}
 
 	cmd := exec.CommandContext(ctx, vomsProxyExecutables["rsync"], args...)
 	if out, err := cmd.CombinedOutput(); err != nil {
-		fmt.Println(string(out), string(err.Error()))
-		return err
+		return errors.New(fmt.Sprintf("%s\n%s", string(out), string(err.Error())))
 	}
 	return nil
 
