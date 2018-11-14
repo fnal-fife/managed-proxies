@@ -174,4 +174,8 @@ func fmtDurationForGPI(d time.Duration) string {
 	return fmt.Sprintf("%d:%02d", h, m)
 }
 
-func init() { checkForExecutables(gridProxyExecutables) }
+func init() {
+	if err := checkForExecutables(gridProxyExecutables); err != nil {
+		panic(err)
+	}
+}
