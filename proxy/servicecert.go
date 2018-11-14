@@ -83,4 +83,8 @@ func getCertSubject(ctx context.Context, certPath string) (string, error) {
 
 }
 
-func init() { checkForExecutables(serviceCertExecutables) }
+func init() {
+	if err := checkForExecutables(serviceCertExecutables); err != nil {
+		panic(err)
+	}
+}

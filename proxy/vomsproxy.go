@@ -160,4 +160,9 @@ func rsyncFile(ctx context.Context, source, node, account, dest string, sshOptio
 
 // Both of these should be called from an interface rather than the actual object.  Then we can unit test more easily i.e. pushProxyer.copyProxy(....)
 
-func init() { checkForExecutables(vomsProxyExecutables) }
+func init() {
+
+	if err := checkForExecutables(vomsProxyExecutables); err != nil {
+		panic(err)
+	}
+}
