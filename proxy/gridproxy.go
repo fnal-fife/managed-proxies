@@ -49,13 +49,11 @@ func NewGridProxy(ctx context.Context, gp gridProxyer, valid time.Duration) (*Gr
 }
 
 func (g *GridProxy) Remove() error {
-	err := os.Remove(g.Path)
-
-	if os.IsNotExist(err) {
+	if err := os.Remove(g.Path); os.IsNotExist(err) {
 		return errors.New("Grid Proxy file does not exist")
+	} else {
+		return err
 	}
-
-	return err
 }
 
 func (g *GridProxy) StoreInMyProxy(ctx context.Context, retrievers, myProxyServer string, valid time.Duration) error {
