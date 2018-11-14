@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -17,7 +18,7 @@ const (
 	gpiArgs          = "-cert {{.CertPath}} -key {{.KeyPath}} -out {{.OutFile}} -valid {{.Valid}}"
 	myproxystoreArgs = "--certfile {{.CertFile}} --keyfile {{.KeyFile}} -s {{.Server}} -xZ \"{{.Retrievers}}\" -l \"{{.Owner}}\" -t {{.Hours}}"
 	//These will move to a config file
-	myproxyServer = "fermicloud343.fnal.gov"
+	//myproxyServer = "fermicloud343.fnal.gov"
 )
 
 var (
@@ -42,8 +43,7 @@ func NewGridProxy(ctx context.Context, gp gridProxyer, valid time.Duration) (*Gr
 
 	g, err := gp.getGridProxy(ctx, valid)
 	if err != nil {
-		fmt.Println("Could not run grid-proxy-init on service cert.")
-		return &GridProxy{}, err
+		return &GridProxy{}, fmt.Errorf("Could not run grid-proxy-init on service cert: %s", err.Error())
 	}
 	return g, nil
 }
@@ -52,9 +52,7 @@ func (g *GridProxy) Remove() error {
 	err := os.Remove(g.Path)
 
 	if os.IsNotExist(err) {
-		fmt.Println("Grid Proxy file does not exist")
-	} else if err != nil {
-		fmt.Println(err)
+		return errors.New("Grid Proxy file does not exist")
 	}
 
 	return err
@@ -67,14 +65,12 @@ func (g *GridProxy) StoreInMyProxy(ctx context.Context, server string, valid tim
 
 	retrievers, err := getRetrievers(ctx)
 	if err != nil {
-		fmt.Println(err)
-		return err
+		return fmt.Errorf("Could not get retrievers list from jobsub server: %s", err.Error())
 	}
 
 	owner, err := g.Cert.getDN(ctx)
 	if err != nil {
-		fmt.Println(err)
-		return err
+		return fmt.Errorf("Could not get cert DN: %s", err.Error())
 	}
 
 	cArgs := struct{ CertFile, KeyFile, Server, Retrievers, Owner, Hours string }{
@@ -87,14 +83,12 @@ func (g *GridProxy) StoreInMyProxy(ctx context.Context, server string, valid tim
 	}
 
 	if err := myproxystoreTemplate.Execute(&b, cArgs); err != nil {
-		fmt.Println("Could not execute myproxy-store template")
-		return err
+		return fmt.Errorf("Could not execute myproxy-store template: %s", err.Error())
 	}
 
 	args, err := getArgsFromTemplate(b.String())
 	if err != nil {
-		fmt.Println("Could not get myproxy-store command arguments from template")
-		return err
+		return fmt.Errorf("Could not get myproxy-store command arguments from template: %s", err)
 	}
 
 	env := []string{
@@ -105,11 +99,9 @@ func (g *GridProxy) StoreInMyProxy(ctx context.Context, server string, valid tim
 	cmd := exec.CommandContext(ctx, gridProxyExecutables["myproxy-store"], args...)
 	cmd.Env = env
 	if err := cmd.Run(); err != nil {
-		fmt.Println("Could not execute myproxy-store command.")
-		//TODO
-		fmt.Println(err)
+		return fmt.Errorf("Could not execute myproxy-store command: %s", err.Error())
 	}
-	return err
+	return nil
 }
 
 func (g *GridProxy) getCertPath() string { return g.Cert.getCertPath() }
@@ -118,7 +110,6 @@ func (g *GridProxy) getKeyPath() string  { return g.Cert.getKeyPath() }
 func (g *GridProxy) getDN(ctx context.Context) (string, error) {
 	dn, err := getCertSubject(ctx, g.Path)
 	if err != nil {
-		fmt.Println(err)
 		return "", err
 	}
 	return dn, nil
@@ -133,8 +124,7 @@ func (s *serviceCert) getGridProxy(ctx context.Context, valid time.Duration) (*G
 
 	_outfile, err := ioutil.TempFile("", "managed_proxy_grid_")
 	if err != nil {
-		fmt.Println("Couldn't get tempfile")
-		return &GridProxy{}, err
+		return &GridProxy{}, errors.New("Couldn't get tempfile")
 	}
 	outfile := _outfile.Name()
 
@@ -148,31 +138,24 @@ func (s *serviceCert) getGridProxy(ctx context.Context, valid time.Duration) (*G
 	}
 
 	if err := gpiTemplate.Execute(&b, cArgs); err != nil {
-		fmt.Println("Could not execute grid-proxy-init template.")
-		return &GridProxy{}, err
+		return &GridProxy{}, fmt.Errorf("Could not execute grid-proxy-init template: %s", err.Error())
 	}
 
 	args, err := getArgsFromTemplate(b.String())
 	if err != nil {
-		fmt.Println("Could not get grid-proxy-init command arguments from template")
-		return &GridProxy{}, err
+		return &GridProxy{}, fmt.Errorf("Could not get grid-proxy-init command arguments from template: %s", err.Error())
 	}
 
 	cmd := exec.CommandContext(ctx, gridProxyExecutables["grid-proxy-init"], args...)
 	if err := cmd.Run(); err != nil {
-		fmt.Println("Could not execute grid-proxy-init command")
-		//TODO
-		fmt.Println(err)
-		return &GridProxy{}, err
+		return &GridProxy{}, fmt.Errorf("Could not execute grid-proxy-init command: %s", err.Error())
 	}
 
 	g := GridProxy{Path: outfile, Cert: s}
 
 	_dn, err := g.getDN(ctx)
 	if err != nil {
-		fmt.Println("Could not get proxy subject from grid proxy")
-		fmt.Println(err)
-		return &GridProxy{}, err
+		return &GridProxy{}, fmt.Errorf("Could not get proxy subject from grid proxy: %s", err)
 	}
 	g.DN = _dn
 	return &g, nil
