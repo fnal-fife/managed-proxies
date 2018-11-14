@@ -58,15 +58,16 @@ func (g *GridProxy) Remove() error {
 	return err
 }
 
-func (g *GridProxy) StoreInMyProxy(ctx context.Context, server string, valid time.Duration) error {
+func (g *GridProxy) StoreInMyProxy(ctx context.Context, retrievers, myProxyServer string, valid time.Duration) error {
 	var b strings.Builder
 
 	hours := strconv.FormatFloat(valid.Hours(), 'f', -1, 32)
 
-	retrievers, err := getRetrievers(ctx)
-	if err != nil {
-		return fmt.Errorf("Could not get retrievers list from jobsub server: %s", err.Error())
-	}
+	// Should move to cmd
+	//	retrievers, err := GetRetrievers(ctx)
+	//	if err != nil {
+	//		return fmt.Errorf("Could not get retrievers list from jobsub server: %s", err.Error())
+	//	}
 
 	owner, err := g.Cert.getDN(ctx)
 	if err != nil {
@@ -76,7 +77,7 @@ func (g *GridProxy) StoreInMyProxy(ctx context.Context, server string, valid tim
 	cArgs := struct{ CertFile, KeyFile, Server, Retrievers, Owner, Hours string }{
 		CertFile:   g.Path,
 		KeyFile:    g.Path,
-		Server:     server,
+		Server:     myProxyServer,
 		Retrievers: retrievers,
 		Owner:      owner,
 		Hours:      hours,
