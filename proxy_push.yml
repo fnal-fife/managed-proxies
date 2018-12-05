@@ -191,15 +191,8 @@ experiments:
     vomsgroup: "fermilab:/fermilab/nova/"
     certfile: "/opt/gen_push_proxy/certs/CI-service.cert"
     keyfile:  "/opt/gen_push_proxy/certs/CI-service.key"
-  usdc:
-    dir: /opt/certs
-    emails: [boyd@fnal.gov]
-    nodes: [if-admin-des, if-admin-darkside, if-admin-minerva]
-    accounts:
-      root: Analysis
-    vomsgroup: "fermilab:/fermilab/"
-    certfile: "/opt/gen_push_proxy/certs/usdc-fifeutilgpvm01.cert"
-    keyfile:  "/opt/gen_push_proxy/certs/usdc-fifeutilgpvm01.key"
+
+
 
 # Other config variabless
 global:
