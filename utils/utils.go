@@ -1,4 +1,4 @@
-package proxy
+package utils
 
 import (
 	"fmt"
@@ -8,7 +8,8 @@ import (
 	"github.com/google/shlex"
 )
 
-func getArgsFromTemplate(s string) ([]string, error) {
+// GetArgsFromTemplate takes a template string and breaks it into a slice of args
+func GetArgsFromTemplate(s string) ([]string, error) {
 	args := make([]string, 0)
 	args, err := shlex.Split(s)
 	if err != nil {
@@ -25,11 +26,12 @@ func getArgsFromTemplate(s string) ([]string, error) {
 	return args, nil
 }
 
-func checkForExecutables(exeMap map[string]string) error {
-	// Make sure our required executables are in $PATH
+// CheckForExecutables takes a map of executables of the form {"name_of_executable": "whatever"} and
+// checks if each executable is in $PATH.  If so, it saves the path in the map.  If not, it returns an error
+func CheckForExecutables(exeMap map[string]string) error {
 	for exe := range exeMap {
 		if pth, err := exec.LookPath(exe); err != nil {
-			return fmt.Errorf("%s was not found in $PATH.", exe)
+			return fmt.Errorf("%s was not found in $PATH", exe)
 		} else {
 			exeMap[exe] = pth
 		}
