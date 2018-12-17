@@ -9,6 +9,8 @@ import (
 	"os/exec"
 	"strings"
 	"text/template"
+
+	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/utils"
 )
 
 type VomsProxy struct {
@@ -65,7 +67,7 @@ func (s *serviceCert) getVomsProxy(ctx context.Context, vomsFQAN string) (*VomsP
 		return &VomsProxy{}, fmt.Errorf("Could not execute voms-proxy-init template: %s", err.Error())
 	}
 
-	args, err := getArgsFromTemplate(b.String())
+	args, err := utils.GetArgsFromTemplate(b.String())
 	if err != nil {
 		return &VomsProxy{}, fmt.Errorf("Could not get voms-proxy-init command arguments from template: %s", err.Error())
 	}
@@ -125,7 +127,7 @@ func rsyncFile(ctx context.Context, source, node, account, dest string, sshOptio
 		return fmt.Errorf("Could not execute rsyncTemplate: %s", err.Error())
 	}
 
-	args, err := getArgsFromTemplate(b.String())
+	args, err := utils.GetArgsFromTemplate(b.String())
 	if err != nil {
 		return fmt.Errorf("Could not get rsync command arguments from template: %s", err.Error())
 	}
@@ -142,7 +144,7 @@ func rsyncFile(ctx context.Context, source, node, account, dest string, sshOptio
 
 func init() {
 
-	if err := checkForExecutables(vomsProxyExecutables); err != nil {
+	if err := utils.CheckForExecutables(vomsProxyExecutables); err != nil {
 		panic(err)
 	}
 }

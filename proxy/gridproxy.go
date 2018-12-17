@@ -11,6 +11,8 @@ import (
 	"strings"
 	"text/template"
 	"time"
+
+	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/utils"
 )
 
 const (
@@ -85,7 +87,7 @@ func (g *GridProxy) StoreInMyProxy(ctx context.Context, retrievers, myProxyServe
 		return fmt.Errorf("Could not execute myproxy-store template: %s", err.Error())
 	}
 
-	args, err := getArgsFromTemplate(b.String())
+	args, err := utils.GetArgsFromTemplate(b.String())
 	if err != nil {
 		return fmt.Errorf("Could not get myproxy-store command arguments from template: %s", err)
 	}
@@ -140,7 +142,7 @@ func (s *serviceCert) getGridProxy(ctx context.Context, valid time.Duration) (*G
 		return &GridProxy{}, fmt.Errorf("Could not execute grid-proxy-init template: %s", err.Error())
 	}
 
-	args, err := getArgsFromTemplate(b.String())
+	args, err := utils.GetArgsFromTemplate(b.String())
 	if err != nil {
 		return &GridProxy{}, fmt.Errorf("Could not get grid-proxy-init command arguments from template: %s", err.Error())
 	}
@@ -173,7 +175,7 @@ func fmtDurationForGPI(d time.Duration) string {
 }
 
 func init() {
-	if err := checkForExecutables(gridProxyExecutables); err != nil {
+	if err := utils.CheckForExecutables(gridProxyExecutables); err != nil {
 		panic(err)
 	}
 }
