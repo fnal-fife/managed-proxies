@@ -58,6 +58,10 @@ func (g *GridProxy) Remove() error {
 	}
 }
 
+type myProxyer interface {
+	StoreInMyProxy(ctx context.Context, server string, valid time.Duration) error
+}
+
 func (g *GridProxy) StoreInMyProxy(ctx context.Context, retrievers, myProxyServer string, valid time.Duration) error {
 	var b strings.Builder
 
