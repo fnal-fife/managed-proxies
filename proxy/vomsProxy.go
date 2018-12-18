@@ -145,6 +145,6 @@ func rsyncFile(ctx context.Context, source, node, account, dest string, sshOptio
 func init() {
 
 	if err := utils.CheckForExecutables(vomsProxyExecutables); err != nil {
-		panic(err)
+		fmt.Printf("Note that one or more required executables were not found in $PATH: %s\n", err)
 	}
 }
