@@ -13,12 +13,6 @@ import (
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/utils"
 )
 
-type VomsProxy struct {
-	Path string
-	FQAN string
-	DN   string
-}
-
 const (
 	vpiArgs   = "-rfc -valid 24:00 -voms {{.VomsFQAN}} -cert {{.CertFile}} -key {{.KeyFile}} -out {{.OutfilePath}}"
 	sshOpts   = "-o ConnectTimeout=30 -o ServerAliveInterval=30 -o ServerAliveCountMax=1"
@@ -35,16 +29,40 @@ var (
 	rsyncTemplate = template.Must(template.New("rsync").Parse(rsyncArgs))
 )
 
-type vomsProxyer interface {
+type VomsProxyer interface {
 	getVomsProxy(ctx context.Context, vomsFQAN string) (*VomsProxy, error)
 }
 
-func NewVOMSProxy(ctx context.Context, vp vomsProxyer, vomsFQAN string) (*VomsProxy, error) {
+type ProxyTransferer interface {
+	CopyProxy(ctx context.Context, node, account, dest string) error
+}
+
+// Implements the Cert, VomsProxyer, and ProxyTransferer interfaces
+type VomsProxy struct {
+	Path string
+	FQAN string
+	DN   string
+	Cert
+}
+
+func NewVomsProxy(ctx context.Context, vp VomsProxyer, vomsFQAN string) (*VomsProxy, error) {
 	v, err := vp.getVomsProxy(ctx, vomsFQAN)
 	if err != nil {
 		return &VomsProxy{}, err
 	}
 	return v, nil
+}
+
+func (v *VomsProxy) Remove() error {
+	if err := os.Remove(v.Path); os.IsNotExist(err) {
+		return errors.New("VOMS Proxy file does not exist")
+	} else {
+		return err
+	}
+}
+
+func (v *VomsProxy) CopyProxy(ctx context.Context, node, account, dest string) error {
+	return rsyncFile(ctx, v.Path, node, account, dest, sshOpts)
 }
 
 func (s *serviceCert) getVomsProxy(ctx context.Context, vomsFQAN string) (*VomsProxy, error) {
@@ -84,23 +102,8 @@ func (s *serviceCert) getVomsProxy(ctx context.Context, vomsFQAN string) (*VomsP
 		return &VomsProxy{}, fmt.Errorf("Could not get proxy subject from voms proxy: %s", err.Error())
 	}
 	v.DN = _dn
+	v.Cert = s
 	return &v, nil
-}
-
-func (v *VomsProxy) Remove() error {
-	if err := os.Remove(v.Path); os.IsNotExist(err) {
-		return errors.New("VOMS Proxy file does not exist")
-	} else {
-		return err
-	}
-}
-
-type proxyTransferer interface {
-	CopyProxy(ctx context.Context, node, account, dest string) error
-}
-
-func (v *VomsProxy) CopyProxy(ctx context.Context, node, account, dest string) error {
-	return rsyncFile(ctx, v.Path, node, account, dest, sshOpts)
 }
 
 func rsyncFile(ctx context.Context, source, node, account, dest string, sshOptions string) error {
@@ -130,6 +133,17 @@ func rsyncFile(ctx context.Context, source, node, account, dest string, sshOptio
 	}
 	return nil
 
+}
+
+func (v *VomsProxy) getCertPath() string { return v.Cert.getCertPath() }
+func (v *VomsProxy) getKeyPath() string  { return v.Cert.getKeyPath() }
+
+func (v *VomsProxy) getCertSubject(ctx context.Context) (string, error) {
+	dn, err := v.Cert.getCertSubject(ctx)
+	if err != nil {
+		return "", err
+	}
+	return dn, nil
 }
 
 // Both of these should be called from an interface rather than the actual object.  Then we can unit test more easily i.e. pushProxyer.copyProxy(....)

@@ -13,16 +13,12 @@ import (
 )
 
 // Satisfy GridProxyer interface
-type badServiceCert struct{}
-
-func (b *badServiceCert) getGridProxy(ctx context.Context, valid time.Duration) (*GridProxy, error) {
-	return nil, errors.New("This failed for some reason")
+type fakeGridProxy struct {
+	err error
 }
 
-type goodServiceCert struct{}
-
-func (g *goodServiceCert) getGridProxy(ctx context.Context, valid time.Duration) (*GridProxy, error) {
-	return &GridProxy{}, nil
+func (f *fakeGridProxy) getGridProxy(ctx context.Context, valid time.Duration) (*GridProxy, error) {
+	return &GridProxy{}, f.err
 }
 
 func TestNewGridProxy(t *testing.T) {
@@ -31,11 +27,11 @@ func TestNewGridProxy(t *testing.T) {
 		err error
 	}{
 		{
-			g:   &badServiceCert{},
+			g:   &fakeGridProxy{errors.New("This failed for some reason")},
 			err: errors.New("Could not run grid-proxy-init on service cert: This failed for some reason"),
 		},
 		{
-			g:   &goodServiceCert{},
+			g:   &fakeGridProxy{err: nil},
 			err: nil,
 		},
 	}
@@ -50,7 +46,7 @@ func TestNewGridProxy(t *testing.T) {
 
 }
 
-func TestRemove(t *testing.T) {
+func TestRemoveGridProxy(t *testing.T) {
 	tmpLocation, _ := ioutil.TempFile("", "proxytest")
 	tests := []struct {
 		g   *GridProxy
