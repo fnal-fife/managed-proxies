@@ -79,7 +79,7 @@ func (s *serviceCert) getVomsProxy(ctx context.Context, vomsFQAN string) (*VomsP
 
 	v := VomsProxy{Path: outfile, FQAN: vomsFQAN}
 
-	_dn, err := v.getDN(ctx)
+	_dn, err := s.getCertSubject(ctx)
 	if err != nil {
 		return &VomsProxy{}, fmt.Errorf("Could not get proxy subject from voms proxy: %s", err.Error())
 	}
@@ -93,14 +93,6 @@ func (v *VomsProxy) Remove() error {
 	} else {
 		return err
 	}
-}
-
-func (v *VomsProxy) getDN(ctx context.Context) (string, error) {
-	dn, err := getCertSubject(ctx, v.Path)
-	if err != nil {
-		return "", err
-	}
-	return dn, nil
 }
 
 type proxyTransferer interface {

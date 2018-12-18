@@ -69,7 +69,7 @@ func (g *GridProxy) StoreInMyProxy(ctx context.Context, retrievers, myProxyServe
 	//		return fmt.Errorf("Could not get retrievers list from jobsub server: %s", err.Error())
 	//	}
 
-	owner, err := g.Cert.getDN(ctx)
+	owner, err := g.Cert.getCertSubject(ctx)
 	if err != nil {
 		return fmt.Errorf("Could not get cert DN: %s", err.Error())
 	}
@@ -108,8 +108,8 @@ func (g *GridProxy) StoreInMyProxy(ctx context.Context, retrievers, myProxyServe
 func (g *GridProxy) getCertPath() string { return g.Cert.getCertPath() }
 func (g *GridProxy) getKeyPath() string  { return g.Cert.getKeyPath() }
 
-func (g *GridProxy) getDN(ctx context.Context) (string, error) {
-	dn, err := getCertSubject(ctx, g.Path)
+func (g *GridProxy) getCertSubject(ctx context.Context) (string, error) {
+	dn, err := g.Cert.getCertSubject(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -154,7 +154,7 @@ func (s *serviceCert) getGridProxy(ctx context.Context, valid time.Duration) (*G
 
 	g := GridProxy{Path: outfile, Cert: s}
 
-	_dn, err := g.getDN(ctx)
+	_dn, err := g.getCertSubject(ctx)
 	if err != nil {
 		return &GridProxy{}, fmt.Errorf("Could not get proxy subject from grid proxy: %s", err)
 	}
