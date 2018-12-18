@@ -47,7 +47,11 @@ type serviceCert struct {
 //}
 
 func GetDN(ctx context.Context, c Cert) (string, error) {
-	return c.getCertSubject(ctx)
+	dn, err := c.getCertSubject(ctx)
+	if err != nil {
+		return "", err
+	}
+	return dn, err
 }
 
 func (s *serviceCert) getCertPath() string { return s.certPath }
