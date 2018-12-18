@@ -23,7 +23,8 @@ import (
 //)
 
 type Cert interface {
-	getDN(context.Context) (string, error)
+	//getDN(context.Context) (string, error)
+	getCertSubject(context.Context) (string, error)
 	getCertPath() string
 	getKeyPath() string
 }
@@ -34,23 +35,57 @@ type serviceCert struct {
 	DN       string
 }
 
-func (s *serviceCert) getDN(ctx context.Context) (string, error) {
-	dn, err := getCertSubject(ctx, s.certPath)
-	if err != nil {
-		return "", err
-	}
-	return dn, nil
+//func (s *serviceCert) getDN(ctx context.Context) (string, error) {
+//	if s.DN != "" {
+//		return s.DN, nil
+//	}
+//	dn, err := getCertSubject(ctx, s.certPath)
+//	if err != nil {
+//		return "", err
+//	}
+//	return dn, nil
+//}
+
+func GetDN(ctx context.Context, c Cert) (string, error) {
+	return c.getCertSubject(ctx)
 }
 
 func (s *serviceCert) getCertPath() string { return s.certPath }
 func (s *serviceCert) getKeyPath() string  { return s.keyPath }
+func (s *serviceCert) getCertSubject(ctx context.Context) (string, error) {
+	if s.DN != "" {
+		return s.DN, nil
+	}
+
+	certContent, err := ioutil.ReadFile(s.certPath)
+	if err != nil {
+		return "", fmt.Errorf("Could not read cert file at %s", s.certPath)
+	}
+
+	certDER, _ := pem.Decode(certContent)
+	if certDER == nil {
+		return "", errors.New("Could not decode PEM block containing cert")
+	}
+
+	cert, err := x509.ParseCertificate(certDER.Bytes)
+	if err != nil {
+		return "", errors.New("Could not parse certificate from DER data")
+	}
+
+	return parseDN(cert.Subject.Names, "/"), nil
+}
 
 func NewServiceCert(ctx context.Context, certPath, keyPath string) (*serviceCert, error) {
-	dn, err := getCertSubject(ctx, certPath)
-	if err != nil {
-		return &serviceCert{}, fmt.Errorf("Could not get DN for cert: %s", err.Error())
+	s := &serviceCert{
+		certPath: certPath,
+		keyPath:  keyPath,
 	}
-	return &serviceCert{certPath, keyPath, dn}, nil
+	dn, err := s.getCertSubject(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("Could not get DN for cert: %s", err.Error())
+	}
+	s.DN = dn
+	return s, nil
 }
 
 //func getCertSubject(ctx context.Context, certPath string) (string, error) {
@@ -85,25 +120,6 @@ func NewServiceCert(ctx context.Context, certPath, keyPath string) (*serviceCert
 //	return DN, nil
 //
 //}
-
-func getCertSubject(ctx context.Context, certPath string) (string, error) {
-	certContent, err := ioutil.ReadFile(certPath)
-	if err != nil {
-		return "", fmt.Errorf("Could not read cert file at %s", certPath)
-	}
-
-	certDER, _ := pem.Decode(certContent)
-	if certDER == nil {
-		return "", errors.New("Could not decode PEM block containing cert")
-	}
-
-	cert, err := x509.ParseCertificate(certDER.Bytes)
-	if err != nil {
-		return "", errors.New("Could not parse certificate from DER data")
-	}
-
-	return parseDN(cert.Subject.Names, "/"), nil
-}
 
 // Thank you FERRY for this.  names can be *x509.Certificate.Subject.Names object
 func parseDN(names []pkix.AttributeTypeAndValue, sep string) string {
