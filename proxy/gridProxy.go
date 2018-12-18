@@ -45,7 +45,7 @@ func NewGridProxy(ctx context.Context, gp gridProxyer, valid time.Duration) (*Gr
 
 	g, err := gp.getGridProxy(ctx, valid)
 	if err != nil {
-		return &GridProxy{}, fmt.Errorf("Could not run grid-proxy-init on service cert: %s", err.Error())
+		return nil, fmt.Errorf("Could not run grid-proxy-init on service cert: %s", err.Error())
 	}
 	return g, nil
 }
@@ -176,6 +176,6 @@ func fmtDurationForGPI(d time.Duration) string {
 
 func init() {
 	if err := utils.CheckForExecutables(gridProxyExecutables); err != nil {
-		panic(err)
+		fmt.Printf("Note that one or more required executables were not found in $PATH: %s\n", err)
 	}
 }
