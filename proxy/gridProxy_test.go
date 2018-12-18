@@ -6,6 +6,8 @@ import (
 	//	"fmt"
 	//	"os"
 	//	"path/filepath"
+	"io/ioutil"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -46,6 +48,34 @@ func TestNewGridProxy(t *testing.T) {
 		}
 	}
 
+}
+
+func TestRemove(t *testing.T) {
+	tmpLocation, _ := ioutil.TempFile("", "proxytest")
+	tests := []struct {
+		g   *GridProxy
+		err error
+	}{
+		{
+			g: &GridProxy{
+				Path: tmpLocation.Name(),
+			},
+			err: nil,
+		},
+		{
+			g: &GridProxy{
+				Path: strconv.FormatInt(time.Now().UnixNano(), 36),
+			},
+			err: errors.New("Grid Proxy file does not exist"),
+		},
+	}
+
+	for _, test := range tests {
+		err := test.g.Remove()
+		if errorString(err) != errorString(test.err) {
+			t.Errorf("Expected and actual errors do not match.  Expected %s, got %s", test.err, err)
+		}
+	}
 }
 
 //var exePaths map[string]bool
