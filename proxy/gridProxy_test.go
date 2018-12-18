@@ -2,7 +2,7 @@ package proxy
 
 import (
 	"context"
-	//"errors"
+	"errors"
 	//	"fmt"
 	//	"os"
 	//	"path/filepath"
@@ -10,17 +10,11 @@ import (
 	"time"
 )
 
-type testingError string
-
-func (t testingError) Error() string {
-	return string(t)
-}
-
-// Satisfy gridProxyer interface
+// Satisfy GridProxyer interface
 type badServiceCert struct{}
 
 func (b *badServiceCert) getGridProxy(ctx context.Context, valid time.Duration) (*GridProxy, error) {
-	return nil, testingError("This failed for some reason")
+	return nil, errors.New("This failed for some reason")
 }
 
 type goodServiceCert struct{}
@@ -31,16 +25,16 @@ func (g *goodServiceCert) getGridProxy(ctx context.Context, valid time.Duration)
 
 func TestNewGridProxy(t *testing.T) {
 	tests := []struct {
-		g   gridProxyer
-		err testingError
+		g   GridProxyer
+		err error
 	}{
 		{
 			g:   &badServiceCert{},
-			err: testingError("Could not run grid-proxy-init on service cert: This failed for some reason"),
+			err: errors.New("Could not run grid-proxy-init on service cert: This failed for some reason"),
 		},
 		{
 			g:   &goodServiceCert{},
-			err: testingError(""),
+			err: nil,
 		},
 	}
 
