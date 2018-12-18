@@ -32,13 +32,18 @@ var (
 	myproxystoreTemplate = template.Must(template.New("myproxy-store").Parse(myproxystoreArgs))
 )
 
+type GridProxyer interface {
+	getGridProxy(context.Context, time.Duration) (*GridProxy, error)
+}
+
+// Satisfies the Cert and MyProxyer interfaces
 type GridProxy struct {
 	Path string
 	DN   string
 	Cert
 }
 
-func NewGridProxy(ctx context.Context, gp gridProxyer, valid time.Duration) (*GridProxy, error) {
+func NewGridProxy(ctx context.Context, gp GridProxyer, valid time.Duration) (*GridProxy, error) {
 	if valid.Seconds() == 0 {
 		valid, _ = time.ParseDuration(defaultValidity)
 	}
@@ -58,11 +63,7 @@ func (g *GridProxy) Remove() error {
 	}
 }
 
-type myProxyer interface {
-	StoreInMyProxy(ctx context.Context, server string, valid time.Duration) error
-}
-
-func (g *GridProxy) StoreInMyProxy(ctx context.Context, retrievers, myProxyServer string, valid time.Duration) error {
+func (g *GridProxy) storeInMyProxy(ctx context.Context, retrievers, myProxyServer string, valid time.Duration) error {
 	var b strings.Builder
 
 	hours := strconv.FormatFloat(valid.Hours(), 'f', -1, 32)
@@ -120,10 +121,6 @@ func (g *GridProxy) getCertSubject(ctx context.Context) (string, error) {
 	return dn, nil
 }
 
-type gridProxyer interface {
-	getGridProxy(context.Context, time.Duration) (*GridProxy, error)
-}
-
 func (s *serviceCert) getGridProxy(ctx context.Context, valid time.Duration) (*GridProxy, error) {
 	var b strings.Builder
 
@@ -165,8 +162,6 @@ func (s *serviceCert) getGridProxy(ctx context.Context, valid time.Duration) (*G
 	g.DN = _dn
 	return &g, nil
 }
-
-// Somewhere else, define an interface myProxyer that has a runMyProxyStore func.  Have the func that eventually runs runMyProxyStore run it on the interface.
 
 // fmtDurationForGPI does TODO .Modified from https://stackoverflow.com/questions/47341278/how-to-format-a-duration-in-golang/47342272#47342272
 func fmtDurationForGPI(d time.Duration) string {
