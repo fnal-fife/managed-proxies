@@ -54,13 +54,6 @@ func TestNewGridProxy(t *testing.T) {
 
 }
 
-func errorString(err error) string {
-	if err == nil {
-		return ""
-	}
-	return err.Error()
-}
-
 //var exePaths map[string]bool
 //
 //func init() {
