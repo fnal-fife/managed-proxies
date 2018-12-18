@@ -25,7 +25,7 @@ func GetDN(ctx context.Context, c Cert) (string, error) {
 	return dn, err
 }
 
-// Satisifies the Cert and GridProxyer interfaces
+// Satisifies the Cert, GridProxyer, and VOMSProxyer interfaces
 type serviceCert struct {
 	certPath string
 	keyPath  string
