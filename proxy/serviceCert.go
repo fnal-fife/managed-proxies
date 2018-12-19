@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"io/ioutil"
 	"strings"
+
+	log "github.com/sirupsen/logrus"
 )
 
 type Cert interface {
@@ -20,6 +22,7 @@ type Cert interface {
 func GetDN(ctx context.Context, c Cert) (string, error) {
 	dn, err := c.getCertSubject(ctx)
 	if err != nil {
+		log.WithField("path", c.getCertPath()).Error("Could not get certificate subject")
 		return "", err
 	}
 	return dn, err
@@ -39,9 +42,15 @@ func NewServiceCert(ctx context.Context, certPath, keyPath string) (*serviceCert
 	}
 	dn, err := s.getCertSubject(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("Could not get DN for cert: %s", err.Error())
+		err := "Could not get DN from certificate"
+		log.WithField("certPath", certPath).Error(err)
+		return nil, errors.New(err)
 	}
 	s.DN = dn
+	log.WithFields(log.Fields{
+		"certPath": certPath,
+		"subject":  s.DN,
+	}).Debug("Successfully ingested service certificate")
 	return s, nil
 }
 
@@ -54,19 +63,26 @@ func (s *serviceCert) getCertSubject(ctx context.Context) (string, error) {
 
 	certContent, err := ioutil.ReadFile(s.certPath)
 	if err != nil {
-		return "", fmt.Errorf("Could not read cert file at %s", s.certPath)
+		err := fmt.Sprintf("Could not read cert file: %s", err.Error())
+		log.WithField("certPath", s.certPath).Error(err)
+		return "", errors.New(err)
 	}
 
 	certDER, _ := pem.Decode(certContent)
 	if certDER == nil {
-		return "", errors.New("Could not decode PEM block containing cert")
+		err := "Could not decode PEM block containing cert"
+		log.WithField("certPath", s.certPath).Error(err)
+		return "", errors.New(err)
 	}
 
 	cert, err := x509.ParseCertificate(certDER.Bytes)
 	if err != nil {
-		return "", errors.New("Could not parse certificate from DER data")
+		err := "Could not parse certificate from DER data"
+		log.WithField("certPath", s.certPath).Error(err)
+		return "", errors.New(err)
 	}
 
+	log.WithField("certPath", s.certPath).Debug("Read in and decoded cert file, will now find subject")
 	return parseDN(cert.Subject.Names, "/"), nil
 }
 
