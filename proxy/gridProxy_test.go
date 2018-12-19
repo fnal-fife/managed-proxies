@@ -21,6 +21,8 @@ func (f *fakeGridProxy) getGridProxy(ctx context.Context, valid time.Duration) (
 	return &GridProxy{}, f.err
 }
 
+func (f *fakeGridProxy) getLocation() string { return "Here" }
+
 func TestNewGridProxy(t *testing.T) {
 	tests := []struct {
 		g   GridProxyer
@@ -28,7 +30,7 @@ func TestNewGridProxy(t *testing.T) {
 	}{
 		{
 			g:   &fakeGridProxy{errors.New("This failed for some reason")},
-			err: errors.New("Could not run grid-proxy-init on service cert: This failed for some reason"),
+			err: errors.New("Could not get a new grid proxy from service certificate"),
 		},
 		{
 			g:   &fakeGridProxy{err: nil},
@@ -62,7 +64,7 @@ func TestRemoveGridProxy(t *testing.T) {
 			g: &GridProxy{
 				Path: strconv.FormatInt(time.Now().UnixNano(), 36),
 			},
-			err: errors.New("Grid Proxy file does not exist"),
+			err: errors.New("Grid proxy file does not exist"),
 		},
 	}
 
