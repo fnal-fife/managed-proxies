@@ -52,11 +52,14 @@ func NewGridProxy(ctx context.Context, gp GridProxyer, valid time.Duration) (*Gr
 
 	g, err := gp.getGridProxy(ctx, valid)
 	if err != nil {
-		err := "Could not get a new grid proxy from service certificate"
+		err := "Could not get a new grid proxy from gridProxyer"
 		log.WithField("gridProxyer", fmt.Sprintf("%v", gp)).Error(err)
 		return nil, errors.New(err)
 	}
-	log.WithField("location", g.getCertPath).Debug("Generated new GridProxy")
+	log.WithFields(log.Fields{
+		"path": g.Path,
+		"DN":   g.DN,
+	}).Debug("Generated new GridProxy")
 	return g, nil
 }
 
@@ -197,7 +200,7 @@ func (s *serviceCert) getGridProxy(ctx context.Context, valid time.Duration) (*G
 
 	_dn, err := g.getCertSubject(ctx)
 	if err != nil {
-		err := fmt.Sprintf("Could not get proxy subject from grid proxy")
+		err := "Could not get proxy subject from grid proxy"
 		log.WithField("certPath", s.getCertPath()).Error(err)
 		return &GridProxy{}, errors.New(err)
 	}

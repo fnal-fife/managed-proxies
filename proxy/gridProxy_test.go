@@ -28,7 +28,7 @@ func TestNewGridProxy(t *testing.T) {
 	}{
 		{
 			g:   &fakeGridProxy{errors.New("This failed for some reason")},
-			err: errors.New("Could not get a new grid proxy from service certificate"),
+			err: errors.New("Could not get a new grid proxy from gridProxyer"),
 		},
 		{
 			g:   &fakeGridProxy{err: nil},
