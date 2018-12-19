@@ -24,7 +24,7 @@ func TestNewVomsProxy(t *testing.T) {
 	}{
 		{
 			v:   &fakeVomsProxy{errors.New("This failed for some reason")},
-			err: errors.New("This failed for some reason"),
+			err: errors.New("Could not generate a VOMS proxy"),
 		},
 		{
 			v:   &fakeVomsProxy{err: nil},
