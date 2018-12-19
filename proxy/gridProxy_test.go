@@ -21,8 +21,6 @@ func (f *fakeGridProxy) getGridProxy(ctx context.Context, valid time.Duration) (
 	return &GridProxy{}, f.err
 }
 
-func (f *fakeGridProxy) getLocation() string { return "Here" }
-
 func TestNewGridProxy(t *testing.T) {
 	tests := []struct {
 		g   GridProxyer

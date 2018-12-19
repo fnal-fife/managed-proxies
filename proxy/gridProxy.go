@@ -36,7 +36,6 @@ var (
 
 type GridProxyer interface {
 	getGridProxy(context.Context, time.Duration) (*GridProxy, error)
-	getLocation() string
 }
 
 // Satisfies the Cert and MyProxyer interfaces
@@ -54,7 +53,7 @@ func NewGridProxy(ctx context.Context, gp GridProxyer, valid time.Duration) (*Gr
 	g, err := gp.getGridProxy(ctx, valid)
 	if err != nil {
 		err := "Could not get a new grid proxy from service certificate"
-		log.WithField("sourceLocation", gp.getLocation()).Error(err)
+		log.WithField("gridProxyer", fmt.Sprintf("%v", gp)).Error(err)
 		return nil, errors.New(err)
 	}
 	log.WithField("location", g.getCertPath).Debug("Generated new GridProxy")
@@ -130,6 +129,11 @@ func (g *GridProxy) storeInMyProxy(ctx context.Context, retrievers, myProxyServe
 		}).Error(err)
 		return errors.New(err)
 	}
+	log.WithFields(log.Fields{
+		"gridProxy":     g.DN,
+		"myProxyServer": myProxyServer,
+		"validHours":    hours,
+	}).Debug("Successfully stored grid proxy in myproxy")
 	return nil
 }
 
@@ -204,8 +208,6 @@ func (s *serviceCert) getGridProxy(ctx context.Context, valid time.Duration) (*G
 	}).Debug("Successfully generated grid proxy")
 	return &g, nil
 }
-
-func (s *serviceCert) getLocation() string { return s.getCertPath() }
 
 // fmtDurationForGPI does TODO .Modified from https://stackoverflow.com/questions/47341278/how-to-format-a-duration-in-golang/47342272#47342272
 func fmtDurationForGPI(d time.Duration) string {
