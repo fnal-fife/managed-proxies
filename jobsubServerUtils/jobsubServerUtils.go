@@ -12,6 +12,8 @@ import (
 	"net/http"
 	"path/filepath"
 	"regexp"
+
+	log "github.com/sirupsen/logrus"
 )
 
 //const (
@@ -33,6 +35,7 @@ func StartHTTPSClient(caPath string) error {
 	// Load CA certs
 	caFiles, err := ioutil.ReadDir(caPath)
 	if err != nil {
+		log.WithField("caPath", caPath).Error(err)
 		return err
 	}
 
@@ -46,6 +49,7 @@ func StartHTTPSClient(caPath string) error {
 	for _, f := range caCertSlice {
 		caCert, err := ioutil.ReadFile(f)
 		if err != nil {
+			log.WithField("CA_Cert_file", f).Error(err)
 			return err
 		}
 		caCertPool.AppendCertsFromPEM(caCert)
@@ -71,11 +75,22 @@ func GetRetrievers(ctx context.Context, jobsubServer, cigetcertOptsEndpoint stri
 
 	data, err := getCigetcertopts(ctx, jobsubServer, cigetcertOptsEndpoint)
 	if err != nil {
-		return "", fmt.Errorf("Error getting cigetcertopts from jobsub server: %s", err.Error())
+		err := fmt.Sprintf("Error getting cigetcertopts from jobsub server: %s", err.Error())
+		log.WithFields(log.Fields{
+			"jobsubServer":          jobsubServer,
+			"cigetcertOptsEndpoint": cigetcertOptsEndpoint,
+		}).Error(err)
+		return "", errors.New(err)
 	}
 
 	retrieversRegExp := regexp.MustCompile("^--myproxyretrievers='(.+)'$")
 	retrieversSlice := make([]string, 0)
+
+	_f := func() error {
+		err := "Too many matches within line.  Check file"
+		log.Error(err)
+		return errors.New(err)
+	}
 
 	scanner := bufio.NewScanner(bytes.NewReader(data))
 	for scanner.Scan() {
@@ -89,18 +104,23 @@ func GetRetrievers(ctx context.Context, jobsubServer, cigetcertOptsEndpoint stri
 			retrieversSlice = append(retrieversSlice, matches[0][1])
 		default:
 			// More than one match - this is bad
-			return "", errors.New("Too many matches within line.  Check file")
+			return "", _f()
 		}
 	}
 	if len(retrieversSlice) > 1 {
-		return "", errors.New("Too many matches within file.  Check file")
+		return "", _f()
 	}
 	return retrieversSlice[0], nil
 }
 
 func CheckRetrievers(retrievers, defaultRetrievers string) error {
 	if retrievers != defaultRetrievers {
-		return errors.New("Attention:  The retrievers on the jobsub server do not match the default retrievers")
+		err := "Attention:  The retrievers on the jobsub server do not match the default retrievers"
+		log.WithFields(log.Fields{
+			"retrievers":        retrievers,
+			"defaultRetrievers": defaultRetrievers,
+		}).Error(err)
+		return errors.New(err)
 	}
 	return nil
 }
@@ -111,23 +131,40 @@ func getCigetcertopts(ctx context.Context, server, endpoint string) ([]byte, err
 
 	req, err := http.NewRequest("GET", queryEndpoint, nil)
 	if err != nil {
-		fmt.Println(err)
-		return data, err
+		err := fmt.Sprintf("Could not create new HTTP request.  Error was %s", err.Error())
+		log.WithFields(log.Fields{
+			"server":        server,
+			"endpoint":      endpoint,
+			"queryEndpoint": queryEndpoint,
+		}).Error(err)
+		return data, errors.New(err)
 	}
 	req = req.WithContext(ctx)
 
 	var r *http.Response
 
 	if r, err = HTTPSClient.Do(req); err != nil {
-		return []byte{}, err
+		err := fmt.Sprintf("Could not execute HTTP request.  Error was %s", err.Error())
+		log.WithFields(log.Fields{
+			"server":        server,
+			"endpoint":      endpoint,
+			"queryEndpoint": queryEndpoint,
+		}).Error(err)
+		return []byte{}, errors.New(err)
 	}
 
 	defer r.Body.Close()
 
 	data, err = ioutil.ReadAll(r.Body)
 	if err != nil {
+		err := fmt.Sprintf("Could not read response body.  Error was %s", err.Error())
+		log.WithFields(log.Fields{
+			"server":        server,
+			"endpoint":      endpoint,
+			"queryEndpoint": queryEndpoint,
+		}).Error(err)
 		data = []byte{}
-		return data, err
+		return data, errors.New(err)
 	}
 	return data, err
 }
