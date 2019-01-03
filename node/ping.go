@@ -2,6 +2,7 @@ package node
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -9,7 +10,10 @@ import (
 	"text/template"
 
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/utils"
+	log "github.com/sirupsen/logrus"
 )
+
+// TODO: unit test
 
 const pingArgs = "-W 5 -c 1 {{.Node}}"
 
@@ -35,20 +39,26 @@ func (n node) pingNode(ctx context.Context) error {
 	}
 
 	if err := pingTemplate.Execute(&b, pArgs); err != nil {
-		return fmt.Errorf("Could not execute ping template: %s", err.Error())
+		err := fmt.Sprintf("Could not execute ping template: %s", err.Error())
+		log.Error(err)
+		return errors.New(err)
 	}
 
 	args, err := utils.GetArgsFromTemplate(b.String())
 	if err != nil {
-		return fmt.Errorf("Could not get ping command arguments from template: %s", err.Error())
+		err := fmt.Sprintf("Could not get ping command arguments from template: %s", err.Error())
+		log.WithField("templateStringsBuilder", b.String()).Error(err)
+		return errors.New(err)
 	}
 
 	cmd := exec.CommandContext(ctx, pingExecutables["ping"], args...)
 	if cmdOut, cmdErr := cmd.CombinedOutput(); cmdErr != nil {
 		if e := ctx.Err(); e != nil {
+			log.WithField("command", strings.Join(cmd.Args, " ")).Error(fmt.Sprintf("Context error: %s", e.Error()))
 			return e
 		}
-		return fmt.Errorf("%s %s", cmdErr, cmdOut)
+		log.WithField("command", strings.Join(cmd.Args, " ")).Error(fmt.Sprintf("Error running ping command: %s %s", string(cmdOut), cmdErr.Error()))
+		return fmt.Errorf("%s %s", cmdOut, cmdErr)
 	}
 	return nil
 }
@@ -87,6 +97,6 @@ func PingAllNodes(ctx context.Context, nodes ...PingNoder) <-chan pingNodeStatus
 
 func init() {
 	if err := utils.CheckForExecutables(pingExecutables); err != nil {
-		panic(err)
+		log.WithField("executableGroup", "ping").Error("One or more required executables were not found in $PATH.  Will still attempt to run, but this will probably fail")
 	}
 }
