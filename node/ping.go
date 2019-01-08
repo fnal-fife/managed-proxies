@@ -13,8 +13,6 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// TODO: unit test
-
 const pingArgs = "-W 5 -c 1 {{.Node}}"
 
 var (
@@ -26,13 +24,16 @@ var (
 
 // PingNoder is an interface that wraps the pingNode method. It is meant to be used where pinging a node is necessary
 type PingNoder interface {
-	pingNode(context.Context) error
+	PingNode(context.Context) error
+	NodeAsString() string
 }
 
 type node string
 
+func NewNode(s string) node { return node(s) }
+
 // pingNode pings a node (described by a node object) with a 5-second timeout.  It returns an error
-func (n node) pingNode(ctx context.Context) error {
+func (n node) PingNode(ctx context.Context) error {
 	var b strings.Builder
 	var pArgs = map[string]string{
 		"Node": string(n),
@@ -63,10 +64,12 @@ func (n node) pingNode(ctx context.Context) error {
 	return nil
 }
 
+func (n node) NodeAsString() string { return string(n) }
+
 // pingNodeStatus stores information about an attempt to ping a node.  If there was an error, it's stored in err.
 type pingNodeStatus struct {
 	PingNoder
-	err error
+	Err error
 }
 
 // pingAllNodes will launch goroutines, which each ping a node the PingNoder variadic nodes.  It returns a channel,
@@ -81,7 +84,7 @@ func PingAllNodes(ctx context.Context, nodes ...PingNoder) <-chan pingNodeStatus
 	for _, n := range nodes {
 		go func(n PingNoder) {
 			defer wg.Done()
-			p := pingNodeStatus{n, n.pingNode(ctx)}
+			p := pingNodeStatus{n, n.PingNode(ctx)}
 			c <- p
 		}(n)
 	}

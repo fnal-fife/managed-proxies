@@ -15,20 +15,24 @@ const (
 
 type goodNode string
 
-func (g goodNode) pingNode(ctx context.Context) error {
-	fmt.Println("Running fake pingNode")
+func (g goodNode) PingNode(ctx context.Context) error {
+	fmt.Println("Running fake PingNode")
 	return nil
 }
 
+func (g goodNode) NodeAsString() string { return string(g) }
+
 type badNode string
 
-func (b badNode) pingNode(ctx context.Context) error {
+func (b badNode) PingNode(ctx context.Context) error {
 	time.Sleep(1 * time.Second)
 	if e := ctx.Err(); e != nil {
 		return e
 	}
 	return fmt.Errorf("exit status 2 ping: unknown host %s", b)
 }
+
+func (b badNode) NodeAsString() string { return string(g) }
 
 func TestPingNode(t *testing.T) {
 	ctx := context.Background()
@@ -38,7 +42,7 @@ func TestPingNode(t *testing.T) {
 		t.Log("Running control test")
 	}
 	g := node(goodhost)
-	if err := g.pingNode(ctx); err != nil {
+	if err := g.PingNode(ctx); err != nil {
 		t.Errorf("Expected error to be nil but got %s", err)
 		t.Errorf("Our \"reliable\" host, %s, is probably down or just not responding", goodhost)
 	}
@@ -48,7 +52,7 @@ func TestPingNode(t *testing.T) {
 		t.Log("Running bogus host test")
 	}
 	b := node(badhost)
-	if err := b.pingNode(ctx); err != nil {
+	if err := b.PingNode(ctx); err != nil {
 		lowerErr := strings.ToLower(err.Error())
 		if !strings.Contains(lowerErr, "unknown host") && !strings.Contains(lowerErr, badhost) {
 			t.Errorf("Expected error message containing the phrase \"unknown host\" and %s but got %s", badhost, err)
@@ -62,7 +66,7 @@ func TestPingNode(t *testing.T) {
 		t.Log("Running timeout test")
 	}
 	timeoutCtx, cancelTimeout := context.WithTimeout(ctx, time.Duration(1*time.Nanosecond))
-	if err := g.pingNode(timeoutCtx); err != nil {
+	if err := g.PingNode(timeoutCtx); err != nil {
 		lowerErr := strings.ToLower(err.Error())
 		expectedMsg := "context deadline exceeded"
 		if lowerErr != expectedMsg {
