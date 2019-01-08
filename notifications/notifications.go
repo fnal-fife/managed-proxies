@@ -10,8 +10,9 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 
-	"github.com/sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 	gomail "gopkg.in/gomail.v2"
 )
 
@@ -25,21 +26,56 @@ type Config struct {
 	To         []string
 	Subject    string
 	Experiment string
-	Logger     *logrus.Entry
 }
 
-// addHelperMessage tacks on the help text we want experiments to get.
-func addHelperMessage(msg, expt string) string {
-	help := "\n\nWe've compiled a list of common errors here: " +
-		"https://cdcvs.fnal.gov/redmine/projects/fife/wiki/Common_errors_with_Managed_Proxies_Service. " +
-		"\n\nIf you have any questions or comments about these emails, " +
-		"please open a Service Desk ticket to the Distributed Computing " +
-		"Support group."
+type Manager chan string
 
-	if expt == "" {
-		return msg
-	}
-	return msg + help
+func NewManagerChan(ctx context.Context, wg *sync.WaitGroup, nConfig Config) Manager {
+	c := make(Manager)
+
+	go func() {
+		msgSlice := make([]string, 0)
+		defer wg.Done()
+		for {
+			select {
+			case <-ctx.Done():
+				if e := ctx.Err(); e == context.DeadlineExceeded {
+					log.WithFields(log.Fields{
+						"caller":     "NewManagerChan",
+						"experiment": nConfig.Experiment,
+					}).Error("Timeout exceeded in notification Manager")
+
+				} else {
+					log.WithFields(log.Fields{
+						"caller":     "NewManagerChan",
+						"experiment": nConfig.Experiment,
+					}).Error(e)
+				}
+				return
+			case msg, chanOpen := <-c:
+				if !chanOpen {
+					notificationMsg := strings.Join(msgSlice, "\n")
+					if err := SendEmail(ctx, nConfig, notificationMsg); err != nil {
+						log.WithFields(log.Fields{
+							"caller":     "NewManagerChan",
+							"experiment": nConfig.Experiment,
+						}).Error("Error sending email")
+					}
+					if err := SendSlackMessage(ctx, nConfig, notificationMsg); err != nil {
+						log.WithFields(log.Fields{
+							"caller":     "NewManagerChan",
+							"experiment": nConfig.Experiment,
+						}).Error("Error sending Slack message")
+					}
+					return
+				} else {
+					msgSlice = append(msgSlice, msg)
+				}
+			}
+		}
+	}()
+	return c
+
 }
 
 // SendEmail sends emails to both experiments and admins, depending on the input (exptName = "" gives admin email).
@@ -72,17 +108,17 @@ func SendEmail(ctx context.Context, nConfig Config, msg string) error {
 	select {
 	case e := <-c:
 		if e != nil {
-			nConfig.Logger.WithField("recipient", strings.Join(nConfig.To, ", ")).Errorf("Error sending email: %s", e)
+			log.WithField("recipient", strings.Join(nConfig.To, ", ")).Errorf("Error sending email: %s", e)
 		} else {
-			nConfig.Logger.WithField("recipient", strings.Join(nConfig.To, ", ")).Info("Sent email")
+			log.WithField("recipient", strings.Join(nConfig.To, ", ")).Info("Sent email")
 		}
 		return e
 	case <-ctx.Done():
 		e := ctx.Err()
 		if e == context.DeadlineExceeded {
-			nConfig.Logger.WithField("recipient", strings.Join(nConfig.To, ", ")).Error("Error sending email: timeout")
+			log.WithField("recipient", strings.Join(nConfig.To, ", ")).Error("Error sending email: timeout")
 		} else {
-			nConfig.Logger.WithField("recipient", strings.Join(nConfig.To, ", ")).Errorf("Error sending email: %s", e)
+			log.WithField("recipient", strings.Join(nConfig.To, ", ")).Errorf("Error sending email: %s", e)
 		}
 		return e
 	}
@@ -91,14 +127,14 @@ func SendEmail(ctx context.Context, nConfig Config, msg string) error {
 // SendSlackMessage sends an HTTP POST request to a URL specified in the config file.
 func SendSlackMessage(ctx context.Context, nConfig Config, message string) error {
 	if e := ctx.Err(); e != nil {
-		nConfig.Logger.Errorf("Error sending slack message: %s", e)
+		log.Errorf("Error sending slack message: %s", e)
 		return e
 	}
 
 	msg := []byte(fmt.Sprintf(`{"text": "%s"}`, strings.Replace(message, "\"", "\\\"", -1)))
 	req, err := http.NewRequest("POST", nConfig.ConfigInfo["slack_alerts_url"], bytes.NewBuffer(msg))
 	if err != nil {
-		nConfig.Logger.Errorf("Error sending slack message: %s", err)
+		log.Errorf("Error sending slack message: %s", err)
 		return err
 	}
 
@@ -108,13 +144,13 @@ func SendSlackMessage(ctx context.Context, nConfig Config, message string) error
 	client := http.DefaultClient
 	resp, err := client.Do(req)
 	if err != nil {
-		nConfig.Logger.Errorf("Error sending slack message: %s", err)
+		log.Errorf("Error sending slack message: %s", err)
 		return err
 	}
 
 	// This should be redundant, but just in case the timeout before didn't trigger.
 	if e := ctx.Err(); e != nil {
-		nConfig.Logger.Errorf("Error sending slack message: %s", e)
+		log.Errorf("Error sending slack message: %s", e)
 		return e
 	}
 
@@ -124,13 +160,26 @@ func SendSlackMessage(ctx context.Context, nConfig Config, message string) error
 	if resp.StatusCode != http.StatusOK {
 		body, _ := ioutil.ReadAll(resp.Body)
 		err := errors.New("Could not send slack message")
-		nConfig.Logger.WithFields(logrus.Fields{
+		log.WithFields(log.Fields{
 			"response status":  resp.Status,
 			"response headers": resp.Header,
 			"response body":    string(body),
 		}).Error(err)
 		return err
 	}
-	nConfig.Logger.Info("Slack message sent")
+	log.Info("Slack message sent")
 	return nil
+}
+
+func addHelperMessage(msg, expt string) string {
+	help := "\n\nWe've compiled a list of common errors here: " +
+		"https://cdcvs.fnal.gov/redmine/projects/fife/wiki/Common_errors_with_Managed_Proxies_Service. " +
+		"\n\nIf you have any questions or comments about these emails, " +
+		"please open a Service Desk ticket to the Distributed Computing " +
+		"Support group."
+
+	if expt == "" {
+		return msg
+	}
+	return msg + help
 }
