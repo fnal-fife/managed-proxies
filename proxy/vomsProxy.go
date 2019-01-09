@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"text/template"
 
@@ -42,7 +43,7 @@ type ProxyTransferer interface {
 // Implements the Cert, VomsProxyer, and ProxyTransferer interfaces
 type VomsProxy struct {
 	Path string
-	FQAN string
+	Role string
 	DN   string
 	Cert
 }
@@ -59,7 +60,7 @@ func NewVomsProxy(ctx context.Context, vp VomsProxyer, vomsFQAN string) (*VomsPr
 	}
 	log.WithFields(log.Fields{
 		"Path": v.Path,
-		"FQAN": v.FQAN,
+		"Role": v.Role,
 		"DN":   v.DN,
 	}).Debug("Generated VOMS Proxy successfully")
 	return v, nil
@@ -133,7 +134,7 @@ func (s *serviceCert) getVomsProxy(ctx context.Context, vomsFQAN string) (*VomsP
 		return &VomsProxy{}, errors.New(err)
 	}
 
-	v := VomsProxy{Path: outfile, FQAN: vomsFQAN}
+	v := VomsProxy{Path: outfile, Role: getRoleFromFQAN(vomsFQAN)}
 
 	_dn, err := s.getCertSubject(ctx)
 	if err != nil {
@@ -147,9 +148,9 @@ func (s *serviceCert) getVomsProxy(ctx context.Context, vomsFQAN string) (*VomsP
 	v.DN = _dn
 	v.Cert = s
 	log.WithFields(log.Fields{
-		"path":     v.Path,
-		"subject":  v.DN,
-		"vomsFQAN": v.FQAN,
+		"path":    v.Path,
+		"subject": v.DN,
+		"role":    v.Role,
 	}).Debug("Successfully generated VOMS proxy")
 
 	return &v, nil
@@ -224,4 +225,9 @@ func init() {
 	if err := utils.CheckForExecutables(vomsProxyExecutables); err != nil {
 		log.WithField("executableGroup", "vomsProxy").Error("One or more required executables were not found in $PATH.  Will still attempt to run, but this will probably fail")
 	}
+}
+
+func getRoleFromFQAN(fqan string) string {
+	pattern := regexp.MustCompile("^.+Role=([a-zA-Z]+)$")
+	return pattern.FindStringSubmatch(fqan)[1]
 }
