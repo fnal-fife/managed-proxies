@@ -29,6 +29,7 @@ type Config struct {
 	To         []string
 	Subject    string
 	Experiment string
+	IsTest     bool
 }
 
 type Notification struct {
@@ -115,6 +116,11 @@ func SendAdminNotifications(ctx context.Context, nConfig Config) error {
 // SendEmail sends emails to both experiments and admins, depending on the input (exptName = "" gives admin email).
 // func SendEmail(ctx context.Context, nConfig Config, exptName, msg string) error {
 func SendEmail(ctx context.Context, nConfig Config, msg string) error {
+	if nConfig.IsTest {
+		log.Info("This is a test.  Not sending email")
+		return nil
+	}
+
 	port, err := strconv.Atoi(nConfig.ConfigInfo["smtpport"])
 	if err != nil {
 		return err

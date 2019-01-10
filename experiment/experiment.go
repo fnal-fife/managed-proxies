@@ -13,7 +13,6 @@ import (
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/notifications"
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/proxy"
 
-	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/proxyPushLogger"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -36,41 +35,29 @@ type ExperimentSuccess struct {
 type (
 	// TimeoutsConfig is a map of the timeouts passed in from the config file
 	TimeoutsConfig map[string]time.Duration
-	// VPIConfig contains information needed to run the voms-proxy-init command
-	VPIConfig map[string]string
 	// KerbConfig contains information needed to run kinit
 	KerbConfig map[string]string
-	// PingConfig contains information needed to ping the various interactive nodes
-	PingConfig map[string]string
-	// SSHConfig contains the common options and arguments necessary to run scp and ssh; chmod to copy the proxies into place
-	SSHConfig map[string]string
 )
 
 // ExptConfig is a mega struct containing all the information the Worker needs to have or pass onto lower level funcs.
 type ExptConfig struct {
 	Name        string
 	CertBaseDir string
-	Krb5ccname  string
 	DestDir     string
 	Nodes       []string
 	Accounts    map[string]string
 	VomsPrefix  string
 	CertFile    string
 	KeyFile     string
-	IsTest      bool
-	NConfig     notifications.Config
 	TimeoutsConfig
-	LogsConfig proxyPushLogger.LogsConfig
-	VPIConfig
 	KerbConfig
-	PingConfig
-	SSHConfig
 }
 
 // Experiment worker-specific functions
 
 // Worker is the main function that manages the processes involved in generating and copying VOMS proxies to
 // an experiment's nodes.  It returns a channel on which it reports the status of that experiment's proxy push.
+// TODO:  Add notifications manager channel to the args, put in notifications messages
 func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPush) <-chan ExperimentSuccess {
 	c := make(chan ExperimentSuccess, 2)
 	expt := ExperimentSuccess{eConfig.Name, true} // Initialize
