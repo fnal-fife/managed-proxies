@@ -4,26 +4,27 @@ package experimentutil
 
 import (
 	"context"
-	"errors"
-	"fmt"
-	"io/ioutil"
-	"os"
-	"os/exec"
-	"path"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
+	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/node"
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/notifications"
+	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/proxy"
+
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/proxyPushLogger"
-	"github.com/sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 )
 
 // const exptErrFilenamef string = "golang_proxy_push_%s.log" // temp file per experiment that will be emailed to experiment
 
 // var genLog *logrus.Logger
-var rwmuxErr, rwmuxLog, rwmuxDebug sync.RWMutex // mutexes to be used when copying experiment logs into master and error log
+
+var (
+	rwmuxErr, rwmuxLog, rwmuxDebug sync.RWMutex // mutexes to be used when copying experiment logs into master and error log
+	kinitExecutable                = "/usr/krb5/bin/kinit"
+)
 
 // ExperimentSuccess stores information on whether all the processes involved in generating, copying, and changing
 // permissions on all proxies for an experiment were successful.
@@ -64,7 +65,6 @@ type ExptConfig struct {
 	KerbConfig
 	PingConfig
 	SSHConfig
-	Logger *logrus.Entry
 }
 
 // Experiment worker-specific functions
@@ -75,7 +75,7 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 	c := make(chan ExperimentSuccess, 2)
 	expt := ExperimentSuccess{eConfig.Name, true} // Initialize
 
-	eConfig.Logger.Debug("Now processing ", eConfig.Name)
+	log.WithField("experiment", eConfig.Name).Debug("Now processing experiment to push proxies")
 
 	go func() {
 		defer close(c) // All expt operations are done (either successful including cleanup or at error)
@@ -102,7 +102,10 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 		}
 
 		if _, ok := eConfig.KerbConfig["krb5ccname"]; !ok {
-			eConfig.Logger.Error("Could not obtain KRB5CCNAME environmental variable from config. " +
+			log.WithFields(log.Fields{
+				"caller":     "experiment.Worker",
+				"experiment": eConfig.Name,
+			}).Error("Could not obtain KRB5CCNAME environmental variable from config. " +
 				"Please check the config file on fifeutilgpvm01.")
 			declareExptFailure()
 			return
@@ -110,35 +113,41 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 		// If we can't get a kerb ticket, log error and keep going.
 		// We might have an old one that's still valid.
 		if err := getKerbTicket(ctx, eConfig.KerbConfig); err != nil {
-			eConfig.Logger.Warn(err)
+			log.WithFields(log.Fields{
+				"caller":     "experiment.Worker",
+				"experiment": eConfig.Name,
+			}).Warn("Obtaining a kerberos ticket failed.  May be unable to push proxies")
 		}
 
 		// If check of exptConfig keys fails, experiment fails immediately
 		if err := checkKeys(ctx, eConfig); err != nil {
-			eConfig.Logger.Error(err)
+			log.WithFields(log.Fields{
+				"caller":     "experiment.Worker",
+				"experiment": eConfig.Name,
+			}).Error("Error processing experiment")
 			declareExptFailure()
 			return
 		}
-		eConfig.Logger.Debug("Config keys are valid")
+		log.WithField("experiment", eConfig.Name).Debug("Config keys are valid")
 
 		// Ping nodes to make sure they're up
 
 		pingCtx, pingCancel := context.WithTimeout(ctx, eConfig.TimeoutsConfig["pingtimeoutDuration"])
-		configNodes := make([]pingNoder, 0, len(eConfig.Nodes))
+		configNodes := make([]node.PingNoder, 0, len(eConfig.Nodes))
 		for _, n := range eConfig.Nodes {
-			configNodes = append(configNodes, node(n))
+			configNodes = append(configNodes, node.NewNode(n))
 		}
-		pingChannel := pingAllNodes(pingCtx, eConfig.PingConfig, configNodes...)
+		pingChannel := node.PingAllNodes(pingCtx, configNodes...)
 		// Listen until we either timeout or the pingChannel is closed
 	pingLoop:
 		for {
 			select {
 			case <-pingCtx.Done():
 				if e := pingCtx.Err(); e == context.DeadlineExceeded {
-					eConfig.Logger.Errorf("Hit the ping timeout: %s", e)
+					log.WithField("experiment", eConfig.Name).Error("Hit the ping timeout")
 
 				} else {
-					eConfig.Logger.Error(e)
+					log.WithField("experiment", eConfig.Name).Error(e)
 				}
 				pingCancel()
 				break pingLoop
@@ -147,41 +156,53 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 					pingCancel()
 					break pingLoop
 				}
-				if testnode.err != nil {
-					if n, ok := testnode.pingNoder.(node); ok {
-						badNodesSlice = append(badNodesSlice, string(n))
-					} else {
-						eConfig.Logger.Errorf("Could not coerce interface pingNoder value %v to type node", testnode.pingNoder)
-					}
-					eConfig.Logger.Error(testnode.err)
+				if testnode.Err != nil {
+					n := testnode.PingNoder.NodeAsString()
+					badNodesSlice = append(badNodesSlice, n)
+					log.WithFields(log.Fields{
+						"experiment": eConfig.Name,
+						"node":       n,
+					}).Error(testnode.Err)
 				}
 			}
 		}
 
 		if len(badNodesSlice) > 0 {
-			eConfig.Logger.Errorf("The node(s) %s didn't return a response to ping after 5 "+
+			log.Errorf("The node(s) %s didn't return a response to ping after 5 "+
 				"seconds.  Please investigate, and see if the nodes are up. "+
 				"We'll still try to copy proxies there.", strings.Join(badNodesSlice, ", "))
 		}
 
+		// TODO  Add notification manager
+		// Ingest service certs
+		certs, err := getVomsProxyersForExperiment(ctx, eConfig.CertBaseDir, eConfig.CertFile, eConfig.KeyFile, eConfig.Accounts)
+		if err != nil {
+			log.WithField("experiment", eConfig.Name).Error("Error setting up experiment:  one or more service certs could not be ingested")
+			expt.Success = false
+		}
+
+		// Create voms proxy from that
+
+		// Push that proxy
+
 		// voms-proxy-init
 		// If voms-proxy-init fails, we'll just continue on.  We'll still try to push proxies,
 		// since they're valid for 24 hours
+		vomsProxies := make([]*proxy.VomsProxy, len(eConfig.Accounts))
 		vpiCtx, vpiCancel := context.WithTimeout(ctx, eConfig.TimeoutsConfig["vpitimeoutDuration"])
-		vomsProxyObjects := createVomsProxyObjects(vpiCtx, eConfig)
-		vpiChan := getProxies(vpiCtx, eConfig.VPIConfig, vomsProxyObjects...)
+		vpiChan := getVomsProxiesForExperiment(vpiCtx, certs, eConfig.VomsPrefix)
 		// Listen until we either timeout or vpiChan is closed
 	vpiLoop:
 		for {
 			select {
 			case <-vpiCtx.Done():
 				if e := vpiCtx.Err(); e == context.DeadlineExceeded {
-					eConfig.Logger.WithFields(logrus.Fields{
+					log.WithFields(log.Fields{
 						"caller": "experimentutil.Worker",
 						"action": "voms-proxy-init",
 					}).Error("Timeout obtaining VOMS proxies")
 				} else {
-					eConfig.Logger.WithFields(logrus.Fields{
+					log.WithFields(log.Fields{
 						"caller": "experimentutil.Worker",
 						"action": "voms-proxy-init",
 					}).Error(e)
@@ -194,33 +215,34 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 					break vpiLoop
 				}
 				if vpi.err != nil {
-					eConfig.Logger.Error(vpi.err)
 					expt.Success = false
 				} else {
-					eConfig.Logger.WithField(
-						"vomsProxyFilename", vpi.filename).Debug("Generated voms proxy")
+					log.WithField("vomsProxyFilename", vpi.vomsProxy.Path).Debug("Generated voms proxy")
+					vomsProxies = append(vomsProxies, vpi.vomsProxy)
 				}
 			}
 		}
 
 		// Proxy transfer
-		copyCtx, copyCancel := context.WithTimeout(ctx, eConfig.TimeoutsConfig["copytimeoutDuration"])
-		proxyTransferInfoObjects := createProxyTransferInfoObjects(copyCtx, eConfig, badNodesSlice)
-		copyChan := copyProxies(copyCtx, eConfig.SSHConfig, proxyTransferInfoObjects...)
+		copyCfgs := createCopyFileConfigs(vomsProxies, eConfig.Accounts, eConfig.Nodes, eConfig.DestDir)
 
+		copyCtx, copyCancel := context.WithTimeout(ctx, eConfig.TimeoutsConfig["copytimeoutDuration"])
+		copyChan := copyAllProxies(copyCtx, copyCfgs)
+
+		// TODO Where I left off
 		// Listen until we either timeout or the copyChan is closed
 	copyLoop:
 		for {
 			select {
 			case <-copyCtx.Done():
 				if e := copyCtx.Err(); e == context.DeadlineExceeded {
-					eConfig.Logger.WithFields(logrus.Fields{
-						"caller": "experimentutil.Worker",
+					log.WithFields(log.Fields{
+						"caller": "experiment.Worker",
 						"action": "copy proxies",
 					}).Error("Hit timeout copying proxies")
 				} else {
-					eConfig.Logger.WithFields(logrus.Fields{
-						"caller": "experimentutil.Worker",
+					log.WithFields(log.Fields{
+						"caller": "experiment.Worker",
 						"action": "copy proxies",
 					}).Error(e)
 				}
@@ -233,8 +255,8 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 					break copyLoop
 				}
 				if pushproxy.err != nil {
-					eConfig.Logger.WithFields(logrus.Fields{
-						"caller": "experimentutil.Worker",
+					log.WithFields(log.Fields{
+						"caller": "experiment.Worker",
 						"action": "copy proxies",
 					}).Error(pushproxy.err)
 					expt.Success = false
@@ -242,15 +264,15 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 					successfulCopies[pushproxy.role] = append(successfulCopies[pushproxy.role], pushproxy.node)
 					delete(failedCopies[pushproxy.role], pushproxy.node)
 					if err := b.PushNodeRoleTimestamp(expt.Name, pushproxy.node, pushproxy.role); err != nil {
-						eConfig.Logger.WithFields(logrus.Fields{
-							"caller": "experimentutil.Worker",
+						log.WithFields(log.Fields{
+							"caller": "experiment.Worker",
 							"action": "prometheus metric push",
 							"node":   pushproxy.node,
 							"role":   pushproxy.role,
 						}).Warn(
 							"Could not report success metrics to prometheus")
 					} else {
-						eConfig.Logger.WithFields(logrus.Fields{
+						log.WithFields(log.Fields{
 							"node": pushproxy.node,
 							"role": pushproxy.role,
 						}).Debug("Pushed prometheus success timestamp")
@@ -261,7 +283,7 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 
 		for role, nodes := range successfulCopies {
 			sort.Strings(nodes)
-			eConfig.Logger.WithFields(logrus.Fields{
+			log.WithFields(log.Fields{
 				"role":  role,
 				"nodes": strings.Join(nodes, ", "),
 			}).Debugf("Successful copies")
@@ -277,23 +299,39 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 			}
 			sort.Strings(nodesSlice)
 			nodesString := strings.Join(nodesSlice, ", ")
-			eConfig.Logger.WithFields(logrus.Fields{
+			log.WithFields(log.Fields{
 				"role":  role,
 				"nodes": nodesString,
 			}).Errorf("Failed copies for role %s were %s", role, nodesString)
 		}
 
-		eConfig.Logger.Info("Finished processing experiment")
+		log.WithField("experiment", eConfig.Name).Info("Finished processing experiment")
+		// Put experiment success status into channel now so that it can be evaulated concurrently with cleanup
 		c <- expt
 
-		// We're logging the cleanup in the general log so that we don't create an extraneous
-		// experiment log file
-		eConfig.Logger.Info("Cleaning up experiment")
-		if err := expt.experimentCleanup(ctx, eConfig); err != nil {
-			eConfig.Logger.Error("Error cleaning up experiment")
-		} else {
-			eConfig.Logger.Info("Finished cleaning up with no errors")
+		// Cleanup
+		log.WithField("experiment", eConfig.Name).Info("Cleaning up experiment")
+
+		for _, v := range vomsProxies {
+			if err := v.Remove(); err != nil {
+				log.WithFields(log.Fields{
+					"experiment": eConfig.Name,
+					"role":       v.Role,
+				}).Error("Failed to clean up experiment: could not delete VOMS proxy.  Please review log")
+			} else {
+				log.WithFields(log.Fields{
+					"experiment": eConfig.Name,
+					"role":       v.Role,
+				}).Debug("Cleaned up VOMS Proxy")
+			}
 		}
+		// Close notifications channel
+
+		//		if err := expt.experimentCleanup(ctx, eConfig); err != nil {
+		//			log.WithField("experiment", eConfig.Name).Error("Error cleaning up experiment")
+		//		} else {
+		//			log.WithField("experiment", eConfig.Name).Info("Finished cleaning up with no errors")
+		//		}
 	}()
 	return c
 }
@@ -302,99 +340,68 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 
 // experimentCleanup manages the cleanup operations for an experiment, such as sending emails if necessary,
 // and copying, removing or archiving the logs
-// TODO:  maybe a unit test for this
-func (expt *ExperimentSuccess) experimentCleanup(ctx context.Context, exptConfig ExptConfig) error {
-	if e := ctx.Err(); e != nil {
-		return e
-	}
-	exptConfig.Logger = exptConfig.Logger.WithField("caller", "experimentutil.experimentCleanup")
-
-	dir, err := os.Getwd()
-	if err != nil {
-		msg := `Could not get current working directory.  Aborting cleanup.  
-					Please check working directory and manually clean up log files`
-		exptConfig.Logger.Error(err)
-		return errors.New(msg)
-	}
-
-	expterrfilepath := proxyPushLogger.GetExptErrorLogfileName(expt.Name)
-
-	// Cleanup that must occur no matter what
-	defer func(path string) error {
-		// No experiment error logfile
-		if _, err = os.Stat(path); os.IsNotExist(err) {
-			return nil
-		} else if err != nil {
-			exptConfig.Logger.Error(err)
-		}
-		if err := os.Remove(path); err != nil {
-			exptConfig.Logger.Error(err)
-			msg := fmt.Errorf("Could not remove experiment error log %s.  Please clean up manually", path)
-			exptConfig.Logger.Error(msg)
-			return msg
-		}
-		exptConfig.Logger.WithField("filename", path).Debug("Removed experiment error file")
-		return nil
-	}(expterrfilepath)
-
-	// Experiment failed
-	if !expt.Success {
-		// Try to send email, which also deletes expt file, returns error
-		if exptConfig.IsTest {
-			return nil // Don't do anything - we're testing.
-		}
-		data, err := ioutil.ReadFile(expterrfilepath)
-		if err != nil {
-			exptConfig.Logger.Error(err)
-			return err
-		}
-
-		msg := string(data)
-
-		emailCtx, emailCancel := context.WithTimeout(ctx, exptConfig.TimeoutsConfig["emailtimeoutDuration"])
-		defer emailCancel()
-		if err := notifications.SendEmail(emailCtx, exptConfig.NConfig, msg); err != nil {
-			exptConfig.Logger.Error("Error cleaning up.  Will archive error file.")
-			newfilename := fmt.Sprintf("%s-%s", expterrfilepath, time.Now().Format(time.RFC3339))
-			newpath := path.Join(dir, newfilename)
-
-			if err := os.Rename(expterrfilepath, newpath); err != nil {
-				exptConfig.Logger.Error(err)
-				exptConfig.Logger.Errorf("Could not move file %s to %s.", expterrfilepath, newpath)
-				return err
-			}
-			return fmt.Errorf("could not send email for experiment %s.  Archived error file at %s", expt.Name, newpath)
-		}
-	}
-	return nil
-}
-
-// getKerbTicket runs kinit to get a kerberos ticket
-func getKerbTicket(ctx context.Context, krbConfig KerbConfig) error {
-	os.Setenv("KRB5CCNAME", krbConfig["krb5ccname"])
-	kerbcmdargs := strings.Fields(krbConfig["kinitargs"])
-
-	cmd := exec.CommandContext(ctx, krbConfig["kinitexecutable"], kerbcmdargs...)
-	if cmdOut, cmdErr := cmd.CombinedOutput(); cmdErr != nil {
-		if ctx.Err() == context.DeadlineExceeded {
-			return ctx.Err()
-		}
-		return fmt.Errorf("Obtaining a kerberos ticket failed.  May be unable to "+
-			"push proxies.  The error was %s: %s", cmdErr, cmdOut)
-	}
-	return nil
-}
-
-// checkKeys looks at the portion of the configuration passed in and makes sure the required keys are present
-func checkKeys(ctx context.Context, eConfig ExptConfig) error {
-	if e := ctx.Err(); e != nil {
-		return e
-	}
-
-	if len(eConfig.Nodes) == 0 || len(eConfig.Accounts) == 0 {
-		return errors.New(`Input file improperly formatted (accounts or nodes don't 
-			exist for this experiment). Please check the config file on fifeutilgpvm01.
-			 I will skip this experiment for now`)
-	}
-	return nil
-}
+//// TODO:  maybe a unit test for this
+//func (expt *ExperimentSuccess) experimentCleanup(ctx context.Context, exptConfig ExptConfig) error {
+//	if e := ctx.Err(); e != nil {
+//		return e
+//	}
+//
+//	dir, err := os.Getwd()
+//	if err != nil {
+//		msg := `Could not get current working directory.  Aborting cleanup.
+//					Please check working directory and manually clean up log files`
+//		exptConfig.Logger.Error(err)
+//		return errors.New(msg)
+//	}
+//
+//	expterrfilepath := proxyPushLogger.GetExptErrorLogfileName(expt.Name)
+//
+//	// Cleanup that must occur no matter what
+//	defer func(path string) error {
+//		// No experiment error logfile
+//		if _, err = os.Stat(path); os.IsNotExist(err) {
+//			return nil
+//		} else if err != nil {
+//			exptConfig.Logger.Error(err)
+//		}
+//		if err := os.Remove(path); err != nil {
+//			exptConfig.Logger.Error(err)
+//			msg := fmt.Errorf("Could not remove experiment error log %s.  Please clean up manually", path)
+//			exptConfig.Logger.Error(msg)
+//			return msg
+//		}
+//		exptConfig.Logger.WithField("filename", path).Debug("Removed experiment error file")
+//		return nil
+//	}(expterrfilepath)
+//
+//	// Experiment failed
+//	if !expt.Success {
+//		// Try to send email, which also deletes expt file, returns error
+//		if exptConfig.IsTest {
+//			return nil // Don't do anything - we're testing.
+//		}
+//		data, err := ioutil.ReadFile(expterrfilepath)
+//		if err != nil {
+//			exptConfig.Logger.Error(err)
+//			return err
+//		}
+//
+//		msg := string(data)
+//
+//		emailCtx, emailCancel := context.WithTimeout(ctx, exptConfig.TimeoutsConfig["emailtimeoutDuration"])
+//		defer emailCancel()
+//		if err := notifications.SendEmail(emailCtx, exptConfig.NConfig, msg); err != nil {
+//			exptConfig.Logger.Error("Error cleaning up.  Will archive error file.")
+//			newfilename := fmt.Sprintf("%s-%s", expterrfilepath, time.Now().Format(time.RFC3339))
+//			newpath := path.Join(dir, newfilename)
+//
+//			if err := os.Rename(expterrfilepath, newpath); err != nil {
+//				exptConfig.Logger.Error(err)
+//				exptConfig.Logger.Errorf("Could not move file %s to %s.", expterrfilepath, newpath)
+//				return err
+//			}
+//			return fmt.Errorf("could not send email for experiment %s.  Archived error file at %s", expt.Name, newpath)
+//		}
+//	}
+//	return nil
+//}
