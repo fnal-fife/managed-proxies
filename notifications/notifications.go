@@ -17,7 +17,10 @@ import (
 )
 
 //var emailDialer = gomail.Dialer{Host: "localhost", Port: 25} // gomail dialer to use to send emails
-var emailDialer gomail.Dialer // gomail dialer to use to send emails
+var (
+	emailDialer   gomail.Dialer // gomail dialer to use to send emails
+	adminMsgSlice []string
+)
 
 // Config contains the information needed to send notifications from the proxy push service
 type Config struct {
@@ -28,9 +31,14 @@ type Config struct {
 	Experiment string
 }
 
-type Manager chan string
+type Notification struct {
+	msg       string
+	adminOnly bool
+}
 
-func NewManagerChan(ctx context.Context, wg *sync.WaitGroup, nConfig Config) Manager {
+type Manager chan Notification
+
+func NewManager(ctx context.Context, wg *sync.WaitGroup, nConfig Config) Manager {
 	c := make(Manager)
 
 	go func() {
@@ -41,41 +49,67 @@ func NewManagerChan(ctx context.Context, wg *sync.WaitGroup, nConfig Config) Man
 			case <-ctx.Done():
 				if e := ctx.Err(); e == context.DeadlineExceeded {
 					log.WithFields(log.Fields{
-						"caller":     "NewManagerChan",
+						"caller":     "NewManager",
 						"experiment": nConfig.Experiment,
 					}).Error("Timeout exceeded in notification Manager")
 
 				} else {
 					log.WithFields(log.Fields{
-						"caller":     "NewManagerChan",
+						"caller":     "NewManager",
 						"experiment": nConfig.Experiment,
 					}).Error(e)
 				}
 				return
-			case msg, chanOpen := <-c:
+			case n, chanOpen := <-c:
 				if !chanOpen {
 					notificationMsg := strings.Join(msgSlice, "\n")
 					if err := SendEmail(ctx, nConfig, notificationMsg); err != nil {
 						log.WithFields(log.Fields{
-							"caller":     "NewManagerChan",
+							"caller":     "NewManager",
 							"experiment": nConfig.Experiment,
 						}).Error("Error sending email")
 					}
-					if err := SendSlackMessage(ctx, nConfig, notificationMsg); err != nil {
-						log.WithFields(log.Fields{
-							"caller":     "NewManagerChan",
-							"experiment": nConfig.Experiment,
-						}).Error("Error sending Slack message")
-					}
 					return
 				} else {
-					msgSlice = append(msgSlice, msg)
+					if !n.adminOnly {
+						msgSlice = append(msgSlice, n.msg)
+					}
+					adminMsgSlice = append(adminMsgSlice, n.msg)
 				}
 			}
 		}
 	}()
 	return c
 
+}
+
+// Sends the admin notifications
+func SendAdminNotifications(ctx context.Context, nConfig Config) error {
+	var wg *sync.WaitGroup
+	var emailErr, slackErr error
+	msg := strings.Join(adminMsgSlice, "\n")
+	wg.Add(2)
+
+	go func(wg *sync.WaitGroup) {
+		defer wg.Done()
+		if emailErr = SendEmail(ctx, nConfig, msg); emailErr != nil {
+			log.WithField("caller", "SendAdminNotifications").Error("Failed to send admin email")
+		}
+	}(wg)
+
+	go func(wg *sync.WaitGroup) {
+		defer wg.Done()
+		if slackErr = SendSlackMessage(ctx, nConfig, msg); slackErr != nil {
+			log.WithField("caller", "SendAdminNotifications").Error("Failed to send slack message")
+		}
+	}(wg)
+
+	wg.Wait()
+
+	if emailErr != nil || slackErr != nil {
+		return errors.New("Sending admin notifications failed.  Please see logs.")
+	}
+	return nil
 }
 
 // SendEmail sends emails to both experiments and admins, depending on the input (exptName = "" gives admin email).
