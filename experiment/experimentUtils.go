@@ -199,11 +199,8 @@ func checkKeys(ctx context.Context, eConfig ExptConfig) error {
 	}
 
 	if len(eConfig.Nodes) == 0 || len(eConfig.Accounts) == 0 {
-		msg := `Input file improperly formatted (accounts or nodes don't 
-			exist for this experiment). Please check the config file on fifeutilgpvm01.
-			 I will skip this experiment for now`
-		log.WithField("caller", "checkKeys").Error(msg)
-		return errors.New(msg)
+		log.WithField("caller", "checkKeys").Error(checkKeysError)
+		return errors.New(checkKeysError)
 	}
 	return nil
 }
