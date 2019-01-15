@@ -59,7 +59,7 @@ type ExptConfig struct {
 // Worker is the main function that manages the processes involved in generating and copying VOMS proxies to
 // an experiment's nodes.  It returns a channel on which it reports the status of that experiment's proxy push.
 // TODO:  Add notifications manager channel to the args, put in notifications messages
-func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPush) <-chan ExperimentSuccess {
+func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPush, nMgr notifications.Manager) <-chan ExperimentSuccess {
 	c := make(chan ExperimentSuccess, 2)
 	expt := ExperimentSuccess{eConfig.Name, true} // Initialize
 
@@ -95,7 +95,10 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 				"caller":     "experiment.Worker",
 				"experiment": eConfig.Name,
 			}).Error(krb5ConfigError)
-			// TODO: Admin Notification krb5ConfigError
+			nMgr <- notifications.Notification{
+				Msg:       krb5ConfigError,
+				AdminOnly: true,
+			}
 			declareExptFailure()
 			return
 		}
@@ -107,7 +110,10 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 				"caller":     "experiment.Worker",
 				"experiment": eConfig.Name,
 			}).Warn(krb5Error)
-			//TODO  Admin notification krb5Error
+			nMgr <- notifications.Notification{
+				Msg:       krb5Error,
+				AdminOnly: true,
+			}
 		}
 
 		// If check of exptConfig keys fails, experiment fails immediately
@@ -117,7 +123,10 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 				"experiment": eConfig.Name,
 			}).Error("Error processing experiment")
 			declareExptFailure()
-			// TODO  Admin notification checkKeysError
+			nMgr <- notifications.Notification{
+				Msg:       checkKeysError,
+				AdminOnly: true,
+			}
 			return
 		}
 		log.WithField("experiment", eConfig.Name).Debug("Config keys are valid")
@@ -139,12 +148,16 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 					pingTout := "Hit the timeout pinging nodes"
 					log.WithField("experiment", eConfig.Name).Error(pingTout)
 					nMsg := pingTout + fmt.Sprintf(" for experiment %s", eConfig.Name)
-					fmt.Println(nMsg) // placeholder until notification is put in TODO
-					// TODO:  Admin notification nMsg
-
+					nMgr <- notifications.Notification{
+						Msg:       nMsg,
+						AdminOnly: true}
 				} else {
+
 					log.WithField("experiment", eConfig.Name).Error(e)
-					// TODO  Admin Notification generalContextErrorf
+					nMgr <- notifications.Notification{
+						Msg:       fmt.Sprintf(generalContextErrorf, eConfig.Name),
+						AdminOnly: true,
+					}
 				}
 				pingCancel()
 				break pingLoop
@@ -162,8 +175,10 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 						"node":       n,
 					}).Error(testnode.Err)
 					nMsg := fmt.Sprintf(pingNodeAdminMsgf, n)
-					fmt.Println(nMsg) // Placeholder TODO
-					// TODO Admin Notification nMsg
+					nMgr <- notifications.Notification{
+						Msg:       nMsg,
+						AdminOnly: true,
+					}
 				}
 			}
 		}
@@ -174,23 +189,22 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 				"We'll still try to copy proxies there."
 			nMsg := fmt.Sprintf(pingNodeAggMessagef, strings.Join(badNodesSlice, ", "))
 			log.WithField("experiment", eConfig.Name).Error(nMsg)
-			// TODO  Notification nMsg
+			nMgr <- notifications.Notification{
+				Msg: nMsg,
+			}
 		}
 
-		// TODO  Add notification manager
 		// Ingest service certs
 		certs, err := getVomsProxyersForExperiment(ctx, eConfig.CertBaseDir, eConfig.CertFile, eConfig.KeyFile, eConfig.Accounts)
 		if err != nil {
 			msg := "Error setting up experiment:  one or more service certs could not be ingested"
 			log.WithField("experiment", eConfig.Name).Error()
 			expt.Success = false
-			fmt.Println(msg) // Placeholder TODO
-
-			// TODO Admin Notification msg
+			nMgr <- notifications.Notification{
+				Msg:       msg,
+				AdminOnly: true,
+			}
 		}
-
-		// Create voms proxy from that
-		// Push that proxy
 
 		// voms-proxy-init
 		// If voms-proxy-init fails, we'll just continue on.  We'll still try to push proxies,
@@ -211,8 +225,10 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 						"action":     "voms-proxy-init",
 					}).Error(vpiTout)
 					msg := vpiTout + " for experiment " + eConfig.Name
-					fmt.Println(msg) // Placeholder TODO
-					// TODO Admin notification msg
+					nMgr <- notifications.Notification{
+						Msg:       msg,
+						AdminOnly: true,
+					}
 				} else {
 					log.WithFields(log.Fields{
 						"caller":     "experimentutil.Worker",
@@ -220,8 +236,10 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 						"action":     "voms-proxy-init",
 					}).Error(e)
 					msg := fmt.Sprintf(generalContextErrorf, eConfig.Name)
-					fmt.Println(msg) // Placeholder TODO
-					// TODO Admin notification msg
+					nMgr <- notifications.Notification{
+						Msg:       msg,
+						AdminOnly: true,
+					}
 				}
 				vpiCancel()
 				break vpiLoop
@@ -232,9 +250,11 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 				}
 				if vpi.err != nil {
 					msg := fmt.Sprintf("Error generating voms proxy from service cert for %s.  See logs", eConfig.Name)
-					fmt.Println(msg) // Placeholder TODO
 					expt.Success = false
-					// TODO Admin notification msg
+					nMgr <- notifications.Notification{
+						Msg:       msg,
+						AdminOnly: true,
+					}
 				} else {
 					log.WithFields(log.Fields{
 						"experiment":        eConfig.Name,
@@ -264,8 +284,9 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 						"action":     "copy proxies",
 					}).Error(copyTout)
 					msg := copyTout + " for experiment " + eConfig.Name
-					fmt.Println(msg) // Placeholder TODO
-					// TODO Admin notification msg
+					nMgr <- notifications.Notification{
+						Msg: msg,
+					}
 				} else {
 					log.WithFields(log.Fields{
 						"caller":     "experiment.Worker",
@@ -273,8 +294,9 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 						"action":     "copy proxies",
 					}).Error(e)
 					msg := fmt.Sprintf(generalContextErrorf, eConfig.Name)
-					fmt.Println(msg) // Placeholder TODO
-					// TODO  notificaiton msg
+					nMgr <- notifications.Notification{
+						Msg: msg,
+					}
 				}
 				expt.Success = false
 				copyCancel()
@@ -295,8 +317,9 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 					}).Error(pushproxy.err)
 					expt.Success = false
 					nMsg := fmt.Sprintf(copyProxyErrorf, pushproxy.node, pushproxy.role)
-					fmt.Println(nMsg) // placeholder TODO
-					// TODO  notificaiton nMsg
+					nMgr <- notifications.Notification{
+						Msg: nMsg,
+					}
 				} else {
 					successfulCopies[pushproxy.role] = append(successfulCopies[pushproxy.role], pushproxy.node)
 					delete(failedCopies[pushproxy.role], pushproxy.node)
@@ -308,7 +331,10 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 							"node":   pushproxy.node,
 							"role":   pushproxy.role,
 						}).Warn(msg)
-						// TODO  Admin notification msg
+						nMgr <- notifications.Notification{
+							Msg:       msg,
+							AdminOnly: true,
+						}
 					} else {
 						log.WithFields(log.Fields{
 							"node": pushproxy.node,
@@ -343,8 +369,9 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 				"nodes": nodesString,
 			}).Errorf("Failed copies")
 			nMsg := fmt.Sprintf(nodesMsgf, role, nodesString)
-			fmt.Println(nMsg) // placeholder TODO
-			// TODO  Notification nMsg
+			nMgr <- notifications.Notification{
+				Msg: nMsg,
+			}
 		}
 
 		log.WithField("experiment", eConfig.Name).Info("Finished processing experiment")
@@ -361,7 +388,10 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 					"experiment": eConfig.Name,
 					"role":       v.Role,
 				}).Error(nMsg)
-				// TODO  Admin notification nMsg
+				nMgr <- notifications.Notification{
+					Msg:       nMsg,
+					AdminOnly: true,
+				}
 			} else {
 				log.WithFields(log.Fields{
 					"experiment": eConfig.Name,
