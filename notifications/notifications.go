@@ -33,8 +33,8 @@ type Config struct {
 }
 
 type Notification struct {
-	msg       string
-	adminOnly bool
+	Msg       string
+	AdminOnly bool
 }
 
 type Manager chan Notification
@@ -72,10 +72,10 @@ func NewManager(ctx context.Context, wg *sync.WaitGroup, nConfig Config) Manager
 					}
 					return
 				} else {
-					if !n.adminOnly {
-						msgSlice = append(msgSlice, n.msg)
+					if !n.AdminOnly {
+						msgSlice = append(msgSlice, n.Msg)
 					}
-					adminMsgSlice = append(adminMsgSlice, n.msg)
+					adminMsgSlice = append(adminMsgSlice, n.Msg)
 				}
 			}
 		}
