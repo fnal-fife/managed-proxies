@@ -58,7 +58,6 @@ type ExptConfig struct {
 
 // Worker is the main function that manages the processes involved in generating and copying VOMS proxies to
 // an experiment's nodes.  It returns a channel on which it reports the status of that experiment's proxy push.
-// TODO:  Add notifications manager channel to the args, put in notifications messages
 func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPush, nMgr notifications.Manager) <-chan ExperimentSuccess {
 	c := make(chan ExperimentSuccess, 2)
 	expt := ExperimentSuccess{eConfig.Name, true} // Initialize
@@ -66,6 +65,7 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 	log.WithField("experiment", eConfig.Name).Debug("Now processing experiment to push proxies")
 
 	go func() {
+		defer close(nMgr)
 		defer close(c) // All expt operations are done (either successful including cleanup or at error)
 
 		// Helper functions
@@ -399,7 +399,6 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 				}).Debug("Cleaned up VOMS Proxy")
 			}
 		}
-		// Close notifications channel
 
 		//		if err := expt.experimentCleanup(ctx, eConfig); err != nil {
 		//			log.WithField("experiment", eConfig.Name).Error("Error cleaning up experiment")
