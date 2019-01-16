@@ -124,8 +124,8 @@ func (g *GridProxy) storeInMyProxy(ctx context.Context, retrievers, myProxyServe
 
 	cmd := exec.CommandContext(ctx, gridProxyExecutables["myproxy-store"], args...)
 	cmd.Env = env
-	if err := cmd.Run(); err != nil {
-		err := fmt.Sprintf("Could not execute myproxy-store command: %s", err.Error())
+	if stdOutstdErr, err := cmd.CombinedOutput(); err != nil {
+		err := fmt.Sprintf("Could not execute myproxy-store command: %s", stdOutstdErr)
 		log.WithFields(log.Fields{
 			"gridProxy": g.DN,
 			"command":   strings.Join(cmd.Args, " "),
