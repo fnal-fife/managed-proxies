@@ -5,7 +5,9 @@ timeout:
   globalTimeout: 300s # Global timeout
   exptTimeout:   60s # Experiment timeout
   pingTimeout:   20s # Ping timeout (for all pings per experiment)
+  gpiTimeout:    10s # grid-proxy-init timoeut (total for gpis per experiment)
   vpiTimeout:    10s # voms-proxy-init timeout (total for vpis per experiment)
+  myproxyStoreTimeout: 30s  # Timeout to run myproxy-store for all grid proxies for an experiment
   copyTimeout:   30s # copy proxy timeout (total for all copies per experiment)
   slackTimeout:  15s # Slack message timeout
   emailTimeout:  30s # Email timeout (per email)
@@ -13,7 +15,7 @@ timeout:
 # Logging/Error handling files.
 logs:
   logfile:  proxy_push.log
-  errfile:  proxy_push.err      # Set the temporary output file for errors.  
+  # errfile:  proxy_push.err      # Set the temporary output file for errors.  
   debugfile: proxy_push.debug.log
 
 
@@ -198,8 +200,15 @@ experiments:
 global:
   should_runuser: rexbatch                                    # User that this script must run as 
   CERT_BASE_DIR: "/opt/gen_push_proxy/certs"                      # base location for certs/keys
+	caPath:                "/etc/grid-security/certificates/"
   smtphost: localhost
   smtpport: 25 
+    jobsubServer:  "fifebatch.fnal.gov"
+	cigetcertoptsEndpoint: "cigetcertopts.txt"
+	defaultRetrievers:      "(/DC=com/DC=DigiCert-Grid|/DC=org/DC=opensciencegrid)/O=Open Science Grid/OU=Services/CN=fermicloud(0|1|2|3|4|5|6|7|8|9)(0|1|2|3|4|5|6|7|8|9)(0|1|2|3|4|5|6|7|8|9).fnal.gov"
+	myProxyServer:  "fermicloud343.fnal.gov"
+  
+
   # Note:  unless there is a certfile and/or keyfile override below in a given stanza, the proxy_push assumes that the cert/key for each experiment/role is located at CERT_BASE_DIR/<account>.{cert|key}.  e.g. novapro.cert and novapro.key
 
 # Prometheus monitoring config
