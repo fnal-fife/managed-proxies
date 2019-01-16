@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"copier"
 	"errors"
 	"fmt"
 	"net/http"
@@ -12,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jinzhu/copier"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/push"
 	"github.com/rifflock/lfshook"
@@ -28,18 +28,18 @@ import (
 const configFile string = "proxy_push.yml"
 
 var (
-	lConfig proxyPushLogger.LogsConfig
-	nConfig notifications.Config
-	tConfig map[string]time.Duration
+	nConfig   notifications.Config
+	tConfig   map[string]time.Duration
+	krbConfig experiment.KerbConfig
 
 	startSetup      time.Time
-	startProxyStore time.Time
+	startProcessing time.Time
 	prometheusUp    bool
 	promPush        notifications.BasicPromPush
 )
 
 func init() {
-	startSetup := time.Now()
+	startSetup = time.Now()
 
 	pflag.StringP("experiment", "e", "", "Name of single experiment whose proxies should be stored in MyProxy")
 	pflag.StringP("configfile", "c", configFile, "Specify alternate config file")
@@ -126,7 +126,6 @@ func init() {
 	}
 
 	// Parse our timeouts, store them into timeoutDurationMap for later use
-	// TODO:  Add a myproxystore, gridproxyinit timeout to config
 	tConfig = make(map[string]time.Duration)
 
 	for timeoutName, timeoutString := range viper.GetStringMapString("timeout") {
@@ -137,6 +136,12 @@ func init() {
 		}
 		newName := timeoutName + "Duration"
 		tConfig[newName] = value
+	}
+
+	// Kerb config
+	krbConfig := make(experiment.KerbConfig)
+	for key, value := range viper.GetStringMapString("kerberos") {
+		krbConfig[key] = value
 	}
 
 	log.WithFields(log.Fields{"caller": "main.init"}).Debug("Read in config file to config structs")
@@ -163,13 +168,15 @@ func init() {
 }
 
 func main() {
-	var wg *sync.WaitGroup
+	var nwg, wg *sync.WaitGroup
 	ctx, cancel := context.WithTimeout(context.Background(), tConfig["globaltimeout"])
 	defer cancel()
 
 	// Start notifications manager, just for admin
-	wg.Add(1)
-	nMgr := notifications.NewManager(ctx, wg, nConfig)
+	nwg.Add(1)
+	defer nwg.Wait()
+	nMgr := notifications.NewManager(ctx, nwg, nConfig)
+	defer close(nMgr)
 
 	// Get list of experiments
 	exptConfigs := make([]experiment.ExptConfig, 0, len(viper.GetStringMap("experiments"))) // Slice of experiment configurations
@@ -216,8 +223,64 @@ func main() {
 	if err := promPush.PushPromDuration(startSetup, "setup"); err != nil {
 		log.WithFields(log.Fields{"caller": "main"}).Errorf("Error recording time to setup, %s", err.Error())
 	}
+	startProcessing = time.Now()
 
 	// Now actually ingest those service certs, generate grid proxies, and store them in myproxy LEFT OFF HERE
+	log.WithField("caller", "main").Info("Ingesting service certs")
+	defer wg.Wait()
+
+	for _, eConfig := range exptConfigs {
+		wg.Add(1)
+		go func(e experiment.ExptConfig) {
+			defer wg.Done()
+
+			s, err := proxy.NewServiceCert(ctx, e.CertFile, e.KeyFile)
+			if err != nil {
+				msg := "Could not ingest service certificate from cert and key file"
+				log.WithField("experiment", e.Name).Error(msg)
+				nMsg := msg + " for experiment " + e.Name
+				nMgr <- notifications.Notification{
+					Msg:       nMsg,
+					AdminOnly: true,
+				}
+			}
+
+			gCtx, gCancel := context.WithTimeout(ctx, tConfig["gpitimeoutDuration"])
+			defer gCancel()
+			g, err := proxy.NewGridProxy(gCtx, s, tConfig["gpiValidDuration"])
+			if err != nil {
+				msg := "Could not generate grid proxy object"
+				log.WithField("experiment", e.Name).Error(msg)
+				nMsg := msg + " for experiment " + e.Name
+				nMgr <- notifications.Notification{
+					Msg:       nMsg,
+					AdminOnly: true,
+				}
+			}
+			defer g.Remove()
+
+			mCtx, mCancel := context.WithTimeout(ctx, tConfig["myproxystoretimeoutDuration"])
+			defer mCancel()
+			if err := proxy.StoreInMyProxy(mCtx, g, retrievers, viper.GetString("myproxyserver"), tConfig["gpitimeoutDuration"]); err != nil {
+				msg := "Could not store grid proxy in myproxy"
+				log.WithField("experiment", e.Name).Error(msg)
+				nMsg := msg + " for experiment " + e.Name
+				nMgr <- notifications.Notification{
+					Msg:       nMsg,
+					AdminOnly: true,
+				}
+			} else {
+				log.WithFields(log.Fields{
+					"experiment": e.Name,
+					"dn":         g.DN,
+				}).Info("Stored grid proxy in myproxy")
+			}
+		}(eConfig)
+
+	}
+
+	wg.Wait()
+	// Push prometheus time
 
 }
 
@@ -284,28 +347,19 @@ func createExptConfig(expt string) (experiment.ExptConfig, error) {
 	c = experiment.ExptConfig{
 		Name:           expt,
 		CertBaseDir:    viper.GetString("global.cert_base_dir"),
-		Krb5ccname:     viper.GetString("global.krb5ccname"),
 		DestDir:        exptSubConfig.GetString("dir"),
 		Nodes:          exptSubConfig.GetStringSlice("nodes"),
 		Accounts:       exptSubConfig.GetStringMapString("accounts"),
 		VomsPrefix:     vomsprefix,
 		CertFile:       certfile,
 		KeyFile:        keyfile,
-		IsTest:         viper.GetBool("test"),
-		NConfig:        n,
 		TimeoutsConfig: tConfig,
-		LogsConfig:     lConfig,
-		VPIConfig:      vConfig,
 		KerbConfig:     krbConfig,
-		PingConfig:     pConfig,
-		SSHConfig:      sConfig,
-		Logger:         proxyPushLogger.New(expt, lConfig),
 	}
 
 	// Put this on to set the notifications logger
-	c.NConfig.Logger = c.Logger
 
-	c.Logger.Debug("Set up experiment config")
+	log.Debug("Set up experiment config")
 	return c, nil
 
 }
