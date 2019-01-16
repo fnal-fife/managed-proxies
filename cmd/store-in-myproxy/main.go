@@ -259,6 +259,11 @@ func main() {
 			}
 			defer g.Remove()
 
+			if viper.GetBool("test") {
+				log.WithField("experiment", e.Name).Info("Test mode.  Stopping here")
+				return
+			}
+
 			mCtx, mCancel := context.WithTimeout(ctx, tConfig["myproxystoretimeoutDuration"])
 			defer mCancel()
 			if err := proxy.StoreInMyProxy(mCtx, g, retrievers, viper.GetString("myproxyserver"), tConfig["gpitimeoutDuration"]); err != nil {
