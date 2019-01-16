@@ -8,6 +8,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/push"
 )
 
+/// TODO: Add myproxystore metrics
+
 var (
 	promDuration = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: "proxy_push",
