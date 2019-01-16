@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jinzhu/copier"
+	//"github.com/jinzhu/copier"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/push"
 	"github.com/rifflock/lfshook"
@@ -100,6 +100,11 @@ func init() {
 	}
 	nConfig.ConfigInfo["smtphost"] = viper.GetString("global.smtphost")
 	nConfig.ConfigInfo["smtpport"] = strconv.Itoa(viper.GetInt("global.smtpport"))
+	nConfig.IsTest = viper.GetBool("test")
+	nConfig.From = viper.GetString("notifications.admin_email")
+	// TODO  Add datestamp
+	nConfig.Subject = "Managed Proxy Service Errors - push to MyProxy"
+
 	setAdminEmail(&nConfig)
 
 	// Now that our log is set up and we've got a valid config, handle all init (fatal) errors using the following func
@@ -358,16 +363,15 @@ func createExptConfig(expt string) (experiment.ExptConfig, error) {
 	}
 
 	// Notifications setup
-	n := notifications.Config{}
-	copier.Copy(&n, &nConfig)
-	n.Experiment = expt
-	n.From = viper.GetString("notifications.admin_email")
-	if !viper.GetBool("test") {
-		n.To = exptSubConfig.GetStringSlice("emails")
-	}
-	n.Subject = "Managed Proxy Push errors for " + expt
+	//	n := notifications.Config{}
+	//	copier.Copy(&n, &nConfig)
+	//	n.Experiment = expt
+	//	n.From = viper.GetString("notifications.admin_email")
+	//	if !viper.GetBool("test") {
+	//		n.To = exptSubConfig.GetStringSlice("emails")
+	//	}
+	//	n.Subject = "Managed Proxy Push errors for " + expt
 
-	// TODO:  Check these fields.  Probably don't need them all
 	c = experiment.ExptConfig{
 		Name:           expt,
 		CertBaseDir:    viper.GetString("global.cert_base_dir"),
