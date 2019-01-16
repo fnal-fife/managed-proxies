@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/user"
+	"path"
 	"strconv"
 	"sync"
 	"time"
@@ -168,14 +169,14 @@ func init() {
 }
 
 func main() {
-	var nwg, wg *sync.WaitGroup
-	ctx, cancel := context.WithTimeout(context.Background(), tConfig["globaltimeout"])
+	var nwg, wg sync.WaitGroup
+	ctx, cancel := context.WithTimeout(context.Background(), tConfig["globaltimeoutDuration"])
 	defer cancel()
 
 	// Start notifications manager, just for admin
 	nwg.Add(1)
 	defer nwg.Wait()
-	nMgr := notifications.NewManager(ctx, nwg, nConfig)
+	nMgr := notifications.NewManager(ctx, &nwg, nConfig)
 	defer close(nMgr)
 
 	// Get list of experiments
@@ -233,52 +234,69 @@ func main() {
 		wg.Add(1)
 		go func(e experiment.ExptConfig) {
 			defer wg.Done()
+			for account := range e.Accounts {
+				var certFile, keyFile string
 
-			s, err := proxy.NewServiceCert(ctx, e.CertFile, e.KeyFile)
-			if err != nil {
-				msg := "Could not ingest service certificate from cert and key file"
-				log.WithField("experiment", e.Name).Error(msg)
-				nMsg := msg + " for experiment " + e.Name
-				nMgr <- notifications.Notification{
-					Msg:       nMsg,
-					AdminOnly: true,
+				if e.CertFile != "" {
+					certFile = e.CertFile
+				} else {
+					certFile = path.Join(e.CertBaseDir, account+".cert")
 				}
-			}
 
-			gCtx, gCancel := context.WithTimeout(ctx, tConfig["gpitimeoutDuration"])
-			defer gCancel()
-			g, err := proxy.NewGridProxy(gCtx, s, tConfig["gpiValidDuration"])
-			if err != nil {
-				msg := "Could not generate grid proxy object"
-				log.WithField("experiment", e.Name).Error(msg)
-				nMsg := msg + " for experiment " + e.Name
-				nMgr <- notifications.Notification{
-					Msg:       nMsg,
-					AdminOnly: true,
+				if e.KeyFile != "" {
+					keyFile = e.KeyFile
+				} else {
+					keyFile = path.Join(e.CertBaseDir, account+".key")
 				}
-			}
-			defer g.Remove()
 
-			if viper.GetBool("test") {
-				log.WithField("experiment", e.Name).Info("Test mode.  Stopping here")
-				return
-			}
-
-			mCtx, mCancel := context.WithTimeout(ctx, tConfig["myproxystoretimeoutDuration"])
-			defer mCancel()
-			if err := proxy.StoreInMyProxy(mCtx, g, retrievers, viper.GetString("myproxyserver"), tConfig["gpitimeoutDuration"]); err != nil {
-				msg := "Could not store grid proxy in myproxy"
-				log.WithField("experiment", e.Name).Error(msg)
-				nMsg := msg + " for experiment " + e.Name
-				nMgr <- notifications.Notification{
-					Msg:       nMsg,
-					AdminOnly: true,
+				s, err := proxy.NewServiceCert(ctx, certFile, keyFile)
+				if err != nil {
+					msg := "Could not ingest service certificate from cert and key file"
+					log.WithField("experiment", e.Name).Error(msg)
+					nMsg := msg + " for experiment " + e.Name
+					nMgr <- notifications.Notification{
+						Msg:       nMsg,
+						AdminOnly: true,
+					}
+					return
 				}
-			} else {
-				log.WithFields(log.Fields{
-					"experiment": e.Name,
-					"dn":         g.DN,
-				}).Info("Stored grid proxy in myproxy")
+
+				gCtx, gCancel := context.WithTimeout(ctx, tConfig["gpitimeoutDuration"])
+				defer gCancel()
+				g, err := proxy.NewGridProxy(gCtx, s, tConfig["gpivalidDuration"])
+				if err != nil {
+					msg := "Could not generate grid proxy object"
+					log.WithField("experiment", e.Name).Error(msg)
+					nMsg := msg + " for experiment " + e.Name
+					nMgr <- notifications.Notification{
+						Msg:       nMsg,
+						AdminOnly: true,
+					}
+					return
+				}
+				defer g.Remove()
+
+				if viper.GetBool("test") {
+					log.WithField("experiment", e.Name).Info("Test mode.  Stopping here")
+					return
+				}
+
+				mCtx, mCancel := context.WithTimeout(ctx, tConfig["myproxystoretimeoutDuration"])
+				defer mCancel()
+				if err := proxy.StoreInMyProxy(mCtx, g, retrievers, viper.GetString("global.myproxyserver"), tConfig["gpivalidDuration"]); err != nil {
+					msg := "Could not store grid proxy in myproxy"
+					log.WithField("experiment", e.Name).Error(msg)
+					nMsg := msg + " for experiment " + e.Name
+					nMgr <- notifications.Notification{
+						Msg:       nMsg,
+						AdminOnly: true,
+					}
+				} else {
+					log.WithFields(log.Fields{
+						"experiment": e.Name,
+						"dn":         g.DN,
+					}).Info("Stored grid proxy in myproxy")
+				}
 			}
 		}(eConfig)
 
@@ -310,6 +328,7 @@ func checkUser(authuser string) error {
 }
 
 // createExptConfig takes the config information from the global file and creates an exptConfig object
+// TODO  This has to handle default case - certbasedir/account.cert.  Also need to call this multiple times per experiment
 func createExptConfig(expt string) (experiment.ExptConfig, error) {
 	var vomsprefix, certfile, keyfile string
 	var c experiment.ExptConfig
