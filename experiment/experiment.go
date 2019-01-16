@@ -1,6 +1,6 @@
 // Package experimentutil contains all of the operations needed to push a VOMS X509 proxy as a part of the USDC Managed Proxy service that are
 // experiment-specific.
-package experimentutil
+package experiment
 
 import (
 	"context"
@@ -17,11 +17,14 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// TODO:  Add prometheus stuff
+
 // const exptErrFilenamef string = "golang_proxy_push_%s.log" // temp file per experiment that will be emailed to experiment
 
 // var genLog *logrus.Logger
 
 var (
+	// TODO:  MAybe get rid of this next line of vars?
 	rwmuxErr, rwmuxLog, rwmuxDebug sync.RWMutex // mutexes to be used when copying experiment logs into master and error log
 	kinitExecutable                = "/usr/krb5/bin/kinit"
 )
