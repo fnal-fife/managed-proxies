@@ -64,11 +64,21 @@ func NewManager(ctx context.Context, wg *sync.WaitGroup, nConfig Config) Manager
 			case n, chanOpen := <-c:
 				if !chanOpen {
 					notificationMsg := strings.Join(msgSlice, "\n")
-					if err := SendEmail(ctx, nConfig, notificationMsg); err != nil {
+					if !nConfig.IsTest {
+						if len(msgSlice) > 0 {
+							if err := SendEmail(ctx, nConfig, notificationMsg); err != nil {
+								log.WithFields(log.Fields{
+									"caller":     "NewManager",
+									"experiment": nConfig.Experiment,
+								}).Error("Error sending email")
+							}
+						}
+					}
+					if err := SendAdminNotifications(ctx, nConfig); err != nil {
 						log.WithFields(log.Fields{
 							"caller":     "NewManager",
 							"experiment": nConfig.Experiment,
-						}).Error("Error sending email")
+						}).Error("Error sending Admin Notifications")
 					}
 					return
 				} else {
@@ -86,7 +96,7 @@ func NewManager(ctx context.Context, wg *sync.WaitGroup, nConfig Config) Manager
 
 // Sends the admin notifications
 func SendAdminNotifications(ctx context.Context, nConfig Config) error {
-	var wg *sync.WaitGroup
+	var wg sync.WaitGroup
 	var emailErr, slackErr error
 	msg := strings.Join(adminMsgSlice, "\n")
 	wg.Add(2)
@@ -96,14 +106,17 @@ func SendAdminNotifications(ctx context.Context, nConfig Config) error {
 		if emailErr = SendEmail(ctx, nConfig, msg); emailErr != nil {
 			log.WithField("caller", "SendAdminNotifications").Error("Failed to send admin email")
 		}
-	}(wg)
+	}(&wg)
 
+	if msg == "" {
+		msg = "Test run completed successfully"
+	}
 	go func(wg *sync.WaitGroup) {
 		defer wg.Done()
 		if slackErr = SendSlackMessage(ctx, nConfig, msg); slackErr != nil {
 			log.WithField("caller", "SendAdminNotifications").Error("Failed to send slack message")
 		}
-	}(wg)
+	}(&wg)
 
 	wg.Wait()
 
