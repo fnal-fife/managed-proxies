@@ -11,6 +11,8 @@ timeout:
   copyTimeout:   30s # copy proxy timeout (total for all copies per experiment)
   slackTimeout:  15s # Slack message timeout
   emailTimeout:  30s # Email timeout (per email)
+  gpiValid: 24h  # Validity for grid proxies
+
 
 # Logging/Error handling files.
 logs:
@@ -203,7 +205,7 @@ global:
 	caPath:                "/etc/grid-security/certificates/"
   smtphost: localhost
   smtpport: 25 
-    jobsubServer:  "fifebatch.fnal.gov"
+  jobsubServer:  "fifebatch.fnal.gov"
 	cigetcertoptsEndpoint: "cigetcertopts.txt"
 	defaultRetrievers:      "(/DC=com/DC=DigiCert-Grid|/DC=org/DC=opensciencegrid)/O=Open Science Grid/OU=Services/CN=fermicloud(0|1|2|3|4|5|6|7|8|9)(0|1|2|3|4|5|6|7|8|9)(0|1|2|3|4|5|6|7|8|9).fnal.gov"
 	myProxyServer:  "fermicloud343.fnal.gov"
@@ -225,9 +227,9 @@ vomsProxyInit:
   vpiCommand: "-rfc -valid 24:00 -voms {{.VomsFQAN}} -cert {{.CertFile}} -key {{.KeyFile}} -out {{.OutfilePath}}"
 
 kerberos:
-  KRB5CCNAME:  "FILE:/tmp/krb5cc_push_proxy"  # What the env variable KRB5CCNAME should be set to
-  kinitExecutable: /usr/krb5/bin/kinit
+#   kinitExecutable: /usr/krb5/bin/kinit
   kinitArgs: "-k -t /opt/gen_keytabs/config/gcso_monitor.keytab monitor/gcso/fermigrid.fnal.gov@FNAL.GOV"
+  KRB5CCNAME:  "FILE:/tmp/krb5cc_push_proxy"  # What the env variable KRB5CCNAME should be set to
 
 ping:
   pingArgs: "-W 5 -c 1 {{.Node}}"
