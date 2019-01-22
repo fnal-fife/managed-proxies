@@ -8,9 +8,11 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"path"
 	"strconv"
 	"strings"
 	"sync"
+	"text/template"
 
 	log "github.com/sirupsen/logrus"
 	gomail "gopkg.in/gomail.v2"
@@ -66,6 +68,8 @@ func NewManager(ctx context.Context, wg *sync.WaitGroup, nConfig Config) Manager
 					notificationMsg := strings.Join(msgSlice, "\n")
 					if !nConfig.IsTest {
 						if len(msgSlice) > 0 {
+
+							// TODO  This should now be sendExptEmail
 							if err := SendEmail(ctx, nConfig, notificationMsg); err != nil {
 								log.WithFields(log.Fields{
 									"caller":     "NewManager",
@@ -99,26 +103,96 @@ func NewManager(ctx context.Context, wg *sync.WaitGroup, nConfig Config) Manager
 
 }
 
-// Sends the admin notifications
-func SendAdminNotifications(ctx context.Context, nConfig Config) error {
+// Sends an experiment email
+func SendExperimentEmail(ctx context.Context, nConfig Config, msg string) (err error) {
+	// TODO  model this after the next bit
 	var wg sync.WaitGroup
-	var emailErr, slackErr error
-	msg := strings.Join(adminMsgSlice, "\n")
-	wg.Add(2)
+	var b strings.Builder
+
+	wg.Add(1)
+
+	// Read in template
+
+	templateFileName := path.Join(nConfig.ConfigInfo["templateDir"], "proxyPushExperimentError.txt")
+	templateData, err := ioutil.ReadFile(templateFileName)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"caller":     "SendAdminNotifications",
+			"experiment": nConfig.Experiment,
+		}).Errorf("Could not read experiment error template file: %s", err)
+		return err
+	}
+
+	exptEmailTemplate := template.Must(template.New("exptEmail").Parse(string(templateData)))
+	if err = exptEmailTemplate.Execute(&b, struct {
+		ErrorMessages string
+	}{
+		ErrorMessages: msg,
+	}); err != nil {
+		log.WithFields(log.Fields{
+			"caller":     "SendAdminNotifications",
+			"experiment": nConfig.Experiment,
+		}).Error("Failed to execute experiment email template")
+		return err
+	}
 
 	go func(wg *sync.WaitGroup) {
 		defer wg.Done()
-		if emailErr = SendEmail(ctx, nConfig, msg); emailErr != nil {
+		if err = SendEmail(ctx, nConfig, b.String()); err != nil {
+			log.WithFields(log.Fields{
+				"caller":     "SendAdminNotifications",
+				"experiment": nConfig.Experiment,
+			}).Error("Failed to send experiment email")
+		}
+	}(&wg)
+	// Return error status
+	wg.Wait()
+
+	return err
+}
+
+// Sends the admin notifications
+func SendAdminNotifications(ctx context.Context, nConfig Config) error {
+	// TODO  Need to return error early if issue.  See above for example
+	var wg sync.WaitGroup
+	var emailErr, slackErr error
+	var b strings.Builder
+	var slackMsg string
+
+	msg := strings.Join(adminMsgSlice, "\n")
+	wg.Add(2)
+
+	templateFileName := path.Join(nConfig.ConfigInfo["templateDir"], "adminErrors.txt")
+	templateData, err := ioutil.ReadFile(templateFileName)
+	if err != nil {
+		log.WithField("caller", "SendAdminNotifications").Errorf("Could not read admin error template file: %s", err)
+	}
+	adminTemplate := template.Must(template.New("admin").Parse(string(templateData)))
+
+	if err = adminTemplate.Execute(&b, struct {
+		ErrorMessages string
+	}{
+		ErrorMessages: msg,
+	}); err != nil {
+		log.WithField("caller", "SendAdminNotifications").Error("Failed to execute admin email template")
+	}
+
+	go func(wg *sync.WaitGroup) {
+		defer wg.Done()
+		if emailErr = SendEmail(ctx, nConfig, b.String()); emailErr != nil {
 			log.WithField("caller", "SendAdminNotifications").Error("Failed to send admin email")
 		}
 	}(&wg)
 
 	if msg == "" {
-		msg = "Test run completed successfully"
+		slackMsg = "Test run completed successfully"
+	} else {
+		slackMsg = b.String()
 	}
+
 	go func(wg *sync.WaitGroup) {
 		defer wg.Done()
-		if slackErr = SendSlackMessage(ctx, nConfig, msg); slackErr != nil {
+		if slackErr = SendSlackMessage(ctx, nConfig, slackMsg); slackErr != nil {
 			log.WithField("caller", "SendAdminNotifications").Error("Failed to send slack message")
 		}
 	}(&wg)
