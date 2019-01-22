@@ -43,7 +43,7 @@ func init() {
 	var nKey string
 	startSetup = time.Now()
 
-	viper.SetDefault("TemplateDir", "templates")
+	//viper.SetDefault("TemplateDir", "templates")
 
 	pflag.StringP("experiment", "e", "", "Name of single experiment whose proxies should be stored in MyProxy")
 	pflag.StringP("configfile", "c", configFile, "Specify alternate config file")
@@ -182,6 +182,14 @@ func main() {
 	defer cancel()
 
 	// Start notifications manager, just for admin
+
+	// Send admin notifications at the end
+	defer func() {
+		if err := notifications.SendAdminNotifications(ctx, nConfig); err != nil {
+			log.WithField("caller", "main").Error("Error sending Admin Notifications")
+		}
+	}()
+
 	nwg.Add(1)
 	defer nwg.Wait()
 	nMgr := notifications.NewManager(ctx, &nwg, nConfig)
