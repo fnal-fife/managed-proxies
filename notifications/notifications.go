@@ -68,9 +68,7 @@ func NewManager(ctx context.Context, wg *sync.WaitGroup, nConfig Config) Manager
 					notificationMsg := strings.Join(msgSlice, "\n")
 					if !nConfig.IsTest {
 						if len(msgSlice) > 0 {
-
-							// TODO  This should now be sendExptEmail
-							if err := SendEmail(ctx, nConfig, notificationMsg); err != nil {
+							if err := SendExperimentEmail(ctx, nConfig, notificationMsg); err != nil {
 								log.WithFields(log.Fields{
 									"caller":     "NewManager",
 									"experiment": nConfig.Experiment,
@@ -105,13 +103,10 @@ func NewManager(ctx context.Context, wg *sync.WaitGroup, nConfig Config) Manager
 
 // Sends an experiment email
 func SendExperimentEmail(ctx context.Context, nConfig Config, msg string) (err error) {
-	// TODO  model this after the next bit
 	var wg sync.WaitGroup
 	var b strings.Builder
 
 	wg.Add(1)
-
-	// Read in template
 
 	templateFileName := path.Join(nConfig.ConfigInfo["templateDir"], "proxyPushExperimentError.txt")
 	templateData, err := ioutil.ReadFile(templateFileName)
@@ -153,7 +148,6 @@ func SendExperimentEmail(ctx context.Context, nConfig Config, msg string) (err e
 
 // Sends the admin notifications
 func SendAdminNotifications(ctx context.Context, nConfig Config) error {
-	// TODO  Need to return error early if issue.  See above for example
 	var wg sync.WaitGroup
 	var emailErr, slackErr error
 	var b strings.Builder
@@ -166,6 +160,7 @@ func SendAdminNotifications(ctx context.Context, nConfig Config) error {
 	templateData, err := ioutil.ReadFile(templateFileName)
 	if err != nil {
 		log.WithField("caller", "SendAdminNotifications").Errorf("Could not read admin error template file: %s", err)
+		return err
 	}
 	adminTemplate := template.Must(template.New("admin").Parse(string(templateData)))
 
@@ -175,6 +170,7 @@ func SendAdminNotifications(ctx context.Context, nConfig Config) error {
 		ErrorMessages: msg,
 	}); err != nil {
 		log.WithField("caller", "SendAdminNotifications").Error("Failed to execute admin email template")
+		return err
 	}
 
 	go func(wg *sync.WaitGroup) {
