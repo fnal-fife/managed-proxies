@@ -12,7 +12,6 @@ import (
 	"sync"
 	"time"
 
-	//"github.com/jinzhu/copier"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/push"
 	"github.com/rifflock/lfshook"
@@ -43,8 +42,6 @@ func init() {
 	var nKey string
 	startSetup = time.Now()
 
-	//viper.SetDefault("TemplateDir", "templates")
-
 	pflag.StringP("experiment", "e", "", "Name of single experiment whose proxies should be stored in MyProxy")
 	pflag.StringP("configfile", "c", configFile, "Specify alternate config file")
 	pflag.BoolP("test", "t", false, "Test mode (proxies not stored in MyProxy)")
@@ -61,14 +58,6 @@ func init() {
 	if err != nil {
 		panic(fmt.Errorf("Fatal error config file: %s", err))
 	}
-
-	// Set up the logConfig to pass to other packages
-	//	lConfig = make(proxyPushLogger.LogsConfig)
-	//	for key, value := range viper.GetStringMapString("logs") {
-	//		lConfig[key] = value
-	//	}
-	//
-	//	log = proxyPushLogger.New("", lConfig)
 
 	// Set up logs
 	log.AddHook(lfshook.NewHook(lfshook.PathMap{
@@ -105,8 +94,8 @@ func init() {
 	nConfig.ConfigInfo["smtpport"] = strconv.Itoa(viper.GetInt("global.smtpport"))
 	nConfig.IsTest = viper.GetBool("test")
 	nConfig.From = viper.GetString("notifications.admin_email")
-	// TODO  Add datestamp
-	nConfig.Subject = "Managed Proxy Service Errors - push to MyProxy"
+	timestamp := time.Now().Format(time.RFC822)
+	nConfig.Subject = fmt.Sprintf("Managed Proxy Service Errors - push to MyProxy - %s", timestamp)
 
 	setAdminEmail(&nConfig)
 
@@ -114,18 +103,12 @@ func init() {
 	// that logs the error, sends a slack message and an email, cleans up, and then exits.
 	initErrorNotify := func(m string) {
 		log.WithFields(log.Fields{"caller": "main.init"}).Error(m)
-		nConfig.Subject = "Error setting up myProxy store"
+		nConfig.Subject = "Error setting up store-in-myproxy"
 
 		// Durations are hard-coded here since we haven't parsed them out yet
 		slackInitCtx, slackInitCancel := context.WithTimeout(context.Background(), time.Duration(15*time.Second))
+		defer slackInitCancel()
 		notifications.SendSlackMessage(slackInitCtx, nConfig, m)
-		slackInitCancel()
-
-		//		if _, err := os.Stat(viper.GetString("logs.errfile")); !os.IsNotExist(err) {
-		//			if e := os.Remove(viper.GetString("logs.errfile")); e != nil {
-		//				log.Warn("Could not remove error file.  Please remove manually")
-		//			}
-		//}
 		os.Exit(1)
 	}
 
@@ -147,7 +130,7 @@ func init() {
 		tConfig[newName] = value
 	}
 
-	// Kerb config
+	// Kerberos config
 	krbConfig := make(experiment.KerbConfig)
 	for key, value := range viper.GetStringMapString("kerberos") {
 		krbConfig[key] = value
@@ -156,7 +139,6 @@ func init() {
 	log.WithFields(log.Fields{"caller": "main.init"}).Debug("Read in config file to config structs")
 
 	// Set up prometheus pusher
-
 	if _, err := http.Get(viper.GetString("prometheus.host")); err != nil {
 		log.Errorf("Error contacting prometheus pushgateway %s: %s.  The rest of prometheus operations will fail. "+
 			"To limit error noise, "+
@@ -179,6 +161,13 @@ func init() {
 func main() {
 	var nwg, wg sync.WaitGroup
 	ctx, cancel := context.WithTimeout(context.Background(), tConfig["globaltimeoutDuration"])
+
+	/* Order of defers (in execution order):
+	1. Close notification manager
+	2. Wait on notification waitgroup
+	3. Send admin email
+	4. Cancel global context
+	*/
 	defer cancel()
 
 	// Start notifications manager, just for admin
@@ -205,7 +194,6 @@ func main() {
 				"experiment": viper.GetString("experiment"),
 				"caller":     "main",
 			}).Error("Error setting up experiment configuration slice.  As this is the only experiment, we will cleanup now.")
-			// TODO:  Cleanup, if any
 			os.Exit(1)
 		}
 		exptConfigs = append(exptConfigs, eConfig)
@@ -226,6 +214,7 @@ func main() {
 	// Get jobsub server information
 	jobsubServerUtils.StartHTTPSClient(viper.GetString("global.capath"))
 
+	// Get and check our retrievers list
 	retrievers, err := jobsubServerUtils.GetRetrievers(ctx, viper.GetString("global.jobsubserver"), viper.GetString("global.cigetcertoptsendpoint"))
 	if err != nil {
 		log.WithField("caller", "main").Error("Error getting trusted retrievers from cigetcertopts file")
@@ -242,7 +231,7 @@ func main() {
 	}
 	startProcessing = time.Now()
 
-	// Now actually ingest those service certs, generate grid proxies, and store them in myproxy LEFT OFF HERE
+	// Now actually ingest the service certs, generate grid proxies, and store them in myproxy
 	log.WithField("caller", "main").Info("Ingesting service certs")
 	defer wg.Wait()
 
@@ -253,6 +242,7 @@ func main() {
 			for account := range e.Accounts {
 				var certFile, keyFile string
 
+				// Get cert, key paths
 				if e.CertFile != "" {
 					certFile = e.CertFile
 				} else {
@@ -265,6 +255,7 @@ func main() {
 					keyFile = path.Join(e.CertBaseDir, account+".key")
 				}
 
+				// Create service cert objects
 				s, err := proxy.NewServiceCert(ctx, certFile, keyFile)
 				if err != nil {
 					msg := "Could not ingest service certificate from cert and key file"
@@ -277,6 +268,7 @@ func main() {
 					return
 				}
 
+				// Create grid proxies from those service certs
 				gCtx, gCancel := context.WithTimeout(ctx, tConfig["gpitimeoutDuration"])
 				defer gCancel()
 				g, err := proxy.NewGridProxy(gCtx, s, tConfig["gpivalidDuration"])
@@ -297,6 +289,7 @@ func main() {
 					return
 				}
 
+				// Store those grid proxies in myproxy
 				mCtx, mCancel := context.WithTimeout(ctx, tConfig["myproxystoretimeoutDuration"])
 				defer mCancel()
 				if err := proxy.StoreInMyProxy(mCtx, g, retrievers, viper.GetString("global.myproxyserver"), tConfig["gpivalidDuration"]); err != nil {
@@ -319,7 +312,7 @@ func main() {
 	}
 
 	wg.Wait()
-	// Push prometheus time
+	// TODO Push prometheus time
 
 }
 
@@ -331,6 +324,7 @@ func setAdminEmail(pnConfig *notifications.Config) {
 	return
 }
 
+// checkUser makes sure that the user running the executable is the authorized user.
 func checkUser(authuser string) error {
 	cuser, err := user.Current()
 	if err != nil {
@@ -344,7 +338,6 @@ func checkUser(authuser string) error {
 }
 
 // createExptConfig takes the config information from the global file and creates an exptConfig object
-// TODO  This has to handle default case - certbasedir/account.cert.  Also need to call this multiple times per experiment
 func createExptConfig(expt string) (experiment.ExptConfig, error) {
 	var vomsprefix, certfile, keyfile string
 	var c experiment.ExptConfig
@@ -373,16 +366,6 @@ func createExptConfig(expt string) (experiment.ExptConfig, error) {
 		keyfile = exptSubConfig.GetString("keyfile")
 	}
 
-	// Notifications setup
-	//	n := notifications.Config{}
-	//	copier.Copy(&n, &nConfig)
-	//	n.Experiment = expt
-	//	n.From = viper.GetString("notifications.admin_email")
-	//	if !viper.GetBool("test") {
-	//		n.To = exptSubConfig.GetStringSlice("emails")
-	//	}
-	//	n.Subject = "Managed Proxy Push errors for " + expt
-
 	c = experiment.ExptConfig{
 		Name:           expt,
 		CertBaseDir:    viper.GetString("global.cert_base_dir"),
@@ -395,8 +378,6 @@ func createExptConfig(expt string) (experiment.ExptConfig, error) {
 		TimeoutsConfig: tConfig,
 		KerbConfig:     krbConfig,
 	}
-
-	// Put this on to set the notifications logger
 
 	log.Debug("Set up experiment config")
 	return c, nil
