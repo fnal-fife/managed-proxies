@@ -127,7 +127,7 @@ func SendExperimentEmail(ctx context.Context, nConfig Config, msg string) (err e
 		log.WithFields(log.Fields{
 			"caller":     "SendAdminNotifications",
 			"experiment": nConfig.Experiment,
-		}).Error("Failed to execute experiment email template")
+		}).Errorf("Failed to execute experiment email template: %s", err)
 		return err
 	}
 
@@ -173,7 +173,7 @@ func SendAdminNotifications(ctx context.Context, nConfig Config) error {
 	}{
 		ErrorMessages: msg,
 	}); err != nil {
-		log.WithField("caller", "SendAdminNotifications").Error("Failed to execute admin email template")
+		log.WithField("caller", "SendAdminNotifications").Errorf("Failed to execute admin email template: %s", err)
 		return err
 	}
 
