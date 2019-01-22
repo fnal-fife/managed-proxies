@@ -185,7 +185,7 @@ func main() {
 
 	// Send admin notifications at the end
 	defer func() {
-		if err := notifications.SendAdminNotifications(ctx, nConfig); err != nil {
+		if err := notifications.SendAdminNotifications(ctx, nConfig, "store-in-myproxy"); err != nil {
 			log.WithField("caller", "main").Error("Error sending Admin Notifications")
 		}
 	}()
