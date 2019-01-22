@@ -147,7 +147,7 @@ func SendExperimentEmail(ctx context.Context, nConfig Config, msg string) (err e
 }
 
 // Sends the admin notifications
-func SendAdminNotifications(ctx context.Context, nConfig Config) error {
+func SendAdminNotifications(ctx context.Context, nConfig Config, operation string) error {
 	var wg sync.WaitGroup
 	var emailErr, slackErr error
 	var b strings.Builder
@@ -169,8 +169,9 @@ func SendAdminNotifications(ctx context.Context, nConfig Config) error {
 	adminTemplate := template.Must(template.New("admin").Parse(string(templateData)))
 
 	if err = adminTemplate.Execute(&b, struct {
-		ErrorMessages string
+		Operation, ErrorMessages string
 	}{
+		Operation:     operation,
 		ErrorMessages: msg,
 	}); err != nil {
 		log.WithField("caller", "SendAdminNotifications").Errorf("Failed to execute admin email template: %s", err)
