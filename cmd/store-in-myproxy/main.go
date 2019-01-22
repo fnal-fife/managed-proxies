@@ -40,7 +40,10 @@ var (
 )
 
 func init() {
+	var nKey string
 	startSetup = time.Now()
+
+	viper.SetDefault("TemplateDir", "templates")
 
 	pflag.StringP("experiment", "e", "", "Name of single experiment whose proxies should be stored in MyProxy")
 	pflag.StringP("configfile", "c", configFile, "Specify alternate config file")
@@ -89,7 +92,7 @@ func init() {
 
 	// Set up notifications
 	nConfig.ConfigInfo = make(map[string]string)
-	nKey := "notifications"
+	nKey = "notifications"
 	// Test flag sets which notifications section from config we want to use.
 	if viper.GetBool("test") {
 		log.Info("Running in test mode")
