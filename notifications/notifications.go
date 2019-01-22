@@ -74,12 +74,6 @@ func NewManager(ctx context.Context, wg *sync.WaitGroup, nConfig Config) Manager
 							}
 						}
 					}
-					if err := SendAdminNotifications(ctx, nConfig); err != nil {
-						log.WithFields(log.Fields{
-							"caller":     "NewManager",
-							"experiment": nConfig.Experiment,
-						}).Error("Error sending Admin Notifications")
-					}
 					return
 				} else {
 					if !n.AdminOnly {
@@ -90,6 +84,17 @@ func NewManager(ctx context.Context, wg *sync.WaitGroup, nConfig Config) Manager
 			}
 		}
 	}()
+
+	go func() {
+		wg.Wait()
+		if err := SendAdminNotifications(ctx, nConfig); err != nil {
+			log.WithFields(log.Fields{
+				"caller":     "NewManager",
+				"experiment": nConfig.Experiment,
+			}).Error("Error sending Admin Notifications")
+		}
+	}()
+
 	return c
 
 }
@@ -183,6 +188,7 @@ func SendSlackMessage(ctx context.Context, nConfig Config, message string) error
 		log.Errorf("Error sending slack message: %s", e)
 		return e
 	}
+	// TODO:  Add that if message is "", return immediately.  that way we can avoid a 400 HTTP error
 
 	msg := []byte(fmt.Sprintf(`{"text": "%s"}`, strings.Replace(message, "\"", "\\\"", -1)))
 	req, err := http.NewRequest("POST", nConfig.ConfigInfo["slack_alerts_url"], bytes.NewBuffer(msg))
