@@ -87,15 +87,15 @@ func NewManager(ctx context.Context, wg *sync.WaitGroup, nConfig Config) Manager
 		}
 	}()
 
-	go func() {
-		wg.Wait()
-		if err := SendAdminNotifications(ctx, nConfig); err != nil {
-			log.WithFields(log.Fields{
-				"caller":     "NewManager",
-				"experiment": nConfig.Experiment,
-			}).Error("Error sending Admin Notifications")
-		}
-	}()
+	//	go func() {
+	//		wg.Wait()
+	//		if err := SendAdminNotifications(ctx, nConfig); err != nil {
+	//			log.WithFields(log.Fields{
+	//				"caller":     "NewManager",
+	//				"experiment": nConfig.Experiment,
+	//			}).Error("Error sending Admin Notifications")
+	//		}
+	//	}()
 
 	return c
 
@@ -108,7 +108,7 @@ func SendExperimentEmail(ctx context.Context, nConfig Config, msg string) (err e
 
 	wg.Add(1)
 
-	templateFileName := path.Join(nConfig.ConfigInfo["templateDir"], "proxyPushExperimentError.txt")
+	templateFileName := path.Join(nConfig.ConfigInfo["templatedir"], "proxyPushExperimentError.txt")
 	templateData, err := ioutil.ReadFile(templateFileName)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -153,10 +153,14 @@ func SendAdminNotifications(ctx context.Context, nConfig Config) error {
 	var b strings.Builder
 	var slackMsg string
 
+	if len(adminMsgSlice) == 0 {
+		return nil
+	}
+
 	msg := strings.Join(adminMsgSlice, "\n")
 	wg.Add(2)
 
-	templateFileName := path.Join(nConfig.ConfigInfo["templateDir"], "adminErrors.txt")
+	templateFileName := path.Join(nConfig.ConfigInfo["templatedir"], "adminErrors.txt")
 	templateData, err := ioutil.ReadFile(templateFileName)
 	if err != nil {
 		log.WithField("caller", "SendAdminNotifications").Errorf("Could not read admin error template file: %s", err)
