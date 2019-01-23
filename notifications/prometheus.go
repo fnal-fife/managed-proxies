@@ -8,8 +8,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/push"
 )
 
-/// TODO: Add myproxystore metrics
-
 var (
 	promDuration = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: "proxy_push",
@@ -65,7 +63,6 @@ func (b BasicPromPush) RegisterMetrics() error {
 	if err := b.R.Register(myProxyStoreTime); err != nil {
 		return errors.New("Could not register myProxyStoreTime metric for monitoring")
 	}
-	return nil
 
 	if err := b.R.Register(proxyPushTime); err != nil {
 		return errors.New("Could not register proxyPushTime metric for monitoring")
