@@ -80,7 +80,7 @@ func (b BasicPromPush) PushNodeRoleTimestamp(experiment, node, role string) erro
 // PushMyProxyStoreTime sets the value of myProxyStoreTime to the current time, and pushes that metric to the Pushgateway
 // configured in b with the arguments as labels
 func (b BasicPromPush) PushMyProxyStoreTime(dn string) error {
-	proxyPushTime.WithLabelValues(dn).SetToCurrentTime()
+	myProxyStoreTime.WithLabelValues(dn).SetToCurrentTime()
 	err := b.P.Add()
 	return err
 }
