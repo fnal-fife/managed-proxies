@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"sync"
+	//	"sync"
 	"time"
 
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/node"
@@ -17,16 +17,14 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// TODO:  Add prometheus stuff
-
 // const exptErrFilenamef string = "golang_proxy_push_%s.log" // temp file per experiment that will be emailed to experiment
 
 // var genLog *logrus.Logger
 
 var (
 	// TODO:  MAybe get rid of this next line of vars?
-	rwmuxErr, rwmuxLog, rwmuxDebug sync.RWMutex // mutexes to be used when copying experiment logs into master and error log
-	kinitExecutable                = "/usr/krb5/bin/kinit"
+	//	rwmuxErr, rwmuxLog, rwmuxDebug sync.RWMutex // mutexes to be used when copying experiment logs into master and error log
+	kinitExecutable = "/usr/krb5/bin/kinit"
 )
 
 // ExperimentSuccess stores information on whether all the processes involved in generating, copying, and changing
