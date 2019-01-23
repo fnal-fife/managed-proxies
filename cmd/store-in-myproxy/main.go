@@ -165,8 +165,9 @@ func main() {
 	/* Order of defers (in execution order):
 	1. Close notification manager
 	2. Wait on notification waitgroup
-	3. Send admin email
-	4. Cancel global context
+	3. Push prometheus timestamp
+	4. Send admin email
+	5. Cancel global context
 	*/
 	defer cancel()
 
@@ -225,11 +226,16 @@ func main() {
 		log.WithField("caller", "main").Error(err)
 	}
 
-	// Setup is done here.  Push the time TODO:  Change this method to push to myproxy metric
-	if err := promPush.PushPromDuration(startSetup, "setup"); err != nil {
+	// Setup is done here.  Push the time
+	if err := promPush.PushPromDuration(startSetup, "store-in-myproxy", "setup"); err != nil {
 		log.WithFields(log.Fields{"caller": "main"}).Errorf("Error recording time to setup, %s", err.Error())
 	}
 	startProcessing = time.Now()
+	defer func() {
+		if err := promPush.PushPromDuration(startProcessing, "store-in-myproxy", "processing"); err != nil {
+			log.WithFields(log.Fields{"caller": "main"}).Errorf("Error recording time to setup, %s", err.Error())
+		}
+	}()
 
 	// Now actually ingest the service certs, generate grid proxies, and store them in myproxy
 	log.WithField("caller", "main").Info("Ingesting service certs")
@@ -312,8 +318,6 @@ func main() {
 	}
 
 	wg.Wait()
-	// TODO Push prometheus time
-
 }
 
 // setAdminEmail sets the notifications config objects' From and To fields to the config file's admin value
