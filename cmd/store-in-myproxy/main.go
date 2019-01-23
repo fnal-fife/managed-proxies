@@ -311,6 +311,18 @@ func main() {
 						"experiment": e.Name,
 						"dn":         g.DN,
 					}).Info("Stored grid proxy in myproxy")
+					if err := promPush.PushMyProxyStoreTime(g.DN); err != nil {
+						msg := "Could not push prometheus metric"
+						log.WithFields(log.Fields{
+							"gridProxy": g.DN,
+							"metric":    "myProxyStoreTime",
+						}).Error(msg)
+						nMsg := msg + "myProxyStoreTime for dn " + g.DN
+						nMgr <- notifications.Notification{
+							Msg:       nMsg,
+							AdminOnly: true,
+						}
+					}
 				}
 			}
 		}(eConfig)

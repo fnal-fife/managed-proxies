@@ -137,6 +137,7 @@ func (g *GridProxy) storeInMyProxy(ctx context.Context, retrievers, myProxyServe
 		"myProxyServer": myProxyServer,
 		"validHours":    hours,
 	}).Debug("Successfully stored grid proxy in myproxy")
+
 	return nil
 }
 
