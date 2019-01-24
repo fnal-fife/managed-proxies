@@ -58,6 +58,7 @@ func init() {
 		panic(fmt.Errorf("Fatal error config file: %s", err))
 	}
 
+	log.SetLevel(log.DebugLevel)
 	// Set up logs
 	log.AddHook(lfshook.NewHook(lfshook.PathMap{
 		log.DebugLevel: viper.GetString("logs.debugfile"),
