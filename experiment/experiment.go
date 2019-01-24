@@ -207,10 +207,12 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 			}
 		}
 
+		log.WithField("experiment", eConfig.Name).Debug("Ingested service certs")
+
 		// voms-proxy-init
 		// If voms-proxy-init fails, we'll just continue on.  We'll still try to push proxies,
 		// since they're valid for 24 hours
-		vomsProxies := make([]*proxy.VomsProxy, len(eConfig.Accounts))
+		vomsProxies := make([]*proxy.VomsProxy, 0, len(eConfig.Accounts))
 		vpiCtx, vpiCancel := context.WithTimeout(ctx, eConfig.TimeoutsConfig["vpitimeoutDuration"])
 		vpiChan := getVomsProxiesForExperiment(vpiCtx, certs, eConfig.VomsPrefix)
 		// Listen until we either timeout or vpiChan is closed
