@@ -151,10 +151,13 @@ func SendAdminNotifications(ctx context.Context, nConfig Config, operation strin
 	var wg sync.WaitGroup
 	var emailErr, slackErr error
 	var b strings.Builder
-	var slackMsg string
 
 	if len(adminMsgSlice) == 0 {
-		return nil
+		slackMsg := "Test run completed successfully"
+		if slackErr = SendSlackMessage(ctx, nConfig, slackMsg); slackErr != nil {
+			log.WithField("caller", "SendAdminNotifications").Error("Failed to send slack message")
+		}
+		return slackErr
 	}
 
 	msg := strings.Join(adminMsgSlice, "\n")
@@ -185,15 +188,9 @@ func SendAdminNotifications(ctx context.Context, nConfig Config, operation strin
 		}
 	}(&wg)
 
-	if msg == "" {
-		slackMsg = "Test run completed successfully"
-	} else {
-		slackMsg = b.String()
-	}
-
 	go func(wg *sync.WaitGroup) {
 		defer wg.Done()
-		if slackErr = SendSlackMessage(ctx, nConfig, slackMsg); slackErr != nil {
+		if slackErr = SendSlackMessage(ctx, nConfig, b.String()); slackErr != nil {
 			log.WithField("caller", "SendAdminNotifications").Error("Failed to send slack message")
 		}
 	}(&wg)
