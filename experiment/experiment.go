@@ -312,7 +312,15 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 
 				log.WithField("experiment", eConfig.Name).Debug(pushproxy)
 				if pushproxy.err != nil {
-					copyProxyErrorf := "Error copying proxy to %s for role %s"
+					var copyProxyErrorf string
+					copyProxyErrorf = "Error copying proxy to %s for role %s."
+					for _, n := range badNodesSlice {
+						if pushproxy.node == n {
+							copyProxyErrorf = copyProxyErrorf + "The node was not pingable earlier, so please look into the status of that node to make sure it's up and working."
+							break
+						}
+					}
+
 					log.WithFields(log.Fields{
 						"caller":  "experiment.Worker",
 						"account": pushproxy.account,

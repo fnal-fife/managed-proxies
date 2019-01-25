@@ -65,10 +65,10 @@ func NewManager(ctx context.Context, wg *sync.WaitGroup, nConfig Config) Manager
 				return
 			case n, chanOpen := <-c:
 				if !chanOpen {
-					notificationMsg := strings.Join(msgSlice, "\n")
+					//notificationMsg := strings.Join(msgSlice, "\n - ")
 					if !nConfig.IsTest {
 						if len(msgSlice) > 0 {
-							if err := SendExperimentEmail(ctx, nConfig, notificationMsg); err != nil {
+							if err := SendExperimentEmail(ctx, nConfig, msgSlice); err != nil {
 								log.WithFields(log.Fields{
 									"caller":     "NewManager",
 									"experiment": nConfig.Experiment,
@@ -102,7 +102,7 @@ func NewManager(ctx context.Context, wg *sync.WaitGroup, nConfig Config) Manager
 }
 
 // Sends an experiment email
-func SendExperimentEmail(ctx context.Context, nConfig Config, msg string) (err error) {
+func SendExperimentEmail(ctx context.Context, nConfig Config, errors []string) (err error) {
 	var wg sync.WaitGroup
 	var b strings.Builder
 
@@ -120,9 +120,9 @@ func SendExperimentEmail(ctx context.Context, nConfig Config, msg string) (err e
 
 	exptEmailTemplate := template.Must(template.New("exptEmail").Parse(string(templateData)))
 	if err = exptEmailTemplate.Execute(&b, struct {
-		ErrorMessages string
+		ErrorMessages []string
 	}{
-		ErrorMessages: msg,
+		ErrorMessages: errors,
 	}); err != nil {
 		log.WithFields(log.Fields{
 			"caller":     "SendAdminNotifications",
@@ -220,13 +220,13 @@ func SendEmail(ctx context.Context, nConfig Config, msg string) error {
 		Host: nConfig.ConfigInfo["smtphost"],
 		Port: port,
 	}
-	message := addHelperMessage(msg, nConfig.Experiment)
+	//message := addHelperMessage(msg, nConfig.Experiment)
 
 	m := gomail.NewMessage()
 	m.SetHeader("From", nConfig.From)
 	m.SetHeader("To", nConfig.To...)
 	m.SetHeader("Subject", nConfig.Subject)
-	m.SetBody("text/plain", message)
+	m.SetBody("text/plain", msg)
 
 	c := make(chan error)
 	go func() {
