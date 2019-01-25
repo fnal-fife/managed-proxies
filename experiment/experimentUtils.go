@@ -171,7 +171,13 @@ func copyAllProxies(ctx context.Context, copyConfigs []copyFileConfig) <-chan co
 }
 
 func (c *copyFileConfig) createCopyProxiesStatus() copyProxiesStatus {
-	return copyProxiesStatus{c.node, c.account, c.role, nil}
+	return copyProxiesStatus{
+		account: c.account,
+		node:    c.node,
+		role:    c.role,
+		err:     nil,
+	}
+
 }
 
 // getKerbTicket runs kinit to get a kerberos ticket
