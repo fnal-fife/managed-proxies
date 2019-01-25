@@ -160,7 +160,7 @@ func SendAdminNotifications(ctx context.Context, nConfig Config, operation strin
 		return slackErr
 	}
 
-	msg := strings.Join(adminMsgSlice, "\n")
+	//msg := strings.Join(adminMsgSlice, "\n")
 	wg.Add(2)
 
 	templateFileName := path.Join(nConfig.ConfigInfo["templatedir"], "adminErrors.txt")
@@ -172,10 +172,11 @@ func SendAdminNotifications(ctx context.Context, nConfig Config, operation strin
 	adminTemplate := template.Must(template.New("admin").Parse(string(templateData)))
 
 	if err = adminTemplate.Execute(&b, struct {
-		Operation, ErrorMessages string
+		Operation     string
+		ErrorMessages []string
 	}{
 		Operation:     operation,
-		ErrorMessages: msg,
+		ErrorMessages: adminMsgSlice,
 	}); err != nil {
 		log.WithField("caller", "SendAdminNotifications").Errorf("Failed to execute admin email template: %s", err)
 		return err
