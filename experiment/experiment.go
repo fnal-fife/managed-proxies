@@ -309,6 +309,8 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 					copyCancel()
 					break copyLoop
 				}
+
+				log.WithField("experiment", eConfig.Name).Debug(pushproxy)
 				if pushproxy.err != nil {
 					copyProxyErrorf := "Error copying proxy to %s for role %s"
 					log.WithFields(log.Fields{
