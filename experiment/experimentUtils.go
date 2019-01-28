@@ -186,12 +186,12 @@ func getKerbTicket(ctx context.Context, krbConfig KerbConfig) error {
 	kerbcmdargs := strings.Fields(krbConfig["kinitargs"])
 
 	cmd := exec.CommandContext(ctx, kinitExecutable, kerbcmdargs...)
-	if err := cmd.Run(); err != nil {
+	if out, err := cmd.CombinedOutput(); err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
 			log.WithField("caller", "getKerbTicket").Error("Context timeout")
 			return ctx.Err()
 		}
-		log.Error(err)
+		log.Error(string(out))
 		return err
 	}
 	return nil
