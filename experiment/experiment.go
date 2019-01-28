@@ -106,7 +106,7 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 		// If we can't get a kerb ticket, log error and keep going.
 		// We might have an old one that's still valid.
 		if err := getKerbTicket(ctx, eConfig.KerbConfig); err != nil {
-			krb5Error := "Could not obtain KRB5CCNAME environmental variable from config. Please check the config file on fifeutilgpvm01."
+			krb5Error := "Could not obtain new kerberos ticket.  Will try to use old one and push proxies."
 			log.WithFields(log.Fields{
 				"caller":     "experiment.Worker",
 				"experiment": eConfig.Name,
