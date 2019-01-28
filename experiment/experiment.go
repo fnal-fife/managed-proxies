@@ -205,9 +205,9 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 				Msg:       msg,
 				AdminOnly: true,
 			}
+		} else {
+			log.WithField("experiment", eConfig.Name).Debug("Ingested service certs successfully")
 		}
-
-		log.WithField("experiment", eConfig.Name).Debug("Ingested service certs")
 
 		// voms-proxy-init
 		// If voms-proxy-init fails, we'll just continue on.  We'll still try to push proxies,
