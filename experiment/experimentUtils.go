@@ -3,6 +3,7 @@ package experiment
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path"
@@ -64,7 +65,6 @@ func setCertKeyLocation(certBaseDir, certPath, keyPath, account string) (string,
 	}
 
 	return certfile, keyfile
-
 }
 
 func getVomsProxiesForExperiment(ctx context.Context, vpMap map[string]proxy.VomsProxyer, vomsFQANPrefix string) <-chan vomsProxyInitStatus {
@@ -181,7 +181,20 @@ func (c *copyFileConfig) createCopyProxiesStatus() copyProxiesStatus {
 }
 
 // getKerbTicket runs kinit to get a kerberos ticket
+// TODO  Unit test where we check that this errors out properly
 func getKerbTicket(ctx context.Context, krbConfig KerbConfig) error {
+	var kinitExecutable = kinitExecutable
+
+	if _, err := os.Stat(kinitExecutable); os.IsNotExist(err) {
+		_kinitExecutable, _err := exec.LookPath("kinit")
+		if _err != nil {
+			log.WithField("caller", "getKerbTicket").Error("Could not find kinit executable in $PATH")
+			return _err
+		}
+		log.Infof("Using kinit executable at %s", _kinitExecutable)
+		kinitExecutable = _kinitExecutable
+	}
+
 	os.Setenv("KRB5CCNAME", krbConfig["krb5ccname"])
 	kerbcmdargs := strings.Fields(krbConfig["kinitargs"])
 
@@ -191,6 +204,7 @@ func getKerbTicket(ctx context.Context, krbConfig KerbConfig) error {
 			log.WithField("caller", "getKerbTicket").Error("Context timeout")
 			return ctx.Err()
 		}
+		fmt.Println(string(out))
 		log.Error(string(out))
 		return err
 	}
