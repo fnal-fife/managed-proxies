@@ -263,7 +263,7 @@ func main() {
 
 				// Create service cert objects
 				s, err := proxy.NewServiceCert(ctx, certFile, keyFile)
-				if err != nil {
+				if err != nil || s == nil {
 					msg := "Could not ingest service certificate from cert and key file"
 					log.WithField("experiment", e.Name).Error(msg)
 					nMsg := msg + " for experiment " + e.Name
