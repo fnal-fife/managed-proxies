@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/google/shlex"
+	log "github.com/sirupsen/logrus"
 )
 
 // GetArgsFromTemplate takes a template string and breaks it into a slice of args
@@ -21,7 +22,7 @@ func GetArgsFromTemplate(s string) ([]string, error) {
 		debugSlice = append(debugSlice, strconv.Itoa(num), f)
 	}
 
-	fmt.Println("Enumerated args to command are: ", debugSlice)
+	log.Debugf("Enumerated args to command are: %s", debugSlice)
 
 	return args, nil
 }
