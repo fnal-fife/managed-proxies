@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 )
 
 type fakeServiceCert struct {
@@ -13,6 +14,10 @@ type fakeServiceCert struct {
 func (f *fakeServiceCert) getCertPath() string                                { return "Path to cert" }
 func (f *fakeServiceCert) getKeyPath() string                                 { return "Path to key" }
 func (f *fakeServiceCert) getCertSubject(ctx context.Context) (string, error) { return f.subjectFunc() }
+func (f *fakeServiceCert) getCertExpiration(ctx context.Context) (time.Time, error) {
+	var t time.Time
+	return t, nil
+}
 
 func TestGetDN(t *testing.T) {
 
