@@ -268,6 +268,27 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 			}
 		}
 
+		defer func() {
+			for _, v := range vomsProxies {
+				if err := v.Remove(); err != nil {
+					nMsg := "Failed to clean up experiment: could not delete VOMS proxy."
+					log.WithFields(log.Fields{
+						"experiment": eConfig.Name,
+						"role":       v.Role,
+					}).Error(nMsg)
+					nMgr <- notifications.Notification{
+						Msg:       nMsg,
+						AdminOnly: true,
+					}
+				} else {
+					log.WithFields(log.Fields{
+						"experiment": eConfig.Name,
+						"role":       v.Role,
+					}).Debug("Cleaned up VOMS Proxy")
+				}
+			}
+		}()
+
 		// Proxy transfer
 		copyCfgs := createCopyFileConfigs(vomsProxies, eConfig.Accounts, eConfig.Nodes, eConfig.DestDir)
 
@@ -394,25 +415,25 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 		// Cleanup
 		log.WithField("experiment", eConfig.Name).Info("Cleaning up experiment")
 
-		for _, v := range vomsProxies {
-			if err := v.Remove(); err != nil {
-				nMsg := "Failed to clean up experiment: could not delete VOMS proxy."
-				log.WithFields(log.Fields{
-					"experiment": eConfig.Name,
-					"role":       v.Role,
-				}).Error(nMsg)
-				nMgr <- notifications.Notification{
-					Msg:       nMsg,
-					AdminOnly: true,
-				}
-			} else {
-				log.WithFields(log.Fields{
-					"experiment": eConfig.Name,
-					"role":       v.Role,
-				}).Debug("Cleaned up VOMS Proxy")
-			}
-		}
-
+		//		for _, v := range vomsProxies {
+		//			if err := v.Remove(); err != nil {
+		//				nMsg := "Failed to clean up experiment: could not delete VOMS proxy."
+		//				log.WithFields(log.Fields{
+		//					"experiment": eConfig.Name,
+		//					"role":       v.Role,
+		//				}).Error(nMsg)
+		//				nMgr <- notifications.Notification{
+		//					Msg:       nMsg,
+		//					AdminOnly: true,
+		//				}
+		//			} else {
+		//				log.WithFields(log.Fields{
+		//					"experiment": eConfig.Name,
+		//					"role":       v.Role,
+		//				}).Debug("Cleaned up VOMS Proxy")
+		//			}
+		//		}
+		//
 		//		if err := expt.experimentCleanup(ctx, eConfig); err != nil {
 		//			log.WithField("experiment", eConfig.Name).Error("Error cleaning up experiment")
 		//		} else {

@@ -181,7 +181,6 @@ func (c *copyFileConfig) createCopyProxiesStatus() copyProxiesStatus {
 }
 
 // getKerbTicket runs kinit to get a kerberos ticket
-// TODO  Unit test where we check that this errors out properly
 func getKerbTicket(ctx context.Context, krbConfig KerbConfig) error {
 	var kinitExecutable = kinitExecutable
 
