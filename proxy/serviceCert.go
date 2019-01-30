@@ -9,12 +9,14 @@ import (
 	"fmt"
 	"io/ioutil"
 	"strings"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 )
 
 type Cert interface {
 	getCertSubject(context.Context) (string, error)
+	getCertExpiration(context.Context) (time.Time, error)
 	getCertPath() string
 	getKeyPath() string
 }
@@ -30,9 +32,10 @@ func GetDN(ctx context.Context, c Cert) (string, error) {
 
 // Satisifies the Cert, GridProxyer, and VOMSProxyer interfaces
 type serviceCert struct {
-	certPath string
-	keyPath  string
-	DN       string
+	certPath   string
+	keyPath    string
+	DN         string
+	Expiration time.Time
 }
 
 func NewServiceCert(ctx context.Context, certPath, keyPath string) (*serviceCert, error) {
@@ -40,6 +43,7 @@ func NewServiceCert(ctx context.Context, certPath, keyPath string) (*serviceCert
 		certPath: certPath,
 		keyPath:  keyPath,
 	}
+
 	dn, err := s.getCertSubject(ctx)
 	if err != nil {
 		err := "Could not get DN from certificate"
@@ -47,9 +51,19 @@ func NewServiceCert(ctx context.Context, certPath, keyPath string) (*serviceCert
 		return nil, errors.New(err)
 	}
 	s.DN = dn
+
+	expires, err := s.getCertExpiration(ctx)
+	if err != nil {
+		err := "Could not get expiration date from certificate"
+		log.WithField("certPath", certPath).Error(err)
+		return nil, errors.New(err)
+	}
+	s.Expiration = expires
+
 	log.WithFields(log.Fields{
-		"certPath": certPath,
-		"subject":  s.DN,
+		"certPath":   certPath,
+		"subject":    s.DN,
+		"expiration": s.Expiration,
 	}).Debug("Successfully ingested service certificate")
 	return s, nil
 }
@@ -84,6 +98,33 @@ func (s *serviceCert) getCertSubject(ctx context.Context) (string, error) {
 
 	log.WithField("certPath", s.certPath).Debug("Read in and decoded cert file, will now find subject")
 	return parseDN(cert.Subject.Names, "/"), nil
+}
+
+func (s *serviceCert) getCertExpiration(ctx context.Context) (time.Time, error) {
+	var t time.Time
+	certContent, err := ioutil.ReadFile(s.certPath)
+	if err != nil {
+		err := fmt.Sprintf("Could not read cert file: %s", err.Error())
+		log.WithField("certPath", s.certPath).Error(err)
+		return t, errors.New(err)
+	}
+
+	certDER, _ := pem.Decode(certContent)
+	if certDER == nil {
+		err := "Could not decode PEM block containing cert"
+		log.WithField("certPath", s.certPath).Error(err)
+		return t, errors.New(err)
+	}
+
+	cert, err := x509.ParseCertificate(certDER.Bytes)
+	if err != nil {
+		err := "Could not parse certificate from DER data"
+		log.WithField("certPath", s.certPath).Error(err)
+		return t, errors.New(err)
+	}
+
+	log.WithField("certPath", s.certPath).Debug("Read in and decoded cert file, will now find expiration")
+	return cert.NotAfter, nil
 }
 
 // Thank you FERRY for this.  names can be *x509.Certificate.Subject.Names object
