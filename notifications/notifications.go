@@ -261,7 +261,11 @@ func SendSlackMessage(ctx context.Context, nConfig Config, message string) error
 		log.Errorf("Error sending slack message: %s", e)
 		return e
 	}
-	// TODO:  Add that if message is "", return immediately.  that way we can avoid a 400 HTTP error
+
+	if message == "" {
+		log.Warn("Slack message is empty.  Will not attempt to send it")
+		return nil
+	}
 
 	msg := []byte(fmt.Sprintf(`{"text": "%s"}`, strings.Replace(message, "\"", "\\\"", -1)))
 	req, err := http.NewRequest("POST", nConfig.ConfigInfo["slack_alerts_url"], bytes.NewBuffer(msg))
