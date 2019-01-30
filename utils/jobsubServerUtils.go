@@ -1,4 +1,4 @@
-package jobsubServerUtils
+package utils
 
 import (
 	"bufio"
