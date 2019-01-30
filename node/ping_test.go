@@ -32,7 +32,7 @@ func (b badNode) PingNode(ctx context.Context) error {
 	return fmt.Errorf("exit status 2 ping: unknown host %s", b)
 }
 
-func (b badNode) NodeAsString() string { return string(g) }
+func (b badNode) NodeAsString() string { return string(b) }
 
 func TestPingNode(t *testing.T) {
 	ctx := context.Background()
@@ -90,7 +90,7 @@ func TestPingAllNodes(t *testing.T) {
 	pingChannel := PingAllNodes(ctx, goodNode(""), badNode(badhost), goodNode(""))
 
 	for n := range pingChannel {
-		if n.err != nil {
+		if n.Err != nil {
 			j++
 		} else {
 			i++
@@ -108,8 +108,8 @@ func TestPingAllNodes(t *testing.T) {
 	timeoutCtx, cancelTimeout := context.WithTimeout(ctx, time.Duration(1*time.Nanosecond))
 	pingChannel = PingAllNodes(timeoutCtx, badNode(badhost))
 	for n := range pingChannel {
-		if n.err != nil {
-			lowerErr := strings.ToLower(n.err.Error())
+		if n.Err != nil {
+			lowerErr := strings.ToLower(n.Err.Error())
 			expectedMsg := "context deadline exceeded"
 			if lowerErr != expectedMsg {
 				t.Errorf("Expected error message to be %s.  Got %s instead", expectedMsg, lowerErr)
