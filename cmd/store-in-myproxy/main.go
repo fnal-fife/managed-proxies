@@ -18,9 +18,9 @@ import (
 	"github.com/spf13/viper"
 
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/experiment"
-	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/jobsubServerUtils"
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/notifications"
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/proxy"
+	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/utils"
 )
 
 const configFile string = "proxy_push.yml"
@@ -213,16 +213,16 @@ func main() {
 	}
 
 	// Get jobsub server information
-	jobsubServerUtils.StartHTTPSClient(viper.GetString("global.capath"))
+	utils.StartHTTPSClient(viper.GetString("global.capath"))
 
 	// Get and check our retrievers list
-	retrievers, err := jobsubServerUtils.GetRetrievers(ctx, viper.GetString("global.jobsubserver"), viper.GetString("global.cigetcertoptsendpoint"))
+	retrievers, err := utils.GetRetrievers(ctx, viper.GetString("global.jobsubserver"), viper.GetString("global.cigetcertoptsendpoint"))
 	if err != nil {
 		log.WithField("caller", "main").Error("Error getting trusted retrievers from cigetcertopts file")
 		os.Exit(1)
 	}
 
-	if err := jobsubServerUtils.CheckRetrievers(retrievers, viper.GetString("global.defaultretrievers")); err != nil {
+	if err := utils.CheckRetrievers(retrievers, viper.GetString("global.defaultretrievers")); err != nil {
 		log.WithField("caller", "main").Error(err)
 	}
 
