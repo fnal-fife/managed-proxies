@@ -150,7 +150,7 @@ func init() {
 	// Parse our timeouts, store them into timeoutDurationMap for later use
 	tConfig = make(experiment.TimeoutsConfig)
 
-	for timeoutName, timeoutString := range viper.GetStringMapString("timeout") {
+	for timeoutName, timeoutString := range viper.GetStringMapString("times") {
 		value, err := time.ParseDuration(timeoutString)
 		if err != nil {
 			msg := fmt.Sprintf("Invalid %s value: %s", timeoutName, timeoutString)
