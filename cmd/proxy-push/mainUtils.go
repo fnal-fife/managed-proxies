@@ -223,7 +223,7 @@ func createExptConfig(expt string) (experiment.ExptConfig, error) {
 	if exptSubConfig.IsSet("vomsgroup") {
 		vomsprefix = exptSubConfig.GetString("vomsgroup")
 	} else {
-		vomsprefix = viper.GetString("vomsproxyinit.defaultvomsprefixroot") + expt + "/"
+		vomsprefix = viper.GetString("global.defaultvomsprefixroot") + expt + "/"
 	}
 
 	if exptSubConfig.IsSet("certfile") {

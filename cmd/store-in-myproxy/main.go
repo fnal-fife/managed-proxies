@@ -23,7 +23,7 @@ import (
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/utils"
 )
 
-const configFile string = "proxy_push.yml"
+const configFile string = "managedProxies.yml"
 
 var (
 	nConfig   notifications.Config
@@ -113,7 +113,7 @@ func init() {
 	}
 
 	// Check that we're running as the right user
-	if err := checkUser(viper.GetString("global.should_runuser")); err != nil {
+	if err := checkUser(viper.GetString("global.authuser")); err != nil {
 		initErrorNotify(err.Error())
 	}
 
