@@ -230,6 +230,12 @@ func SendCertAlarms(ctx context.Context, nConfig Config, cSlice []CertExpiration
 		return err
 	}
 
+	if nConfig.IsTest {
+		fmt.Println("Test mode - will print out message and exit without sending it")
+		fmt.Printf("\n%s\n", b.String())
+		return nil
+	}
+
 	go func(wg *sync.WaitGroup) {
 		defer wg.Done()
 		if emailErr = SendEmail(ctx, nConfig, b.String()); emailErr != nil {
