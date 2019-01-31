@@ -1,0 +1,9 @@
+The Managed Proxies Service is reporting that the following service certificates will be expiring within 30 days.  Any certificates that expire in less than 28 days may cause cigetcert to fail to pull them.  Please renew these certificates, or delete them if they are no longer needed.
+
+{{ printf "\n%-20s" "Account" }}{{ printf "\t%11s\t%-s" "Days Left" "DN" }}
+{{ range . }}
+{{ printf "%-20s" .Account }}{{ printf "\t%11d\t%-s" .DaysLeft .DN }}
+{{ end }}
+
+
+{{/*  We're expecting a slice of structs with Account, DN string, DaysLeft int */}}
