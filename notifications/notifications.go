@@ -204,6 +204,55 @@ func SendAdminNotifications(ctx context.Context, nConfig Config, operation strin
 	return nil
 }
 
+type CertExpirationNotification struct {
+	Account, DN string
+	DaysLeft    int
+	Warn        bool
+}
+
+func SendCertAlarms(ctx context.Context, nConfig Config, cSlice []CertExpirationNotification, templateFname string) error {
+	var wg sync.WaitGroup
+	var emailErr, slackErr error
+	var b strings.Builder
+
+	wg.Add(2)
+
+	templateFileName := path.Join(nConfig.ConfigInfo["templatedir"], templateFname)
+	templateData, err := ioutil.ReadFile(templateFileName)
+	if err != nil {
+		log.WithField("caller", "SendCertAlarms").Errorf("Could not read checkcerts template file: %s", err)
+		return err
+	}
+	certAlarmTemplate := template.Must(template.New("checkcerts").Parse(string(templateData)))
+
+	if err = certAlarmTemplate.Execute(&b, cSlice); err != nil {
+		log.WithField("caller", "SendCertAlarms").Errorf("Failed to execute checkcerts email template: %s", err)
+		return err
+	}
+
+	go func(wg *sync.WaitGroup) {
+		defer wg.Done()
+		if emailErr = SendEmail(ctx, nConfig, b.String()); emailErr != nil {
+			log.WithField("caller", "SendCertAlarms").Error("Failed to send admin email")
+		}
+	}(&wg)
+
+	go func(wg *sync.WaitGroup) {
+		defer wg.Done()
+		if slackErr = SendSlackMessage(ctx, nConfig, b.String()); slackErr != nil {
+			log.WithField("caller", "SendCertAlarms").Error("Failed to send slack message")
+		}
+	}(&wg)
+
+	wg.Wait()
+
+	if emailErr != nil || slackErr != nil {
+		return errors.New("Sending checkcerts notifications failed.  Please see logs.")
+	}
+	return nil
+
+}
+
 // SendEmail sends emails to both experiments and admins, depending on the input (exptName = "" gives admin email).
 // func SendEmail(ctx context.Context, nConfig Config, exptName, msg string) error {
 func SendEmail(ctx context.Context, nConfig Config, msg string) error {
