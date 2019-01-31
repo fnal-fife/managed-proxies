@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"sort"
 	"strconv"
 	"sync"
 	"time"
@@ -158,9 +159,14 @@ func init() {
 }
 
 func main() {
-	var nwg, wg sync.WaitGroup
-	var existsExpiringCerts bool
-	certExpiration := make(map[string]time.Time)
+	var wg sync.WaitGroup
+	mux := &sync.Mutex{}
+	var needAlarm bool
+	var templateKey = "templateOK"
+
+	//var existsExpiringCerts bool
+	// certExpiration := make(map[string]time.Time)
+	cNotes := make([]notifications.CertExpirationNotification, 0)
 	ctx, cancel := context.WithTimeout(context.Background(), tConfig["globaltimeoutDuration"])
 
 	/* Order of defers (in execution order):
@@ -172,26 +178,14 @@ func main() {
 	 */
 	defer cancel()
 
-	// Start notifications manager, just for admin
-
-	// Send admin notifications at the end
-	defer func() {
-		// TODO:  if !existsExpiringCerts, set template to "all is well", send in first expiring cert.  Otherwiset template to "ALARMS" - and all certs should be in there as messages already, ".  This is in nConfig
-		// TODO  Change subject in nConfig
-		// If we're in test mode, don't actually send the email
-		if viper.GetBool("test") {
-			log.Info("Test mode.  Stopping here")
-			return
-		}
-		if err := notifications.SendAdminNotifications(ctx, nConfig, "check-certs"); err != nil {
-			log.WithField("caller", "main").Error("Error sending Admin Notifications")
-		}
-	}()
-
-	nwg.Add(1)
-	defer nwg.Wait()
-	nMgr := notifications.NewManager(ctx, &nwg, nConfig)
-	defer close(nMgr)
+	//	// Start notifications manager, just for admin
+	//
+	//	// Send admin notifications at the end
+	//
+	//	nwg.Add(1)
+	//	defer nwg.Wait()
+	//	nMgr := notifications.NewManager(ctx, &nwg, nConfig)
+	//	defer close(nMgr)
 
 	// Get list of experiments
 	exptConfigs := make([]experiment.ExptConfig, 0, len(viper.GetStringMap("experiments"))) // Slice of experiment configurations
@@ -223,7 +217,7 @@ func main() {
 
 	for _, eConfig := range exptConfigs {
 		wg.Add(1)
-		warnMsg := "%s\t%d days\t%s"
+		// warnMsg := "%s\t%d days\t%s"
 		go func(e experiment.ExptConfig) {
 			defer wg.Done()
 			for account := range e.Accounts {
@@ -247,35 +241,67 @@ func main() {
 				if err != nil || s == nil {
 					msg := "Could not ingest service certificate from cert and key file"
 					log.WithField("experiment", e.Name).Error(msg)
-					nMsg := msg + " for experiment " + e.Name
-					nMgr <- notifications.Notification{
-						Msg:       nMsg,
-						AdminOnly: true,
-					}
+					//					nMsg := msg + " for experiment " + e.Name
+					//					nMgr <- notifications.Notification{
+					//						Msg:       nMsg,
+					//						AdminOnly: true,
+					//					}
 					return
 				}
 
-				certExpiration[s.DN] = s.Expiration
 				timeLeft := time.Until(s.Expiration)
+				numDays := int(math.Round(timeLeft.Hours() / 24.0))
+				c := notifications.CertExpirationNotification{
+					Account:  account,
+					DN:       s.DN,
+					DaysLeft: numDays,
+				}
 
 				if timeLeft < tConfig["expirewarningcutoffduration"] {
-					numDays := math.Round(timeLeft.Hours() / 24.0)
 					log.WithFields(log.Fields{
 						"experiment": e.Name,
 						"DN":         s.DN,
 						"daysLeft":   numDays,
 					}).Warn("Service cert expiring soon")
-					nMgr <- notifications.Notification{
-						Msg:       fmt.Sprintf(warnMsg, account, numDays, s.DN),
-						AdminOnly: true,
-					}
-					existsExpiringCerts = true
+					//					nMgr <- notifications.Notification{
+					//						Msg:       fmt.Sprintf(warnMsg, account, numDays, s.DN),
+					//						AdminOnly: true,
+					//					}
+					c.Warn = true
+					needAlarm = true
 				}
-
+				mux.Lock()
+				cNotes = append(cNotes, c)
+				mux.Unlock()
 			}
 		}(eConfig)
 
 	}
 
 	wg.Wait()
+
+	fNotes := make([]notifications.CertExpirationNotification, 0)
+
+	if needAlarm {
+		templateKey = "templateAlarm"
+		for _, c := range cNotes {
+			if c.Warn {
+				fNotes = append(fNotes, c)
+			}
+		}
+		nConfig.Subject = nConfig.Subject + " - ALARMS"
+	} else {
+		sort.SliceStable(cNotes, func(i, j int) bool {
+			return cNotes[i].DaysLeft < cNotes[j].DaysLeft
+		})
+		fNotes = append(fNotes, cNotes[0])
+		nConfig.Subject = nConfig.Subject + " - no issues"
+	}
+
+	tFname := viper.GetString(fmt.Sprintf("checkcerts.%s", templateKey))
+
+	if err := notifications.SendCertAlarms(ctx, nConfig, fNotes, tFname); err != nil {
+		log.WithField("caller", "main").Error("Error sending Cert Alarms")
+	}
+
 }
