@@ -257,7 +257,7 @@ func main() {
 					DaysLeft: numDays,
 				}
 
-				if timeLeft < tConfig["expirewarningcutoffduration"] {
+				if timeLeft < tConfig["expirewarningcutoffDuration"] {
 					log.WithFields(log.Fields{
 						"experiment": e.Name,
 						"DN":         s.DN,
