@@ -9,8 +9,9 @@ import (
 	"sync"
 	"text/template"
 
-	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/utils"
 	log "github.com/sirupsen/logrus"
+
+	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/utils"
 )
 
 const pingArgs = "-W 5 -c 1 {{.Node}}"
@@ -22,14 +23,15 @@ var (
 	pingTemplate = template.Must(template.New("ping").Parse(pingArgs))
 )
 
-// PingNoder is an interface that wraps the pingNode method. It is meant to be used where pinging a node is necessary
+// PingNoder is an interface that wraps the pingNode method. It is meant to be used where pinging a node is necessary.  PingNoders also implement the Stringer interface.
 type PingNoder interface {
 	PingNode(context.Context) error
-	NodeAsString() string
+	String() string
 }
 
 type node string
 
+// NewNode returns a node object when given a string.  This allows us to keep node unexported.
 func NewNode(s string) node { return node(s) }
 
 // pingNode pings a node (described by a node object) with a 5-second timeout.  It returns an error
@@ -64,15 +66,16 @@ func (n node) PingNode(ctx context.Context) error {
 	return nil
 }
 
-func (n node) NodeAsString() string { return string(n) }
+// String converts a node object into a string
+func (n node) String() string { return string(n) }
 
-// pingNodeStatus stores information about an attempt to ping a node.  If there was an error, it's stored in err.
+// pingNodeStatus stores information about an attempt to ping a node.  If there was an error, it's stored in Err.
 type pingNodeStatus struct {
 	PingNoder
 	Err error
 }
 
-// pingAllNodes will launch goroutines, which each ping a node the PingNoder variadic nodes.  It returns a channel,
+// PingAllNodes will launch goroutines, which each ping a PingNoder from the nodes variadic.  It returns a channel,
 // on which it reports the pingNodeStatuses signifying success or error
 func PingAllNodes(ctx context.Context, nodes ...PingNoder) <-chan pingNodeStatus {
 	// Buffered Channel to report on
@@ -89,7 +92,7 @@ func PingAllNodes(ctx context.Context, nodes ...PingNoder) <-chan pingNodeStatus
 		}(n)
 	}
 
-	// Wait for all goroutines to finish, then close channel so that expt Worker can proceed
+	// Wait for all goroutines to finish, then close channel so that the caller knows all objects have been sent
 	go func() {
 		defer close(c)
 		wg.Wait()

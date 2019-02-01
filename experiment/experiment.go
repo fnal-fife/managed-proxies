@@ -161,7 +161,7 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 				}
 				if testnode.Err != nil {
 					pingNodeAdminMsgf := "Error pinging node: %s"
-					n := testnode.PingNoder.NodeAsString()
+					n := testnode.PingNoder.String()
 					badNodesSlice = append(badNodesSlice, n)
 					log.WithFields(log.Fields{
 						"experiment": eConfig.Name,

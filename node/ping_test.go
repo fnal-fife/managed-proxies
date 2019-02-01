@@ -20,7 +20,7 @@ func (g goodNode) PingNode(ctx context.Context) error {
 	return nil
 }
 
-func (g goodNode) NodeAsString() string { return string(g) }
+func (g goodNode) String() string { return string(g) }
 
 type badNode string
 
@@ -32,8 +32,10 @@ func (b badNode) PingNode(ctx context.Context) error {
 	return fmt.Errorf("exit status 2 ping: unknown host %s", b)
 }
 
-func (b badNode) NodeAsString() string { return string(b) }
+func (b badNode) String() string { return string(b) }
 
+// Tests
+// TestPingNode pings a PingNoder and makes sure we get the error we expect
 func TestPingNode(t *testing.T) {
 	ctx := context.Background()
 
@@ -78,6 +80,8 @@ func TestPingNode(t *testing.T) {
 	cancelTimeout()
 }
 
+// TestPingAllNodes makes sure that PingAllNodes returns the errors we expect based on valid/invalid input
+// We also make sure that the number of successes and failures reported matches what we expect
 func TestPingAllNodes(t *testing.T) {
 	var i, j int
 	numGood := 2
