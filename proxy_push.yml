@@ -58,7 +58,7 @@ experiments:
     dir: /opt
     emails: [trj@fnal.gov, fuess@fnal.gov, berman@fnal.gov, anorman@fnal.gov]
     nodes: [dunegpvm01, dunegpvm02, dunegpvm03, dunegpvm04, dunegpvm05, dunegpvm06,
-      dunegpvm07, dunegpvm08, dunegpvm09, dunegpvm10, dunesamgpvm02]
+      dunegpvm07, dunegpvm08, dunegpvm09, dunegpvm10, dunesamgpvm02, dunesl7gpvm01]
     accounts:
       dunepro: Production
     vomsgroup: "dune:/dune/"
@@ -124,8 +124,7 @@ experiments:
   uboone:
     dir: /opt
     emails: [greenlee@fnal.gov, wtang8@utk.edu, renlu23@nmsu.edu]
-    nodes: [uboonegpvm01, uboonegpvm02, uboonegpvm03, uboonegpvm04, uboonegpvm05, uboonegpvm06,
-      uboonegpvm07, uboonepubsgpvm01, uboonebuild02]
+    nodes: [uboonegpvm01, uboonegpvm02, uboonegpvm03, uboonegpvm04, uboonegpvm05, uboonegpvm06, uboonegpvm07, uboonebuild02]
     accounts:
       uboonepro: Production
   p-argoneutcode:
