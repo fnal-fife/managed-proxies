@@ -32,14 +32,17 @@ var (
 	rsyncTemplate = template.Must(template.New("rsync").Parse(rsyncArgs))
 )
 
+// VomsProxyer encapsulates the method to obtain a VOMS proxy from an object
 type VomsProxyer interface {
 	getVomsProxy(ctx context.Context, vomsFQAN string) (*VomsProxy, error)
 }
 
+// ProxyTransferer encapsulates the method to copy an object to a destination node
 type ProxyTransferer interface {
 	CopyProxy(ctx context.Context, node, account, dest string) error
 }
 
+// VomsProxy contains the information generally needed from a VOMS proxy, along with the Cert object used to create the VomsProxy itself
 // Implements the Cert, VomsProxyer, and ProxyTransferer interfaces
 type VomsProxy struct {
 	Path string
@@ -48,6 +51,7 @@ type VomsProxy struct {
 	Cert
 }
 
+// NewVomsProxy returns a VOMS proxy from a VomsProxyer
 func NewVomsProxy(ctx context.Context, vp VomsProxyer, vomsFQAN string) (*VomsProxy, error) {
 	v, err := vp.getVomsProxy(ctx, vomsFQAN)
 	if err != nil {
@@ -66,6 +70,7 @@ func NewVomsProxy(ctx context.Context, vp VomsProxyer, vomsFQAN string) (*VomsPr
 	return v, nil
 }
 
+// Remove deletes the file at VomsProxy.Path
 func (v *VomsProxy) Remove() error {
 	if err := os.Remove(v.Path); os.IsNotExist(err) {
 		err := "VOMS Proxy file does not exist"
@@ -79,6 +84,7 @@ func (v *VomsProxy) Remove() error {
 	return nil
 }
 
+// CopyProxy copies the proxy from VomsProxy.Path to account@node:dest
 func (v *VomsProxy) CopyProxy(ctx context.Context, node, account, dest string) error {
 	err := rsyncFile(ctx, v.Path, node, account, dest, sshOpts)
 	if err != nil {
@@ -92,6 +98,7 @@ func (v *VomsProxy) CopyProxy(ctx context.Context, node, account, dest string) e
 	return err
 }
 
+// getVomsProxy obtains a VOMS proxy from a serviceCert by running voms-proxy-init
 func (s *serviceCert) getVomsProxy(ctx context.Context, vomsFQAN string) (*VomsProxy, error) {
 	var b strings.Builder
 
@@ -156,6 +163,7 @@ func (s *serviceCert) getVomsProxy(ctx context.Context, vomsFQAN string) (*VomsP
 	return &v, nil
 }
 
+// rsyncFile runs rsync on a file at source, and syncs it with the destination account@node:dest
 func rsyncFile(ctx context.Context, source, node, account, dest string, sshOptions string) error {
 	var b strings.Builder
 
@@ -218,15 +226,13 @@ func (v *VomsProxy) getCertSubject(ctx context.Context) (string, error) {
 	return dn, nil
 }
 
-// Both of these should be called from an interface rather than the actual object.  Then we can unit test more easily i.e. pushProxyer.copyProxy(....)
-
 func init() {
-
 	if err := utils.CheckForExecutables(vomsProxyExecutables); err != nil {
 		log.WithField("executableGroup", "vomsProxy").Error("One or more required executables were not found in $PATH.  Will still attempt to run, but this will probably fail")
 	}
 }
 
+// getRoleFromFQAN parses the fqan string and returns the role
 func getRoleFromFQAN(fqan string) string {
 	pattern := regexp.MustCompile("^.+Role=([a-zA-Z]+)$")
 	return pattern.FindStringSubmatch(fqan)[1]

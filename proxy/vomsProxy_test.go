@@ -17,6 +17,7 @@ func (f *fakeVomsProxy) getVomsProxy(ctx context.Context, vomsFQAN string) (*Vom
 	return &VomsProxy{}, f.err
 }
 
+// TestNewVomsProxy ensures that NewVomsProxy returns the appropriate errors given valid/invalid input
 func TestNewVomsProxy(t *testing.T) {
 	tests := []struct {
 		v   VomsProxyer
@@ -41,6 +42,7 @@ func TestNewVomsProxy(t *testing.T) {
 
 }
 
+// TestRemoveVomsProxy checks that VOMS proxy files are properly deleted
 func TestRemoveVomsProxy(t *testing.T) {
 	tmpLocation, _ := ioutil.TempFile("", "proxytest")
 	tests := []struct {

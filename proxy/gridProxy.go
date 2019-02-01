@@ -21,8 +21,6 @@ const (
 	defaultValidity  = "24h"
 	gpiArgs          = "-cert {{.CertPath}} -key {{.KeyPath}} -out {{.OutFile}} -valid {{.Valid}}"
 	myproxystoreArgs = "--certfile {{.CertFile}} --keyfile {{.KeyFile}} -s {{.Server}} -xZ \"{{.Retrievers}}\" -l \"{{.Owner}}\" -t {{.Hours}}"
-	//These will move to a config file
-	//myproxyServer = "fermicloud343.fnal.gov"
 )
 
 var (
@@ -34,10 +32,12 @@ var (
 	myproxystoreTemplate = template.Must(template.New("myproxy-store").Parse(myproxystoreArgs))
 )
 
+// GridProxyer is the interface for types that support getting a grid proxy
 type GridProxyer interface {
 	getGridProxy(context.Context, time.Duration) (*GridProxy, error)
 }
 
+// GridProxy contains the path to the grid proxy file, the DN of the proxy, and the Cert object used to create the proxy
 // Satisfies the Cert and MyProxyer interfaces
 type GridProxy struct {
 	Path string
@@ -45,6 +45,7 @@ type GridProxy struct {
 	Cert
 }
 
+// NewGridProxy returns a new GridProxy object given a GridProxyer object and the lifetime of the intended proxy
 func NewGridProxy(ctx context.Context, gp GridProxyer, valid time.Duration) (*GridProxy, error) {
 	if valid.Seconds() == 0 {
 		valid, _ = time.ParseDuration(defaultValidity)
@@ -63,6 +64,7 @@ func NewGridProxy(ctx context.Context, gp GridProxyer, valid time.Duration) (*Gr
 	return g, nil
 }
 
+// Remove deletes the file at GridProxy.Path
 func (g *GridProxy) Remove() error {
 	if err := os.Remove(g.Path); os.IsNotExist(err) {
 		err := "Grid proxy file does not exist"
@@ -77,16 +79,11 @@ func (g *GridProxy) Remove() error {
 	return nil
 }
 
+// storeInMyProxy stores a GridProxy object on a myproxy server by using myproxy-store
 func (g *GridProxy) storeInMyProxy(ctx context.Context, retrievers, myProxyServer string, valid time.Duration) error {
 	var b strings.Builder
 
 	hours := strconv.FormatFloat(valid.Hours(), 'f', -1, 32)
-
-	// Should move to cmd
-	//	retrievers, err := GetRetrievers(ctx)
-	//	if err != nil {
-	//		return fmt.Errorf("Could not get retrievers list from jobsub server: %s", err.Error())
-	//	}
 
 	owner, err := g.Cert.getCertSubject(ctx)
 	if err != nil {
@@ -154,6 +151,7 @@ func (g *GridProxy) getCertSubject(ctx context.Context) (string, error) {
 	return dn, nil
 }
 
+// getGridProxy returns a GridProxy given a serviceCert object
 func (s *serviceCert) getGridProxy(ctx context.Context, valid time.Duration) (*GridProxy, error) {
 	var b strings.Builder
 
@@ -213,9 +211,8 @@ func (s *serviceCert) getGridProxy(ctx context.Context, valid time.Duration) (*G
 	return &g, nil
 }
 
-// fmtDurationForGPI does TODO .Modified from https://stackoverflow.com/questions/47341278/how-to-format-a-duration-in-golang/47342272#47342272
+// fmtDurationForGPI formats a time.Duration object into a string that is formatted for use in grid proxy commands. Modified from https://stackoverflow.com/questions/47341278/how-to-format-a-duration-in-golang/47342272#47342272
 func fmtDurationForGPI(d time.Duration) string {
-	// TODO:  Unit test this.  Throw different combos of hours, minutes, and decimal entries.  Days should fail.
 	d = d.Round(time.Minute)
 	h := d / time.Hour
 	d -= h * time.Hour

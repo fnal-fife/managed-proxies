@@ -19,6 +19,7 @@ func (f *fakeServiceCert) getCertExpiration(ctx context.Context) (time.Time, err
 	return t, nil
 }
 
+// TestGetDN ensures that the GetDN function returns the appropriate DN for different types of objects (by altering what getCertSubject does for each fakeServiceCert)
 func TestGetDN(t *testing.T) {
 
 	tests := []struct {

@@ -3,9 +3,6 @@ package proxy
 import (
 	"context"
 	"errors"
-	//	"fmt"
-	//	"os"
-	//	"path/filepath"
 	"io/ioutil"
 	"strconv"
 	"testing"
@@ -21,6 +18,7 @@ func (f *fakeGridProxy) getGridProxy(ctx context.Context, valid time.Duration) (
 	return &GridProxy{}, f.err
 }
 
+// TestNewGridProxy tests that we get the expected errors back from NewGridProxy
 func TestNewGridProxy(t *testing.T) {
 	tests := []struct {
 		g   GridProxyer
@@ -46,6 +44,7 @@ func TestNewGridProxy(t *testing.T) {
 
 }
 
+// TestRemoveGridProxy make sure that GridProxy.Remove() behaves as we expect in case a file doesn't exist, etc.
 func TestRemoveGridProxy(t *testing.T) {
 	tmpLocation, _ := ioutil.TempFile("", "proxytest")
 	tests := []struct {
@@ -74,38 +73,37 @@ func TestRemoveGridProxy(t *testing.T) {
 	}
 }
 
-//var exePaths map[string]bool
-//
-//func init() {
-//	executables := []string{"grid-proxy-init", "myproxy-store"}
-//	const tmpLocation = "/tmp"
-//	fmt.Println("Doing testing init first")
-//
-//	os.Setenv("PATH", tmpLocation)
-//	for _, exe := range executables {
-//		exePath := filepath.Join(tmpLocation, exe)
-//		if _, err := os.Stat(exePath); os.IsNotExist(err) {
-//			if _, err := os.Create(exePath); err != nil {
-//				panic(fmt.Sprintf("Could not get %s executable:  could not create it in tmp location", exe))
-//			}
-//			exePaths[exePath] = true
-//		} else {
-//			exePaths[exePath] = false
-//		}
-//	}
-//}
-//
-//func TestMain(m *testing.M) {
-//
-//	rc := m.Run()
-//
-//	for exe, created := range exePaths {
-//		if created {
-//			if err := os.Remove(exe); err != nil {
-//				panic(fmt.Sprintf("Could not remove executable %s", exe))
-//			}
-//		}
-//	}
-//
-//	os.Exit(rc)
-//}
+// TestFmtDurationForGPI verifies that if we give a valid time.Duration, it is formatted correctly
+func TestFmtDurationForGPI(t *testing.T) {
+	testDurStrings := []string{"24h", "80h2m", "3.5h2.5m"}
+	testDurations := make([]time.Duration, 0)
+
+	for _, s := range testDurStrings {
+		t, _ := time.ParseDuration(s)
+		testDurations = append(testDurations, t)
+	}
+
+	tests := []struct {
+		inputTime   time.Duration
+		expectedOut string
+	}{
+		{
+			inputTime:   testDurations[0],
+			expectedOut: "24:00",
+		},
+		{
+			inputTime:   testDurations[1],
+			expectedOut: "80:02",
+		},
+		{
+			inputTime:   testDurations[2],
+			expectedOut: "3:33",
+		},
+	}
+
+	for _, test := range tests {
+		if result := fmtDurationForGPI(test.inputTime); result != test.expectedOut {
+			t.Errorf("Expected outputs did not match.  Wanted %s, got %s", test.expectedOut, result)
+		}
+	}
+}

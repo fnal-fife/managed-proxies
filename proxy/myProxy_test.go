@@ -15,6 +15,7 @@ func (f *fakeMyProxyer) storeInMyProxy(context.Context, string, string, time.Dur
 	return f.err
 }
 
+// TestStoreInMyProxy verifies that the errors we receive from StoreInMyProxy are valid
 func TestStoreInMyProxy(t *testing.T) {
 	tests := []*fakeMyProxyer{
 		&fakeMyProxyer{nil},

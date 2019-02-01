@@ -14,6 +14,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// Cert encapsulates the methods that would be normally performed on a certificate to get information
 type Cert interface {
 	getCertSubject(context.Context) (string, error)
 	getCertExpiration(context.Context) (time.Time, error)
@@ -21,6 +22,7 @@ type Cert interface {
 	getKeyPath() string
 }
 
+// GetDN is a function that accepts any object that satisifies the Cert interface and returns its DN
 func GetDN(ctx context.Context, c Cert) (string, error) {
 	dn, err := c.getCertSubject(ctx)
 	if err != nil {
@@ -30,6 +32,7 @@ func GetDN(ctx context.Context, c Cert) (string, error) {
 	return dn, err
 }
 
+// serviceCert is an object that collects the pertinent information about a service certificate
 // Satisifies the Cert, GridProxyer, and VOMSProxyer interfaces
 type serviceCert struct {
 	certPath   string
@@ -38,6 +41,7 @@ type serviceCert struct {
 	Expiration time.Time
 }
 
+// NewServiceCert ingests a service certificate file and returns a pointer to a serviceCert object
 func NewServiceCert(ctx context.Context, certPath, keyPath string) (*serviceCert, error) {
 	s := &serviceCert{
 		certPath: certPath,
@@ -128,6 +132,7 @@ func (s *serviceCert) getCertExpiration(ctx context.Context) (time.Time, error) 
 }
 
 // Thank you FERRY for this.  names can be *x509.Certificate.Subject.Names object
+// parseDN takes a []pkix.AttributeTypeAndValue slice (like the elements of a cert Subject), the separator, and returns a DN, formatted in the openssl format
 func parseDN(names []pkix.AttributeTypeAndValue, sep string) string {
 	var oid = map[string]string{
 		"2.5.4.3":                    "CN",
