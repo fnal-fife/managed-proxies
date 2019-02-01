@@ -7,6 +7,7 @@ import (
 	"time"
 )
 
+// TestGetVomsProxyersForExperiment tests that we get the appropriate errors when trying to run getVomsProxyersForExperiment
 func TestGetVomsProxyersForExperiment(t *testing.T) {
 	type testConfig struct {
 		configCertPath string
@@ -38,6 +39,7 @@ func TestGetVomsProxyersForExperiment(t *testing.T) {
 	}
 }
 
+// TestSetCertKeyLocation makes sure that setCertKeyLocation correctly generates the right cert/key paths
 func TestSetCertKeyLocation(t *testing.T) {
 	// We're only testing the cert part, since the key code does exactly the same thing
 	tests := []struct {
@@ -64,16 +66,10 @@ func TestSetCertKeyLocation(t *testing.T) {
 	}
 }
 
+// TestGetKerbTicket ensures that getKerbTicket gives us the right errors depending on if we give valid config info or not
 func TestGetKerbTicket(t *testing.T) {
 	ctxTout, cancel := context.WithTimeout(context.Background(), 1*time.Nanosecond)
 	defer cancel()
-
-	//	var kinitExecutable string
-	//	kinitExecutable, err := exec.LookPath("kinit")
-	//	if err != nil {
-	//		t.Errorf("Could not find kinit executable in path")
-	//	}
-	//	t.Log(kinitExecutable)
 
 	tests := []struct {
 		ctx           context.Context

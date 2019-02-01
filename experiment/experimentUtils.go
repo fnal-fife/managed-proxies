@@ -22,6 +22,7 @@ type vomsProxyInitStatus struct {
 	err       error
 }
 
+// getVomsProxyersForExperiment takes the service cert and list of accounts/roles, and creates a slice of proxy.VomsProxyer objects for that experiment
 func getVomsProxyersForExperiment(ctx context.Context, certBaseDir, configCertPath, configKeyPath string, accounts map[string]string) (map[string]proxy.VomsProxyer, error) {
 	m := make(map[string]proxy.VomsProxyer, len(accounts))
 	var e error
@@ -50,6 +51,7 @@ func getVomsProxyersForExperiment(ctx context.Context, certBaseDir, configCertPa
 	return m, e
 }
 
+// setCertKeyLocation takes the configured certPath, keyPath (or lack thereof), and certBaseDir, and sets the paths to look for the service certificate and key
 func setCertKeyLocation(certBaseDir, certPath, keyPath, account string) (string, string) {
 	var certfile, keyfile string
 	if certPath != "" {
@@ -67,13 +69,14 @@ func setCertKeyLocation(certBaseDir, certPath, keyPath, account string) (string,
 	return certfile, keyfile
 }
 
+// getVomsProxiesForExperiment takes a map of form role:proxyVomsProxyer, and generates voms proxies for each entry in the map.  It returns a channel that its caller should listen on
 func getVomsProxiesForExperiment(ctx context.Context, vpMap map[string]proxy.VomsProxyer, vomsFQANPrefix string) <-chan vomsProxyInitStatus {
 	c := make(chan vomsProxyInitStatus)
 	var wg sync.WaitGroup
 
-	// Run vpi on each acct, role
 	wg.Add(len(vpMap))
 
+	// Run vpi on each acct, role
 	for role, vp := range vpMap {
 		go func(role string, vp proxy.VomsProxyer) {
 			defer wg.Done()
@@ -84,7 +87,7 @@ func getVomsProxiesForExperiment(ctx context.Context, vpMap map[string]proxy.Vom
 		}(role, vp)
 	}
 
-	// Wait for all goroutines to finish, then close channel so that expt Worker can proceed
+	// Wait for all goroutines to finish, then close channel so that caller knows there's no more objects to send in the channel
 	go func() {
 		defer close(c)
 		wg.Wait()
@@ -94,6 +97,7 @@ func getVomsProxiesForExperiment(ctx context.Context, vpMap map[string]proxy.Vom
 
 }
 
+// copyFileConfig holds the information needed to copy a proxy.ProxyTransferer to a destination node
 type copyFileConfig struct {
 	node, account, destPath, role string
 	pt                            proxy.ProxyTransferer
@@ -106,9 +110,10 @@ type copyProxiesStatus struct {
 	err                 error
 }
 
+// createCopyFileConfigs creates a slice of copyFileConfig objects for the experiment
 func createCopyFileConfigs(vp []*proxy.VomsProxy, accountMap map[string]string, nodes []string, destDir string) []copyFileConfig {
 	c := make([]copyFileConfig, 0)
-	invertAcct := make(map[string]string)
+	invertAcct := make(map[string]string) // accountMap is account:role; we want role:account
 	for acct, role := range accountMap {
 		invertAcct[role] = acct
 	}
@@ -132,6 +137,7 @@ func createCopyFileConfigs(vp []*proxy.VomsProxy, accountMap map[string]string, 
 	return c
 }
 
+// copyAllProxies runs the CopyProxy method for each copyConfig.pt object.  It returns a channel its caller can receive the status on
 func copyAllProxies(ctx context.Context, copyConfigs []copyFileConfig) <-chan copyProxiesStatus {
 	numSlots := len(copyConfigs)
 
@@ -160,7 +166,7 @@ func copyAllProxies(ctx context.Context, copyConfigs []copyFileConfig) <-chan co
 		}(cp)
 	}
 
-	// Wait for all goroutines to finish, then close channel so that expt Worker can proceed
+	// Wait for all goroutines to finish, then close channel so that caller knows there's no more objects to send in the channel
 	go func() {
 		defer close(c)
 		wg.Wait()
@@ -170,6 +176,7 @@ func copyAllProxies(ctx context.Context, copyConfigs []copyFileConfig) <-chan co
 
 }
 
+// createCopyProxiesStatus is a helper function that creates a copyProxiesStatus object for later modification
 func (c *copyFileConfig) createCopyProxiesStatus() copyProxiesStatus {
 	return copyProxiesStatus{
 		account: c.account,
@@ -177,13 +184,13 @@ func (c *copyFileConfig) createCopyProxiesStatus() copyProxiesStatus {
 		role:    c.role,
 		err:     nil,
 	}
-
 }
 
 // getKerbTicket runs kinit to get a kerberos ticket
 func getKerbTicket(ctx context.Context, krbConfig KerbConfig) error {
-	var kinitExecutable = kinitExecutable
+	var kinitExecutable = kinitExecutable // Local kinitExecutable = global kinitExecutablej
 
+	// If we can't find the kinit executable there, then try to find it in $PATH
 	if _, err := os.Stat(kinitExecutable); os.IsNotExist(err) {
 		_kinitExecutable, _err := exec.LookPath("kinit")
 		if _err != nil {
