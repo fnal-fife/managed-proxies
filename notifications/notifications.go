@@ -34,18 +34,21 @@ type Config struct {
 	IsTest     bool
 }
 
+// Notification is an object that holds a message to be sent, as well as the AdminOnly flag to mark it as such.  If AdminOnly is set to true, NewManager will send that message only to adminMsgSlice.
 type Notification struct {
 	Msg       string
 	AdminOnly bool
 }
 
+// Manager is simply a channel on which Notification objects can be sent and received
 type Manager chan Notification
 
+// NewManager returns a Manager channel for callers to send Notifications on.  It will collect messages, and when Manager is closed, will send emails, depending on nConfig.IsTest
 func NewManager(ctx context.Context, wg *sync.WaitGroup, nConfig Config) Manager {
 	c := make(Manager)
 
 	go func() {
-		msgSlice := make([]string, 0)
+		msgSlice := make([]string, 0) // Collect experiment-specific messages
 		defer wg.Done()
 		for {
 			select {
@@ -63,9 +66,11 @@ func NewManager(ctx context.Context, wg *sync.WaitGroup, nConfig Config) Manager
 					}).Error(e)
 				}
 				return
+
 			case n, chanOpen := <-c:
+				// Channel is closed --> send emails
 				if !chanOpen {
-					//notificationMsg := strings.Join(msgSlice, "\n - ")
+					// If running for real, send the experiment email
 					if !nConfig.IsTest {
 						if len(msgSlice) > 0 {
 							if err := SendExperimentEmail(ctx, nConfig, msgSlice); err != nil {
@@ -77,31 +82,20 @@ func NewManager(ctx context.Context, wg *sync.WaitGroup, nConfig Config) Manager
 						}
 					}
 					return
-				} else {
-					if !n.AdminOnly {
-						msgSlice = append(msgSlice, n.Msg)
-					}
-					adminMsgSlice = append(adminMsgSlice, n.Msg)
 				}
+				// Direct the message as needed
+				if !n.AdminOnly {
+					msgSlice = append(msgSlice, n.Msg)
+				}
+				adminMsgSlice = append(adminMsgSlice, n.Msg)
 			}
 		}
 	}()
 
-	//	go func() {
-	//		wg.Wait()
-	//		if err := SendAdminNotifications(ctx, nConfig); err != nil {
-	//			log.WithFields(log.Fields{
-	//				"caller":     "NewManager",
-	//				"experiment": nConfig.Experiment,
-	//			}).Error("Error sending Admin Notifications")
-	//		}
-	//	}()
-
 	return c
-
 }
 
-// Sends an experiment email
+// SendExperimentEmail sends an experiment-specific error message email based on nConfig
 func SendExperimentEmail(ctx context.Context, nConfig Config, errors []string) (err error) {
 	var wg sync.WaitGroup
 	var b strings.Builder
@@ -140,13 +134,12 @@ func SendExperimentEmail(ctx context.Context, nConfig Config, errors []string) (
 			}).Error("Failed to send experiment email")
 		}
 	}(&wg)
-	// Return error status
-	wg.Wait()
 
+	wg.Wait()
 	return err
 }
 
-// Sends the admin notifications
+// SendAdminNotifications sends admin messages via email and Slack that have been collected in adminMsgSlice
 func SendAdminNotifications(ctx context.Context, nConfig Config, operation string) error {
 	var wg sync.WaitGroup
 	var emailErr, slackErr error
@@ -160,7 +153,6 @@ func SendAdminNotifications(ctx context.Context, nConfig Config, operation strin
 		return slackErr
 	}
 
-	//msg := strings.Join(adminMsgSlice, "\n")
 	wg.Add(2)
 
 	templateFileName := path.Join(nConfig.ConfigInfo["templatedir"], "adminErrors.txt")
@@ -199,17 +191,19 @@ func SendAdminNotifications(ctx context.Context, nConfig Config, operation strin
 	wg.Wait()
 
 	if emailErr != nil || slackErr != nil {
-		return errors.New("Sending admin notifications failed.  Please see logs.")
+		return errors.New("Sending admin notifications failed.  Please see logs")
 	}
 	return nil
 }
 
+// CertExpirationNotification holds information about a service certificate, its expiration date, and whether or not the admins should be warned about that certificate's expiration.
 type CertExpirationNotification struct {
 	Account, DN string
 	DaysLeft    int
 	Warn        bool
 }
 
+// SendCertAlarms sends reports to admins about certificate expiration.  It can be adapted to many templates, as long these templates range over the items in cSlice.
 func SendCertAlarms(ctx context.Context, nConfig Config, cSlice []CertExpirationNotification, templateFname string) error {
 	var wg sync.WaitGroup
 	var emailErr, slackErr error
@@ -253,14 +247,13 @@ func SendCertAlarms(ctx context.Context, nConfig Config, cSlice []CertExpiration
 	wg.Wait()
 
 	if emailErr != nil || slackErr != nil {
-		return errors.New("Sending checkcerts notifications failed.  Please see logs.")
+		return errors.New("Sending checkcerts notifications failed.  Please see logs")
 	}
 	return nil
 
 }
 
-// SendEmail sends emails to both experiments and admins, depending on the input (exptName = "" gives admin email).
-// func SendEmail(ctx context.Context, nConfig Config, exptName, msg string) error {
+// SendEmail sends an email based on nConfig
 func SendEmail(ctx context.Context, nConfig Config, msg string) error {
 	if nConfig.IsTest {
 		log.Info("This is a test.  Not sending email")
@@ -276,7 +269,6 @@ func SendEmail(ctx context.Context, nConfig Config, msg string) error {
 		Host: nConfig.ConfigInfo["smtphost"],
 		Port: port,
 	}
-	//message := addHelperMessage(msg, nConfig.Experiment)
 
 	m := gomail.NewMessage()
 	m.SetHeader("From", nConfig.From)
@@ -360,17 +352,4 @@ func SendSlackMessage(ctx context.Context, nConfig Config, message string) error
 	}
 	log.Info("Slack message sent")
 	return nil
-}
-
-func addHelperMessage(msg, expt string) string {
-	help := "\n\nWe've compiled a list of common errors here: " +
-		"https://cdcvs.fnal.gov/redmine/projects/fife/wiki/Common_errors_with_Managed_Proxies_Service. " +
-		"\n\nIf you have any questions or comments about these emails, " +
-		"please open a Service Desk ticket to the Distributed Computing " +
-		"Support group."
-
-	if expt == "" {
-		return msg
-	}
-	return msg + help
 }

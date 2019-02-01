@@ -53,7 +53,7 @@ type BasicPromPush struct {
 	R *prometheus.Registry
 }
 
-// RegisterMetrics is a setup function used to register the metrics needed throughout the running of the proxy push
+// RegisterMetrics is a setup function used to register the metrics needed throughout the running of the managed proxy service
 func (b BasicPromPush) RegisterMetrics() error {
 	if err := b.R.Register(promDuration); err != nil {
 		return errors.New("Could not register promTotalDuration metric for monitoring")
