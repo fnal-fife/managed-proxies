@@ -9,11 +9,11 @@ import (
 	"strings"
 	"time"
 
+	log "github.com/sirupsen/logrus"
+
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/node"
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/notifications"
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/proxy"
-
-	log "github.com/sirupsen/logrus"
 )
 
 var kinitExecutable = "/usr/krb5/bin/kinit"

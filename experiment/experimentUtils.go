@@ -11,8 +11,9 @@ import (
 	"sync"
 	"time"
 
-	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/proxy"
 	log "github.com/sirupsen/logrus"
+
+	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/proxy"
 )
 
 // vomsProxyInitStatus stores information about an attempt to run voms-proxy-init to generate a VOMS proxy.
