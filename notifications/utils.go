@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"path"
 	"strings"
 	"sync"
 	"text/template"
@@ -65,15 +64,21 @@ func NewManager(ctx context.Context, wg *sync.WaitGroup, nConfig Config) Manager
 	return c
 }
 
-// SendExperimentEmail sends an experiment-specific error message email based on nConfig
-func SendExperimentEmail(ctx context.Context, nConfig Config, errors []string) (err error) {
+// SendExperimentEmail sends an experiment-specific error message email based on nConfig.  It expects a valid template file configured at notifications.experiment_template
+func SendExperimentEmail(ctx context.Context, nConfig Config, errorsSlice []string) (err error) {
 	var wg sync.WaitGroup
 	var b strings.Builder
 
 	wg.Add(1)
 
-	templateFileName := path.Join(nConfig.ConfigInfo["templatedir"], "proxyPushExperimentError.txt")
-	templateData, err := ioutil.ReadFile(templateFileName)
+	experimentTemplateFile, ok := nConfig.ConfigInfo["experiment_template"]
+	if !ok {
+		err := "experiment_template is not configured in the notifications section of the configuration file"
+		log.WithField("caller", "SendAdminNotifications").Error("experiment_template is not configured in the notifications section of the configuration file")
+		return errors.New(err)
+	}
+
+	templateData, err := ioutil.ReadFile(experimentTemplateFile)
 	if err != nil {
 		log.WithFields(log.Fields{
 			"caller":     "SendAdminNotifications",
@@ -86,7 +91,7 @@ func SendExperimentEmail(ctx context.Context, nConfig Config, errors []string) (
 	if err = exptEmailTemplate.Execute(&b, struct {
 		ErrorMessages []string
 	}{
-		ErrorMessages: errors,
+		ErrorMessages: errorsSlice,
 	}); err != nil {
 		log.WithFields(log.Fields{
 			"caller":     "SendAdminNotifications",
@@ -109,7 +114,7 @@ func SendExperimentEmail(ctx context.Context, nConfig Config, errors []string) (
 	return err
 }
 
-// SendAdminNotifications sends admin messages via email and Slack that have been collected in adminMsgSlice
+// SendAdminNotifications sends admin messages via email and Slack that have been collected in adminMsgSlice. It expects a valid template file configured at notifications.admin_template.
 func SendAdminNotifications(ctx context.Context, nConfig Config, operation string) error {
 	var wg sync.WaitGroup
 	var emailErr, slackErr error
@@ -123,10 +128,16 @@ func SendAdminNotifications(ctx context.Context, nConfig Config, operation strin
 		return slackErr
 	}
 
+	adminTemplateFile, ok := nConfig.ConfigInfo["admin_template"]
+	if !ok {
+		err := "admin_template is not configured in the notifications section of the configuration file"
+		log.WithField("caller", "SendAdminNotifications").Error("admin_template is not configured in the notifications section of the configuration file")
+		return errors.New(err)
+	}
+
 	wg.Add(2)
 
-	templateFileName := path.Join(nConfig.ConfigInfo["templatedir"], "adminErrors.txt")
-	templateData, err := ioutil.ReadFile(templateFileName)
+	templateData, err := ioutil.ReadFile(adminTemplateFile)
 	if err != nil {
 		log.WithField("caller", "SendAdminNotifications").Errorf("Could not read admin error template file: %s", err)
 		return err
@@ -174,14 +185,13 @@ type CertExpirationNotification struct {
 }
 
 // SendCertAlarms sends reports to admins about certificate expiration.  It can be adapted to many templates, as long these templates range over the items in cSlice.
-func SendCertAlarms(ctx context.Context, nConfig Config, cSlice []CertExpirationNotification, templateFname string) error {
+func SendCertAlarms(ctx context.Context, nConfig Config, cSlice []CertExpirationNotification, templateFileName string) error {
 	var wg sync.WaitGroup
 	var emailErr, slackErr error
 	var b strings.Builder
 
 	wg.Add(2)
 
-	templateFileName := path.Join(nConfig.ConfigInfo["templatedir"], templateFname)
 	templateData, err := ioutil.ReadFile(templateFileName)
 	if err != nil {
 		log.WithField("caller", "SendCertAlarms").Errorf("Could not read checkcerts template file: %s", err)

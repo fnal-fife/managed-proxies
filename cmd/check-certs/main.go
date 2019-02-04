@@ -162,7 +162,7 @@ func main() {
 	var wg sync.WaitGroup
 	mux := &sync.Mutex{}
 	var needAlarm bool
-	var templateKey = "templateOK"
+	var templateFile = viper.GetString("checkcerts.templateOK")
 
 	//var existsExpiringCerts bool
 	// certExpiration := make(map[string]time.Time)
@@ -283,7 +283,7 @@ func main() {
 	fNotes := make([]notifications.CertExpirationNotification, 0)
 
 	if needAlarm {
-		templateKey = "templateAlarm"
+		templateFile = viper.GetString("checkcerts.templateAlarm")
 		for _, c := range cNotes {
 			if c.Warn {
 				fNotes = append(fNotes, c)
@@ -298,9 +298,7 @@ func main() {
 		nConfig.Subject = nConfig.Subject + " - no issues"
 	}
 
-	tFname := viper.GetString(fmt.Sprintf("checkcerts.%s", templateKey))
-
-	if err := notifications.SendCertAlarms(ctx, nConfig, fNotes, tFname); err != nil {
+	if err := notifications.SendCertAlarms(ctx, nConfig, fNotes, templateFile); err != nil {
 		log.WithField("caller", "main").Error("Error sending Cert Alarms")
 	}
 
