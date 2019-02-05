@@ -27,9 +27,8 @@ import (
 const configFile string = "managedProxies.yml"
 
 var (
-	nConfig   notifications.Config
-	tConfig   map[string]time.Duration
-	krbConfig experiment.KerbConfig
+	nConfig notifications.Config
+	tConfig map[string]time.Duration
 
 	startSetup      time.Time
 	startProcessing time.Time
@@ -58,8 +57,8 @@ func init() {
 		panic(fmt.Errorf("Fatal error config file: %s", err))
 	}
 
-	log.SetLevel(log.DebugLevel)
 	// Set up logs
+	log.SetLevel(log.DebugLevel)
 	log.AddHook(lfshook.NewHook(lfshook.PathMap{
 		log.DebugLevel: viper.GetString("logs.debugfile"),
 		log.InfoLevel:  viper.GetString("logs.debugfile"),
@@ -130,12 +129,6 @@ func init() {
 		tConfig[newName] = value
 	}
 
-	// Kerberos config
-	krbConfig := make(experiment.KerbConfig)
-	for key, value := range viper.GetStringMapString("kerberos") {
-		krbConfig[key] = value
-	}
-
 	log.WithFields(log.Fields{"caller": "main.init"}).Debug("Read in config file to config structs")
 
 	// Set up prometheus pusher
@@ -163,29 +156,9 @@ func main() {
 	mux := &sync.Mutex{}
 	var needAlarm bool
 	var templateFile = viper.GetString("checkcerts.templateOK")
-
-	//var existsExpiringCerts bool
-	// certExpiration := make(map[string]time.Time)
 	cNotes := make([]notifications.CertExpirationNotification, 0)
 	ctx, cancel := context.WithTimeout(context.Background(), tConfig["globaltimeoutDuration"])
-
-	/* Order of defers (in execution order):
-	* Close notification manager
-	* Wait on notification waitgroup
-	* Push prometheus timestamp
-	* Send admin notifications
-	* Cancel global context
-	 */
 	defer cancel()
-
-	//	// Start notifications manager, just for admin
-	//
-	//	// Send admin notifications at the end
-	//
-	//	nwg.Add(1)
-	//	defer nwg.Wait()
-	//	nMgr := notifications.NewManager(ctx, &nwg, nConfig)
-	//	defer close(nMgr)
 
 	// Get list of experiments
 	exptConfigs := make([]experiment.ExptConfig, 0, len(viper.GetStringMap("experiments"))) // Slice of experiment configurations
@@ -205,6 +178,7 @@ func main() {
 		log.WithFields(log.Fields{"caller": "main"}).Errorf("Error recording time to setup, %s", err.Error())
 	}
 	startProcessing = time.Now()
+	// After we exit, push processing timestamp
 	defer func() {
 		if err := promPush.PushPromDuration(startProcessing, "check-certs", "processing"); err != nil {
 			log.WithFields(log.Fields{"caller": "main"}).Errorf("Error recording time to setup, %s", err.Error())
@@ -217,7 +191,6 @@ func main() {
 
 	for _, eConfig := range exptConfigs {
 		wg.Add(1)
-		// warnMsg := "%s\t%d days\t%s"
 		go func(e experiment.ExptConfig) {
 			defer wg.Done()
 			for account := range e.Accounts {
@@ -241,14 +214,10 @@ func main() {
 				if err != nil || s == nil {
 					msg := "Could not ingest service certificate from cert and key file"
 					log.WithField("experiment", e.Name).Error(msg)
-					//					nMsg := msg + " for experiment " + e.Name
-					//					nMgr <- notifications.Notification{
-					//						Msg:       nMsg,
-					//						AdminOnly: true,
-					//					}
 					return
 				}
 
+				// Figure out how much time is left
 				timeLeft := time.Until(s.Expiration)
 				numDays := int(math.Round(timeLeft.Hours() / 24.0))
 				c := notifications.CertExpirationNotification{
@@ -263,10 +232,6 @@ func main() {
 						"DN":         s.DN,
 						"daysLeft":   numDays,
 					}).Warn("Service cert expiring soon")
-					//					nMgr <- notifications.Notification{
-					//						Msg:       fmt.Sprintf(warnMsg, account, numDays, s.DN),
-					//						AdminOnly: true,
-					//					}
 					c.Warn = true
 					needAlarm = true
 				}
@@ -280,6 +245,7 @@ func main() {
 
 	wg.Wait()
 
+	// Send notification
 	fNotes := make([]notifications.CertExpirationNotification, 0)
 
 	if needAlarm {
