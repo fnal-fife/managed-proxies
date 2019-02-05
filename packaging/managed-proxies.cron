@@ -1,0 +1,5 @@
+# Cron.d file for managed-proxies
+
+# 58 1,5,9,13,17,21 * * *  /usr/local/bin/proxy-push > /dev/null 2>&1
+# 00 06 * * * /usr/local/bin/store-in-myproxy > /dev/null 2>&1
+# 05 05 * * 1  /usr/local/bin/check-certs
