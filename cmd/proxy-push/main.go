@@ -2,9 +2,7 @@ package main
 
 import (
 	"context"
-	//"errors"
 	"fmt"
-	//"io/ioutil"
 	"net/http"
 	"os"
 	"strconv"
@@ -22,7 +20,6 @@ import (
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/experiment"
 
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/notifications"
-	// "cdcvs.fnal.gov/discompsupp/ken_proxy_push/proxy"
 )
 
 const configFile string = "managedProxies.yml"
@@ -30,14 +27,9 @@ const configFile string = "managedProxies.yml"
 // Sub-config types
 
 var (
-	//log            = log.NewEntry(log.New()) // Global logger
-	tConfig experiment.TimeoutsConfig
-	nConfig notifications.Config
-	//lConfig        proxyPushLogger.LogsConfig
-	//vConfig        experimentutil.VPIConfig
+	tConfig   experiment.TimeoutsConfig
+	nConfig   notifications.Config
 	krbConfig experiment.KerbConfig
-	//pConfig        experimentutil.PingConfig
-	//sConfig        experimentutil.SSHConfig
 
 	promPush       notifications.BasicPromPush
 	prometheusUp   = true
@@ -90,16 +82,6 @@ func init() {
 
 	log.Debugf("Using config file %s", viper.GetString("configfile"))
 
-	//	// Set up the logConfig to pass to other packages
-	//	lConfig = make(proxyPushLogger.LogsConfig)
-	//	for key, value := range viper.GetStringMapString("logs") {
-	//		lConfig[key] = value
-	//	}
-	//
-	//	log = proxyPushLogger.New("", lConfig)
-	//
-	//	log.Debugf("Using config file %s", viper.GetString("configfile"))
-
 	// Set up notifications
 	nConfig.ConfigInfo = make(map[string]string)
 	nKey = "notifications"
@@ -117,7 +99,6 @@ func init() {
 	timestamp := time.Now().Format(time.RFC822)
 	nConfig.Subject = fmt.Sprintf("Managed Proxy Service Errors - Proxy Push - %s", timestamp)
 	setAdminEmail(&nConfig)
-	//nConfig.Logger = g
 
 	// Now that our log is set up and we've got a valid config, handle all init (fatal) errors using the following func
 	// that logs the error, sends a slack message and an email, cleans up, and then exits.
@@ -160,31 +141,10 @@ func init() {
 		tConfig[newName] = value
 	}
 
-	//	// Set up voms-proxy-init config object
-	//	vConfig = make(experimentutil.VPIConfig)
-	//	for key, value := range viper.GetStringMapString("vomsproxyinit") {
-	//		if key != "defaultvomsprefixroot" {
-	//			vConfig[key] = value
-	//		}
-	//	}
-
-	// Set up kerb config object
 	krbConfig = make(experiment.KerbConfig)
 	for key, value := range viper.GetStringMapString("kerberos") {
 		krbConfig[key] = value
 	}
-
-	//	// Set up ping config object
-	//	pConfig = make(experimentutil.PingConfig)
-	//	for key, value := range viper.GetStringMapString("ping") {
-	//		pConfig[key] = value
-	//	}
-	//
-	//	// Set up ssh config object
-	//	sConfig = make(experimentutil.SSHConfig)
-	//	for key, value := range viper.GetStringMapString("ssh") {
-	//		sConfig[key] = value
-	//	}
 
 	log.WithFields(log.Fields{"caller": "main.init"}).Debug("Read in config file to config structs")
 
@@ -208,7 +168,6 @@ func init() {
 	}
 }
 
-//func cleanup(exptStatus map[string]bool, exptConfigs []experimentutil.ExptConfig) error {
 func cleanup(exptStatus map[string]bool, expts []string) error {
 	// Since cleanup happens in all cases after the proxy push starts, we stop that timer and push the metric here
 	if viper.GetString("experiment") == "" {
@@ -219,26 +178,6 @@ func cleanup(exptStatus map[string]bool, expts []string) error {
 		}
 	}
 
-	// startCleanup = time.Now()
-
-	// Logger to use to log errors during cleanup _after_ the error file has been deleted
-	//	finalCleanupLogErr := log.New() // One-use logrus instance to log an error to the general file
-	//	finalCleanupLogErr.AddHook(lfshook.NewHook(lfshook.PathMap{
-	//		log.ErrorLevel: viper.GetString("logs.logfile"),
-	//	}, &log.TextFormatter{FullTimestamp: true}))
-	//
-	//	defer func() {
-	//		if viper.GetString("experiment") == "" {
-	//			// Only push this metric if we ran for all experiments to keep data consistent
-	//			if err := promPush.PushPromDuration(startCleanup, "cleanup"); err != nil {
-	//				msg := "Error recording time to cleanup, " + err.Error()
-	//				log.Error(msg)
-	//				notifications.SendSlackMessage(context.Background(), nConfig, msg)
-	//			}
-	//		}
-	//	}()
-
-	// TODO
 	s := make([]string, 0, len(expts))
 	f := make([]string, 0, len(expts))
 
@@ -261,65 +200,12 @@ func cleanup(exptStatus map[string]bool, expts []string) error {
 	// Defining this defer func here so we have the correct failure count
 	defer func() {
 		if err := promPush.PushCountErrors(len(f)); err != nil {
-			//finalCleanupLogErr.Error(err.Error())
 			log.Error(err.Error())
 			notifications.SendSlackMessage(context.Background(), nConfig, err.Error())
 		}
 	}()
 
 	log.Infof("Successes: %v\nFailures: %v\n", strings.Join(s, ", "), strings.Join(f, ", "))
-
-	//	if _, err := os.Stat(viper.GetString("logs.errfile")); os.IsNotExist(err) {
-	//		log.Info("Proxy Push completed with no errors")
-	//		if viper.GetBool("test") {
-	//			slackCtx, slackCancel := context.WithTimeout(context.Background(), tConfig["slacktimeoutDuration"])
-	//			msg := "Proxies were pushed in test mode for all tested experiments successfully."
-	//			if err = notifications.SendSlackMessage(slackCtx, nConfig, msg); err != nil {
-	//				log.WithFields(log.Fields{"caller": "main.cleanup"}).Error("Error sending slack message")
-	//			}
-	//			slackCancel()
-	//		}
-	//		return nil
-	//	}
-
-	//	// We have an error file, so presumably we have errors.  Read the errorfile and send notifications
-	//	data, err := ioutil.ReadFile(viper.GetString("logs.errfile"))
-	//	if err != nil {
-	//		return err
-	//	}
-	//
-	//	finalCleanupSuccess := true
-	//	msg := string(data)
-	//
-	//	setAdminEmail(&nConfig)
-	//	nConfig.Subject = "Managed Proxy Service Errors for all experiments"
-	//	emailCtx, emailCancel := context.WithTimeout(context.Background(), tConfig["emailtimeoutDuration"])
-	//	if err = notifications.SendEmail(emailCtx, nConfig, msg); err != nil {
-	//		log.WithFields(log.Fields{"caller": "main.cleanup"}).Error("Error sending email")
-	//		finalCleanupSuccess = false
-	//	}
-	//	emailCancel()
-	//
-	//	slackCtx, slackCancel := context.WithTimeout(context.Background(), tConfig["slacktimeoutDuration"])
-	//	if err = notifications.SendSlackMessage(slackCtx, nConfig, msg); err != nil {
-	//		log.WithFields(log.Fields{"caller": "main.cleanup"}).Error("Error sending slack message")
-	//		finalCleanupSuccess = false
-	//	}
-	//	slackCancel()
-	//
-	//	if err = os.Remove(viper.GetString("logs.errfile")); err != nil {
-	//		log.WithFields(log.Fields{"caller": "main.cleanup"}).Error("Could not remove general error logfile.  Please clean up manually")
-	//		finalCleanupSuccess = false
-	//	}
-	//	log.WithFields(log.Fields{
-	//		"caller":   "main.cleanup",
-	//		"filename": viper.GetString("logs.errfile"),
-	//	}).Debug("Removed general error logfile")
-	//
-	//	if !finalCleanupSuccess {
-	//		return errors.New("Could not clean up completely.  Please review")
-	//	}
-
 	return nil
 }
 
@@ -370,9 +256,6 @@ func main() {
 				"experiment": viper.GetString("experiment"),
 				"caller":     "main",
 			}).Error("Error setting up experiment configuration slice.  As this is the only experiment, we will cleanup now.")
-			//			if err := cleanup(exptSuccesses, exptConfigs); err != nil {
-			//				log.WithFields(log.Fields{"caller": "main"}).Error("Unable to cleanup")
-			//			}
 			os.Exit(1)
 		}
 		exptConfigs = append(exptConfigs, eConfig)

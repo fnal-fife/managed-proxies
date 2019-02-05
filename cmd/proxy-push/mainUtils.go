@@ -7,8 +7,6 @@ import (
 	"os/user"
 	"sync"
 
-	//"cdcvs.fnal.gov/discompsupp/ken_proxy_push/experimentutil"
-	//"cdcvs.fnal.gov/discompsupp/ken_proxy_push/proxyPushLogger"
 	"github.com/jinzhu/copier"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
@@ -16,74 +14,6 @@ import (
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/experiment"
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/notifications"
 )
-
-// createExptConfig takes the config information from the global file and creates an exptConfig object
-//func createExptConfig(expt string) (experimentutil.ExptConfig, error) {
-//	var vomsprefix, certfile, keyfile string
-//	var c experimentutil.ExptConfig
-//
-//	exptKey := "experiments." + expt
-//	if !viper.IsSet(exptKey) {
-//		err := errors.New("Experiment is not configured in the configuration file")
-//		log.WithFields(logrus.Fields{
-//			"experiment": expt,
-//		}).Error(err)
-//		return c, err
-//	}
-//
-//	exptSubConfig := viper.Sub(exptKey)
-//
-//	if exptSubConfig.IsSet("vomsgroup") {
-//		vomsprefix = exptSubConfig.GetString("vomsgroup")
-//	} else {
-//		vomsprefix = viper.GetString("vomsproxyinit.defaultvomsprefixroot") + expt + "/"
-//	}
-//
-//	if exptSubConfig.IsSet("certfile") {
-//		certfile = exptSubConfig.GetString("certfile")
-//	}
-//	if exptSubConfig.IsSet("keyfile") {
-//		keyfile = exptSubConfig.GetString("keyfile")
-//	}
-//
-//	// Notifications setup
-//	n := notifications.Config{}
-//	copier.Copy(&n, &nConfig)
-//	n.Experiment = expt
-//	n.From = viper.GetString("notifications.admin_email")
-//	if !viper.GetBool("test") {
-//		n.To = exptSubConfig.GetStringSlice("emails")
-//	}
-//	n.Subject = "Managed Proxy Push errors for " + expt
-//
-//	c = experimentutil.ExptConfig{
-//		Name:           expt,
-//		CertBaseDir:    viper.GetString("global.cert_base_dir"),
-//		Krb5ccname:     viper.GetString("global.krb5ccname"),
-//		DestDir:        exptSubConfig.GetString("dir"),
-//		Nodes:          exptSubConfig.GetStringSlice("nodes"),
-//		Accounts:       exptSubConfig.GetStringMapString("accounts"),
-//		VomsPrefix:     vomsprefix,
-//		CertFile:       certfile,
-//		KeyFile:        keyfile,
-//		IsTest:         viper.GetBool("test"),
-//		NConfig:        n,
-//		TimeoutsConfig: tConfig,
-//		LogsConfig:     lConfig,
-//		VPIConfig:      vConfig,
-//		KerbConfig:     krbConfig,
-//		PingConfig:     pConfig,
-//		SSHConfig:      sConfig,
-//		Logger:         proxyPushLogger.New(expt, lConfig),
-//	}
-//
-//	// Put this on to set the notifications logger
-//	c.NConfig.Logger = c.Logger
-//
-//	c.Logger.Debug("Set up experiment config")
-//	return c, nil
-//
-//}
 
 // manageExperimentChannels starts up the various experimentutil.Workers and listens for their response.  It puts these
 // statuses into an aggregate channel.
@@ -184,26 +114,6 @@ func manageExperimentChannels(ctx context.Context, exptConfigs []experiment.Expt
 	return agg
 }
 
-func checkUser(authuser string) error {
-	cuser, err := user.Current()
-	if err != nil {
-		return errors.New("Could not lookup current user.  Exiting")
-	}
-	log.Debug("Running script as ", cuser.Username)
-	if cuser.Username != authuser {
-		return fmt.Errorf("This must be run as %s.  Trying to run as %s", authuser, cuser.Username)
-	}
-	return nil
-}
-
-// setAdminEmail sets the notifications config objects' From and To fields to the config file's admin value
-func setAdminEmail(pnConfig *notifications.Config) {
-	pnConfig.From = pnConfig.ConfigInfo["admin_email"]
-	pnConfig.To = []string{pnConfig.ConfigInfo["admin_email"]}
-	log.Debug("Set notifications config email values to admin defaults")
-	return
-}
-
 // createExptConfig takes the config information from the global file and creates an exptConfig object
 func createExptConfig(expt string) (experiment.ExptConfig, error) {
 	var vomsprefix, certfile, keyfile string
@@ -249,4 +159,25 @@ func createExptConfig(expt string) (experiment.ExptConfig, error) {
 	log.WithField("experiment", c.Name).Debug("Set up experiment config")
 	return c, nil
 
+}
+
+// checkUser verifies that the current user is the authorized user to run this executable
+func checkUser(authuser string) error {
+	cuser, err := user.Current()
+	if err != nil {
+		return errors.New("Could not lookup current user.  Exiting")
+	}
+	log.Debug("Running script as ", cuser.Username)
+	if cuser.Username != authuser {
+		return fmt.Errorf("This must be run as %s.  Trying to run as %s", authuser, cuser.Username)
+	}
+	return nil
+}
+
+// setAdminEmail sets the notifications config objects' From and To fields to the config file's admin value
+func setAdminEmail(pnConfig *notifications.Config) {
+	pnConfig.From = pnConfig.ConfigInfo["admin_email"]
+	pnConfig.To = []string{pnConfig.ConfigInfo["admin_email"]}
+	log.Debug("Set notifications config email values to admin defaults")
+	return
 }
