@@ -5,6 +5,7 @@ import (
 	"testing"
 )
 
+// TestGetArgsFromTemplate makes sure that GetArgsFromTemplate correctly splits the template string into command arguments
 func TestGetArgsFromTemplate(t *testing.T) {
 	tests := []struct {
 		inString       string
@@ -48,6 +49,7 @@ func TestGetArgsFromTemplate(t *testing.T) {
 	}
 }
 
+// TestCheckForExecutables makes sure that CheckForExecutables correctly finds common executables, and that we get the right error if one is not found
 func TestCheckForExecutables(t *testing.T) {
 	tests := []struct {
 		exeMap        map[string]string

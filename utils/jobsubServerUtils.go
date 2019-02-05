@@ -16,16 +16,10 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-//const (
-//	// These will all move to a config file
-//	caPath                = "/etc/grid-security/certificates/"
-//	jobsubServer          = "fifebatch.fnal.gov"
-//	cigetcertoptsEndpoint = "cigetcertopts.txt"
-//	defaultRetrievers     = "(/DC=com/DC=DigiCert-Grid|/DC=org/DC=opensciencegrid)/O=Open Science Grid/OU=Services/CN=fermicloud(0|1|2|3|4|5|6|7|8|9)(0|1|2|3|4|5|6|7|8|9)(0|1|2|3|4|5|6|7|8|9).fnal.gov"
-//)
-
+// HTTPSClient is a client that will be used to make various https connections
 var HTTPSClient *http.Client
 
+// StartHTTPSClient creates an *http.Client and assigns it to HTTPSClient
 func StartHTTPSClient(caPath string) error {
 	// HTTPS client
 	caCertSlice := make([]string, 0)
@@ -68,6 +62,7 @@ func StartHTTPSClient(caPath string) error {
 	return nil
 }
 
+// GetRetrievers uses HTTPSClient to contact a jobsub server, and retrieves the myproxyretrievers string from the cigetcertOptsEndpoint
 func GetRetrievers(ctx context.Context, jobsubServer, cigetcertOptsEndpoint string) (string, error) {
 	if HTTPSClient == nil {
 		return "", errors.New("HTTPS Client was not started")
@@ -113,6 +108,7 @@ func GetRetrievers(ctx context.Context, jobsubServer, cigetcertOptsEndpoint stri
 	return retrieversSlice[0], nil
 }
 
+// CheckRetrievers is a helper function that simply checks if the myproxyretrievers and expected retrievers match
 func CheckRetrievers(retrievers, defaultRetrievers string) error {
 	if retrievers != defaultRetrievers {
 		err := "Attention:  The retrievers on the jobsub server do not match the default retrievers"
@@ -125,6 +121,7 @@ func CheckRetrievers(retrievers, defaultRetrievers string) error {
 	return nil
 }
 
+// getCigetcertopts connects to a web server at the specified endpoint using HTTPSClient, and returns the response if it is valid
 func getCigetcertopts(ctx context.Context, server, endpoint string) ([]byte, error) {
 	data := make([]byte, 0)
 	queryEndpoint := fmt.Sprintf("https://%s/%s", server, endpoint)

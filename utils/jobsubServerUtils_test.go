@@ -5,6 +5,7 @@ import (
 	"testing"
 )
 
+// TestCheckRetrievers makes sure that given differing sets of retrievers and defaultRetrievers, we get the correct error
 func TestCheckRetrievers(t *testing.T) {
 	tests := []struct {
 		retrievers, defaultRetrievers string
