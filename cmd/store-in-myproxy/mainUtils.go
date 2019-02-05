@@ -51,7 +51,6 @@ func createExptConfig(expt string) (experiment.ExptConfig, error) {
 		CertFile:       certfile,
 		KeyFile:        keyfile,
 		TimeoutsConfig: tConfig,
-		KerbConfig:     krbConfig,
 	}
 
 	log.WithField("experiment", c.Name).Debug("Set up experiment config")

@@ -26,9 +26,8 @@ import (
 const configFile string = "managedProxies.yml"
 
 var (
-	nConfig   notifications.Config
-	tConfig   map[string]time.Duration
-	krbConfig experiment.KerbConfig
+	nConfig notifications.Config
+	tConfig map[string]time.Duration
 
 	startSetup      time.Time
 	startProcessing time.Time
@@ -128,12 +127,6 @@ func init() {
 		}
 		newName := timeoutName + "Duration"
 		tConfig[newName] = value
-	}
-
-	// Kerberos config
-	krbConfig := make(experiment.KerbConfig)
-	for key, value := range viper.GetStringMapString("kerberos") {
-		krbConfig[key] = value
 	}
 
 	log.WithFields(log.Fields{"caller": "main.init"}).Debug("Read in config file to config structs")
