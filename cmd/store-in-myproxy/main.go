@@ -290,17 +290,17 @@ func main() {
 
 				defer func() {
 					r := recover()
-					msg := fmt.Sprintf("Recovered from panic:  %s.  Will delete grid proxy", r)
 					if r != nil {
+						msg := fmt.Sprintf("Recovered from panic:  %s.  Will delete grid proxy", r)
 						log.WithFields(log.Fields{
 							"experiment": e.Name,
 							"account":    account,
 						}).Error("r")
-					}
-					nMsg := msg + " for experiment " + e.Name + " and account " + account
-					nMgr <- notifications.Notification{
-						Msg:       nMsg,
-						AdminOnly: true,
+						nMsg := msg + " for experiment " + e.Name + " and account " + account
+						nMgr <- notifications.Notification{
+							Msg:       nMsg,
+							AdminOnly: true,
+						}
 					}
 					g.Remove()
 				}()
