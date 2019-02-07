@@ -258,8 +258,11 @@ func main() {
 				s, err := proxy.NewServiceCert(ctx, certFile, keyFile)
 				if err != nil || s == nil {
 					msg := "Could not ingest service certificate from cert and key file"
-					log.WithField("experiment", e.Name).Error(msg)
-					nMsg := msg + " for experiment " + e.Name
+					log.WithFields(log.Fields{
+						"experiment": e.Name,
+						"account":    account,
+					}).Error(msg)
+					nMsg := msg + " for experiment " + e.Name + " andperiment " + e.Name
 					nMgr <- notifications.Notification{
 						Msg:       nMsg,
 						AdminOnly: true,
@@ -273,18 +276,40 @@ func main() {
 				g, err := proxy.NewGridProxy(gCtx, s, tConfig["gpivalidDuration"])
 				if err != nil {
 					msg := "Could not generate grid proxy object"
-					log.WithField("experiment", e.Name).Error(msg)
-					nMsg := msg + " for experiment " + e.Name
+					log.WithFields(log.Fields{
+						"experiment": e.Name,
+						"account":    account,
+					}).Error(msg)
+					nMsg := msg + " for experiment " + e.Name + " and account " + account
 					nMgr <- notifications.Notification{
 						Msg:       nMsg,
 						AdminOnly: true,
 					}
 					return
 				}
-				defer g.Remove()
+
+				defer func() {
+					r := recover()
+					msg := fmt.Sprintf("Recovered from panic:  %s.  Will delete grid proxy", r)
+					if r != nil {
+						log.WithFields(log.Fields{
+							"experiment": e.Name,
+							"account":    account,
+						}).Error("r")
+					}
+					nMsg := msg + " for experiment " + e.Name + " and account " + account
+					nMgr <- notifications.Notification{
+						Msg:       nMsg,
+						AdminOnly: true,
+					}
+					g.Remove()
+				}()
 
 				if viper.GetBool("test") {
-					log.WithField("experiment", e.Name).Info("Test mode.  Stopping here")
+					log.WithFields(log.Fields{
+						"experiment": e.Name,
+						"account":    account,
+					}).Info("Test mode.  Stopping here")
 					return
 				}
 

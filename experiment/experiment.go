@@ -263,8 +263,19 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 			}
 		}
 
-		// Remove VOMS proxies that have been generated after Worker returns
+		// Remove VOMS proxies that have been generated after Worker returns, or if there's a panic
 		defer func() {
+			r := recover()
+			if r != nil {
+				msg := fmt.Sprintf("Recovered from panic:  %s.  Will clean up voms proxies", r)
+				log.WithField("experiment", eConfig.Name).Error(msg)
+				nMsg := msg + " for experiment " + eConfig.Name
+				nMgr <- notifications.Notification{
+					Msg:       nMsg,
+					AdminOnly: true,
+				}
+			}
+
 			for _, v := range vomsProxies {
 				if err := v.Remove(); err != nil {
 					nMsg := "Failed to clean up experiment: could not delete VOMS proxy."
