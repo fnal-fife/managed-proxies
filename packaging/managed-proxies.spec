@@ -1,5 +1,5 @@
 Name:           managed-proxies
-Version:        2.0 
+Version:        2.0
 Release:        1
 Summary:        Service to create VOMS proxies from service certificates and distribute them to experiment nodes
 
@@ -9,7 +9,7 @@ URL:            https://cdcvs.fnal.gov/redmine/projects/discompsupp/wiki/MANAGED
 Source0:        %{name}-%{version}.tar.gz
 BuildRoot:      %(mktemp -ud %{_tmppath}/%{name}-%{version}-XXXXXX)
 
-BuildArch:      x86_64 
+BuildArch:      x86_64
 
 # Requires:       fermilab-util_kx509
 # Requires:       cigetcert
@@ -23,7 +23,7 @@ Service to create VOMS proxies from service certificates and distribute them to 
 
 %prep
 test ! -d %{buildroot} || {
-    rm -rf %{buildroot}
+rm -rf %{buildroot}
 }
 %setup -q
 
@@ -70,7 +70,7 @@ rm -rf %{buildroot}
 
 %post
 test -d /var/log/%{name} || {
-    install -d /var/log/%{name} -m 0774 -o rexbatch -g fife
+install -d /var/log/%{name} -m 0774 -o rexbatch -g fife
 }
 
 %changelog

@@ -1,6 +1,4 @@
 package packaging
 
-const (
-	// Version of Managed Proxies library
-	Version = "2.0"
-)
+// Version of Managed Proxies library
+const Version = "2.0"
