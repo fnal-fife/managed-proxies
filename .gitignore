@@ -1,2 +1,6 @@
 *.py[cod]
 *.log
+proxypush
+cmd/proxy-push/proxy-push
+cmd/store-in-myproxy/store-in-myproxy
+cmd/check-certs/check-certs

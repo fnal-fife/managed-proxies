@@ -1,0 +1,10 @@
+In the most recent push of your experiment's managed proxies to the destination nodes, there were a few errors.  Please review them below and take any action if necessary.  If you have any questions, please open a Service Desk ticket to the Distributed Computing Support group.
+
+{{range .ErrorMessages}}
+  - {{.}}
+{{end}}
+
+Thank you very much,
+The FIFE group
+
+{{/* This template is to report the errors that occurred in the current run of proxy-push to the applicable experiments. */}}

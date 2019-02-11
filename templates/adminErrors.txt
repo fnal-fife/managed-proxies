@@ -1,0 +1,7 @@
+The following errors were reported by the Managed Proxies service while performing operation {{.Operation}}:
+
+{{range .ErrorMessages}}
+  - {{.}}
+{{end}}
+
+{{/* This template is to report error messages from the proxy-push and myproxy-store executables to the administrators.  */}}

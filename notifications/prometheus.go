@@ -12,17 +12,29 @@ var (
 	promDuration = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: "proxy_push",
 		Name:      "duration_seconds",
-		Help:      "The amount of time it took to run a stage (setup|proxypush|cleanup) of the Managed Proxies Service script",
+		Help:      "The amount of time it took to run a stage (setup|proxypush|cleanup) of a Managed Proxies Service executable",
 	},
 		[]string{
+			"operation",
 			"stage",
+		},
+	)
+
+	myProxyStoreTime = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: "proxy_push",
+			Name:      "last_myproxy_timestamp",
+			Help:      "The timestamp of the last successful storage of a grid proxy in the configured myproxy server",
+		},
+		[]string{
+			"dn",
 		},
 	)
 
 	proxyPushTime = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Namespace: "proxy_push",
-			Name:      "last_timestamp",
+			Name:      "last_proxypush_timestamp",
 			Help:      "The timestamp of the last successful proxy push of a VOMS proxy to a node",
 		},
 		[]string{
@@ -41,10 +53,14 @@ type BasicPromPush struct {
 	R *prometheus.Registry
 }
 
-// RegisterMetrics is a setup function used to register the metrics needed throughout the running of the proxy push
+// RegisterMetrics is a setup function used to register the metrics needed throughout the running of the managed proxy service
 func (b BasicPromPush) RegisterMetrics() error {
 	if err := b.R.Register(promDuration); err != nil {
 		return errors.New("Could not register promTotalDuration metric for monitoring")
+	}
+
+	if err := b.R.Register(myProxyStoreTime); err != nil {
+		return errors.New("Could not register myProxyStoreTime metric for monitoring")
 	}
 
 	if err := b.R.Register(proxyPushTime); err != nil {
@@ -57,6 +73,14 @@ func (b BasicPromPush) RegisterMetrics() error {
 // configured in b with the arguments as labels
 func (b BasicPromPush) PushNodeRoleTimestamp(experiment, node, role string) error {
 	proxyPushTime.WithLabelValues(experiment, node, role).SetToCurrentTime()
+	err := b.P.Add()
+	return err
+}
+
+// PushMyProxyStoreTime sets the value of myProxyStoreTime to the current time, and pushes that metric to the Pushgateway
+// configured in b with the arguments as labels
+func (b BasicPromPush) PushMyProxyStoreTime(dn string) error {
+	myProxyStoreTime.WithLabelValues(dn).SetToCurrentTime()
 	err := b.P.Add()
 	return err
 }
@@ -83,8 +107,8 @@ func (b BasicPromPush) PushCountErrors(numErrors int) error {
 
 // PushPromDuration sets the value of promDuration to the time since start, and pushes that metric to the Pushgateway configured in b
 // with the stage argument as a labels
-func (b BasicPromPush) PushPromDuration(start time.Time, stage string) error {
-	promDuration.WithLabelValues(stage).Set(time.Since(start).Seconds())
+func (b BasicPromPush) PushPromDuration(start time.Time, operation, stage string) error {
+	promDuration.WithLabelValues(operation, stage).Set(time.Since(start).Seconds())
 	err := b.P.Add()
 	return err
 }

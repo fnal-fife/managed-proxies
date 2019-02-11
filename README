@@ -1,3 +1,21 @@
-Put some stuff here about installation instructions
+Installation:
 
-Note that if anyone wants to develop, they'll need to clone git repo into $GOPATH/src/fnal.gov/sbhat for imports to work correctly
+The Managed Proxies service can be run from this repository by building any (or all of) the three executables:
+   1.  check-certs: Check the certs configured in the config file for their expiration date.  Send an email to admins if that date is sooner than a configured duration from now.
+   2.  store-in-myproxy:  Create grid proxies from the service certs and store them in a configured myproxy server
+   3.  proxy-push:  Create VOMS proxies from the service certs and push them to configured nodes.
+
+To build any of these, make sure this repository is cloned in your $GOPATH at the right location ($GOPATH/src/cdcvs.fnal.gov/discompsupp/ken_proxy_push), navigate to the appropriate directory under cmd/, and run "GOOS=linux go build" (assuming you want to build a linux binary).  So for example, if you want to build the proxy-push executable, go to $GOPATH/src/cdcvs.fnal.gov/discompsupp/ken_proxy_push/cmd/proxy-push, and run "GOOS=linux go build".  The proxy-push executable will be created in that directory if the build is successful.
+
+Alternatively, if your machine is able to build RPMs, you can simply build the three executables as detailed above, and then run ./packaging/create_rpm.sh from the top directory of this repo.  That should create an RPM in the standard location, which you can then use to deploy.  Included in the RPM are:
+
+1)  The three binaries - check-certs, store-in-myproxy, proxy-push
+2)  The templates needed for the emails - installed at /usr/local/share/managed-proxies/templates
+3)  The configuration file (managedProxies.yml) - installed at /etc/managed-proxies/managedProxies.yml
+4)  The cron.d and logrotate.d files, installed at /etc/{cron|logrotate}.d/managed-proxies
+5)  An empty log directory will be created at /var/log/managed-proxies
+
+Development:
+Clone the git repo into $GOPATH/src/cdcvs.fnal.gov/discompsupp/ken_proxy_push or run go get cdcvs.fnal.gov/discompsupp/ken_proxy_push for imports to work correctly.
+
+Then have at it.  The central repository is held at https://cdcvs.fnal.gov/redmine/projects/discompsupp/repository/ken_proxy_push and requires ssh access to be able to write.
