@@ -19,6 +19,7 @@ import (
 
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/experiment"
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/notifications"
+	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/packaging"
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/proxy"
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/utils"
 )
@@ -44,9 +45,15 @@ func init() {
 	pflag.StringP("experiment", "e", "", "Name of single experiment whose proxies should be stored in MyProxy")
 	pflag.StringP("configfile", "c", configFile, "Specify alternate config file")
 	pflag.BoolP("test", "t", false, "Test mode (proxies not stored in MyProxy)")
+	pflag.Bool("version", false, "Version of Managed Proxies library")
 
 	pflag.Parse()
 	viper.BindPFlags(pflag.CommandLine)
+
+	if viper.GetBool("version") {
+		fmt.Printf("Managed Proxies version %s\n", packaging.Version)
+		os.Exit(0)
+	}
 
 	// Read the config file
 	viper.SetConfigFile(viper.GetString("configfile"))
