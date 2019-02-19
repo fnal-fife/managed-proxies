@@ -333,8 +333,9 @@ func main() {
 					}
 				} else {
 					log.WithFields(log.Fields{
-						"experiment": e.Name,
-						"dn":         g.DN,
+						"experiment":    e.Name,
+						"myproxyserver": viper.GetString("global.myproxyserver"),
+						"dn":            g.DN,
 					}).Info("Stored grid proxy in myproxy")
 					if err := promPush.PushMyProxyStoreTime(g.DN); err != nil {
 						msg := "Could not push prometheus metric"
