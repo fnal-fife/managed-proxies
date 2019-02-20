@@ -17,15 +17,29 @@ DESTSPECSDIR=${HOME}/rpmbuild/SPECS
 PACKAGEFILES="${STARTDIR}/cmd/check-certs/check-certs ${STARTDIR}/cmd/proxy-push/proxy-push ${STARTDIR}/cmd/store-in-myproxy/store-in-myproxy ${STARTDIR}/managedProxies.yml ${STARTDIR}/packaging/${NAME}.cron ${STARTDIR}/packaging/${NAME}.logrotate"
 
 
+# Rebuild executables
+cd ${STARTDIR}/cmd
+for dir in `ls -1` 
+do
+  cd ${STARTDIR}/cmd/${dir}
+  GOOS=linux go build 
+
+  if [[ $? -ne 0 ]] ; then
+    echo "Could not build executable in directory $dir"
+    exit 1
+  fi
+done 
+
+
 # Rewrite spec with proper version
 TEMPFILE=`mktemp` || exit 1
 while read line
 do
 	if [[ $line == Version* ]] ; then
-	echo "Version:        $VERSION"
-else
-	echo "$line"
-fi 
+	  echo "Version:        $VERSION"
+  else
+	  echo "$line"
+  fi 
 done < ${SPECFILE} > ${TEMPFILE}
 
 
