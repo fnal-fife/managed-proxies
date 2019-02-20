@@ -114,7 +114,7 @@ func SendExperimentEmail(ctx context.Context, nConfig Config, errorsSlice []stri
 	return err
 }
 
-// SendAdminNotifications sends admin messages via email and Slack that have been collected in adminMsgSlice. It expects a valid template file configured at notifications.admin_template.
+// SendAdminNotifications sends admin messages via email and Slack that have been collected in adminMsgSlice. It expects a valid template file configured at nConfig.ConfigInfo["admin_template"].
 func SendAdminNotifications(ctx context.Context, nConfig Config, operation string) error {
 	var wg sync.WaitGroup
 	var emailErr, slackErr error
