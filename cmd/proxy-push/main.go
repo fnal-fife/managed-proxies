@@ -22,7 +22,7 @@ import (
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/packaging"
 )
 
-const configFile string = "managedProxies.yml"
+const configFile string = "managedProxies"
 
 // Sub-config types
 
@@ -46,7 +46,7 @@ func init() {
 
 	// Parse our command-line arguments
 	pflag.StringP("experiment", "e", "", "Name of single experiment to push proxies")
-	pflag.StringP("configfile", "c", configFile, "Specify alternate config file")
+	pflag.StringP("configfile", "c", "", "Specify alternate config file")
 	pflag.BoolP("test", "t", false, "Test mode")
 	pflag.Bool("version", false, "Version of Managed Proxies library")
 
@@ -59,7 +59,12 @@ func init() {
 	}
 
 	// Read the config file
-	viper.SetConfigFile(viper.GetString("configfile"))
+	if viper.GetString("configfile") != "" {
+		viper.SetConfigFile(viper.GetString("configfile"))
+	} else {
+		viper.SetConfigName(configFile)
+	}
+
 	viper.AddConfigPath("/etc/managed-proxies/")
 	viper.AddConfigPath("$HOME/managed-proxies/")
 	viper.AddConfigPath(".")
@@ -86,7 +91,7 @@ func init() {
 		log.PanicLevel: viper.GetString("logs.logfile"),
 	}, &log.TextFormatter{FullTimestamp: true}))
 
-	log.Debugf("Using config file %s", viper.GetString("configfile"))
+	log.Debugf("Using config file %s", viper.ConfigFileUsed())
 
 	// Set up notifications
 	nConfig.ConfigInfo = make(map[string]string)
