@@ -121,11 +121,15 @@ func SendAdminNotifications(ctx context.Context, nConfig Config, operation strin
 	var b strings.Builder
 
 	if len(adminMsgSlice) == 0 {
-		slackMsg := "Test run completed successfully"
-		if slackErr = SendSlackMessage(ctx, nConfig, slackMsg); slackErr != nil {
-			log.WithField("caller", "SendAdminNotifications").Error("Failed to send slack message")
+		if nConfig.IsTest {
+			slackMsg := "Test run completed successfully"
+			if slackErr = SendSlackMessage(ctx, nConfig, slackMsg); slackErr != nil {
+				log.WithField("caller", "SendAdminNotifications").Error("Failed to send slack message")
+			}
+			return slackErr
 		}
-		return slackErr
+		log.WithField("caller", "SendAdminNotifications").Debug("No errors to send")
+		return nil
 	}
 
 	adminTemplateFile, ok := nConfig.ConfigInfo["admin_template"]
