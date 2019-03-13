@@ -21,6 +21,7 @@ PACKAGEFILES="${STARTDIR}/cmd/check-certs/check-certs ${STARTDIR}/cmd/proxy-push
 cd ${STARTDIR}/cmd
 for dir in `ls -1` 
 do
+  echo ${dir}
   cd ${STARTDIR}/cmd/${dir}
   GOOS=linux go build 
 
@@ -28,6 +29,8 @@ do
     echo "Could not build executable in directory $dir"
     exit 1
   fi
+
+  echo "Built ${dir} executable"
 done 
 
 
