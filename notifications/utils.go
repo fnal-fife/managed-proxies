@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"text/template"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -87,10 +88,13 @@ func SendExperimentEmail(ctx context.Context, nConfig Config, errorsSlice []stri
 		return err
 	}
 
+	timestamp := time.Now().Format(time.RFC822)
 	exptEmailTemplate := template.Must(template.New("exptEmail").Parse(string(templateData)))
 	if err = exptEmailTemplate.Execute(&b, struct {
+		Timestamp     string
 		ErrorMessages []string
 	}{
+		Timestamp:     timestamp,
 		ErrorMessages: errorsSlice,
 	}); err != nil {
 		log.WithFields(log.Fields{
@@ -141,6 +145,7 @@ func SendAdminNotifications(ctx context.Context, nConfig Config, operation strin
 
 	wg.Add(2)
 
+	timestamp := time.Now().Format(time.RFC822)
 	templateData, err := ioutil.ReadFile(adminTemplateFile)
 	if err != nil {
 		log.WithField("caller", "SendAdminNotifications").Errorf("Could not read admin error template file: %s", err)
@@ -149,9 +154,11 @@ func SendAdminNotifications(ctx context.Context, nConfig Config, operation strin
 	adminTemplate := template.Must(template.New("admin").Parse(string(templateData)))
 
 	if err = adminTemplate.Execute(&b, struct {
+		Timestamp     string
 		Operation     string
 		ErrorMessages []string
 	}{
+		Timestamp:     timestamp,
 		Operation:     operation,
 		ErrorMessages: adminMsgSlice,
 	}); err != nil {

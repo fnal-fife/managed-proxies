@@ -1,4 +1,4 @@
-The following errors were reported by the Managed Proxies service while performing operation {{.Operation}}:
+The following errors were reported by the Managed Proxies service at {{.Timestamp}} while performing operation {{.Operation}}:
 
 {{range .ErrorMessages}}
   - {{.}}
