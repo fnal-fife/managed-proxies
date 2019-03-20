@@ -299,6 +299,10 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 
 		// We stop here in test mode.  Communicate success/failure and return
 		if eConfig.IsTest {
+			defer func() {
+				log.WithField("experiment", eConfig.Name).Debug("In test mode.  Returning from experiment.Worker now")
+			}()
+
 			// Failure to ping constitutes a failure in test mode
 			if len(badNodesSlice) > 0 {
 				declareExptFailure()
