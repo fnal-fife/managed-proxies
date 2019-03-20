@@ -42,6 +42,7 @@ type ExptConfig struct {
 	VomsPrefix  string
 	CertFile    string
 	KeyFile     string
+	IsTest      bool
 	TimeoutsConfig
 	KerbConfig
 }
@@ -295,6 +296,17 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 				}
 			}
 		}()
+
+		// We stop here in test mode.  Communicate success/failure and return
+		if eConfig.IsTest {
+			// Failure to ping constitutes a failure in test mode
+			if len(badNodesSlice) > 0 {
+				declareExptFailure()
+				return
+			}
+			c <- expt
+			return
+		}
 
 		// Proxy transfer
 		copyCfgs := createCopyFileConfigs(vomsProxies, eConfig.Accounts, eConfig.Nodes, eConfig.DestDir)
