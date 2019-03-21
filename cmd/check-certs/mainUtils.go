@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os/user"
+	"regexp"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
@@ -12,9 +13,11 @@ import (
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/notifications"
 )
 
+var emailRegexp = regexp.MustCompile(`^[\w\._%+-]+@[\w\.-]+\.\w{2,}$`)
+
 // createExptConfig takes the config information from the global file and creates an exptConfig object
 func createExptConfig(expt string) (experiment.ExptConfig, error) {
-	var vomsprefix, certfile, keyfile string
+	var certfile, keyfile string
 	var c experiment.ExptConfig
 
 	exptKey := "experiments." + expt
@@ -28,12 +31,6 @@ func createExptConfig(expt string) (experiment.ExptConfig, error) {
 
 	exptSubConfig := viper.Sub(exptKey)
 
-	if exptSubConfig.IsSet("vomsgroup") {
-		vomsprefix = exptSubConfig.GetString("vomsgroup")
-	} else {
-		vomsprefix = viper.GetString("vomsproxyinit.defaultvomsprefixroot") + expt + "/"
-	}
-
 	if exptSubConfig.IsSet("certfile") {
 		certfile = exptSubConfig.GetString("certfile")
 	}
@@ -44,13 +41,11 @@ func createExptConfig(expt string) (experiment.ExptConfig, error) {
 	c = experiment.ExptConfig{
 		Name:           expt,
 		CertBaseDir:    viper.GetString("global.cert_base_dir"),
-		DestDir:        exptSubConfig.GetString("dir"),
-		Nodes:          exptSubConfig.GetStringSlice("nodes"),
 		Accounts:       exptSubConfig.GetStringMapString("accounts"),
-		VomsPrefix:     vomsprefix,
 		CertFile:       certfile,
 		KeyFile:        keyfile,
 		TimeoutsConfig: tConfig,
+		IsTest:         viper.GetBool("test"),
 	}
 
 	log.WithField("experiment", c.Name).Debug("Set up experiment config")
@@ -60,9 +55,17 @@ func createExptConfig(expt string) (experiment.ExptConfig, error) {
 
 // setAdminEmail sets the notifications config objects' From and To fields to the config file's admin value
 func setAdminEmail(pnConfig *notifications.Config) {
+	var toEmail string
 	pnConfig.From = pnConfig.ConfigInfo["admin_email"]
-	pnConfig.To = []string{pnConfig.ConfigInfo["admin_email"]}
-	log.Debug("Set notifications config email values to admin defaults")
+
+	if viper.GetString("admin") != "" {
+		toEmail = viper.GetString("admin")
+	} else {
+		toEmail = pnConfig.ConfigInfo["admin_email"]
+	}
+
+	pnConfig.To = []string{toEmail}
+	log.Debug("Set notifications config email values to admin values")
 	return
 }
 

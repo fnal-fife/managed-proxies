@@ -49,6 +49,7 @@ func init() {
 	pflag.StringP("configfile", "c", "", "Specify alternate config file")
 	pflag.BoolP("test", "t", false, "Test mode")
 	pflag.Bool("version", false, "Version of Managed Proxies library")
+	pflag.String("admin", "", "Override the config file admin email")
 
 	pflag.Parse()
 	viper.BindPFlags(pflag.CommandLine)
@@ -56,6 +57,13 @@ func init() {
 	if viper.GetBool("version") {
 		fmt.Printf("Managed Proxies version %s\n", packaging.Version)
 		os.Exit(0)
+	}
+
+	if viper.GetString("admin") != "" {
+		if !emailRegexp.MatchString(viper.GetString("admin")) {
+			fmt.Printf("Admin email address %s is invalid!  It must follow the regexp %s\n", viper.GetString("admin"), emailRegexp.String())
+			os.Exit(1)
+		}
 	}
 
 	// Read the config file
@@ -181,7 +189,7 @@ func init() {
 
 func cleanup(exptStatus map[string]bool, expts []string) error {
 	// Since cleanup happens in all cases after the proxy push starts, we stop that timer and push the metric here
-	if viper.GetString("experiment") == "" {
+	if viper.GetString("experiment") == "" && !viper.GetBool("test") {
 		// Only push this metric if we ran for all experiments to keep data consistent
 		if err := promPush.PushPromDuration(startProxyPush, "proxy-push", "processing"); err != nil {
 			msg := "Error recording time to push proxies, " + err.Error()
@@ -208,15 +216,19 @@ func cleanup(exptStatus map[string]bool, expts []string) error {
 		}
 	}
 
-	// Defining this defer func here so we have the correct failure count
-	defer func() {
-		if err := promPush.PushCountErrors(len(f)); err != nil {
-			log.Error(err.Error())
-			notifications.SendSlackMessage(context.Background(), nConfig, err.Error())
-		}
-	}()
+	defer log.Infof("Successes: %v\nFailures: %v\n", strings.Join(s, ", "), strings.Join(f, ", "))
 
-	log.Infof("Successes: %v\nFailures: %v\n", strings.Join(s, ", "), strings.Join(f, ", "))
+	if viper.GetBool("test") {
+		log.Infof("Running in test mode.  Will not push metrics to prometheus")
+		return nil
+	}
+
+	// Defining this defer func here so we have the correct failure count
+	if err := promPush.PushCountErrors(len(f)); err != nil {
+		log.Error(err.Error())
+		notifications.SendSlackMessage(context.Background(), nConfig, err.Error())
+	}
+
 	return nil
 }
 
