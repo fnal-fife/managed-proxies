@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os/user"
+	"regexp"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
@@ -11,6 +12,8 @@ import (
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/experiment"
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/notifications"
 )
+
+var emailRegexp = regexp.MustCompile(`^[\w\._%+-]+@[\w\.-]+\.\w{2,}$`)
 
 // createExptConfig takes the config information from the global file and creates an exptConfig object
 func createExptConfig(expt string) (experiment.ExptConfig, error) {
@@ -60,9 +63,17 @@ func createExptConfig(expt string) (experiment.ExptConfig, error) {
 
 // setAdminEmail sets the notifications config objects' From and To fields to the config file's admin value
 func setAdminEmail(pnConfig *notifications.Config) {
+	var toEmail string
 	pnConfig.From = pnConfig.ConfigInfo["admin_email"]
-	pnConfig.To = []string{pnConfig.ConfigInfo["admin_email"]}
-	log.Debug("Set notifications config email values to admin defaults")
+
+	if viper.GetString("admin") != "" {
+		toEmail = viper.GetString("admin")
+	} else {
+		toEmail = pnConfig.ConfigInfo["admin_email"]
+	}
+
+	pnConfig.To = []string{toEmail}
+	log.Debug("Set notifications config email values to admin values")
 	return
 }
 

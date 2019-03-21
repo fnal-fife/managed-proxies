@@ -46,6 +46,7 @@ func init() {
 	pflag.StringP("configfile", "c", "", "Specify alternate config file")
 	pflag.BoolP("test", "t", false, "Test mode (no email sent)")
 	pflag.Bool("version", false, "Version of Managed Proxies library")
+	pflag.String("admin", "", "Override the config file admin email")
 
 	pflag.Parse()
 	viper.BindPFlags(pflag.CommandLine)
@@ -53,6 +54,13 @@ func init() {
 	if viper.GetBool("version") {
 		fmt.Printf("Managed Proxies version %s\n", packaging.Version)
 		os.Exit(0)
+	}
+
+	if viper.GetString("admin") != "" {
+		if !emailRegexp.MatchString(viper.GetString("admin")) {
+			fmt.Printf("Admin email address %s is invalid!  It must follow the regexp %s\n", viper.GetString("admin"), emailRegexp.String())
+			os.Exit(1)
+		}
 	}
 
 	// Read the config file

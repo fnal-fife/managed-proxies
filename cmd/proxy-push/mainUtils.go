@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os/user"
+	"regexp"
 	"sync"
 
 	"github.com/jinzhu/copier"
@@ -14,6 +15,8 @@ import (
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/experiment"
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/notifications"
 )
+
+var emailRegexp = regexp.MustCompile(`^[\w\._%+-]+@[\w\.-]+\.\w{2,}$`)
 
 // manageExperimentChannels starts up the various experimentutil.Workers and listens for their response.  It puts these
 // statuses into an aggregate channel.
@@ -176,8 +179,16 @@ func checkUser(authuser string) error {
 
 // setAdminEmail sets the notifications config objects' From and To fields to the config file's admin value
 func setAdminEmail(pnConfig *notifications.Config) {
+	var toEmail string
 	pnConfig.From = pnConfig.ConfigInfo["admin_email"]
-	pnConfig.To = []string{pnConfig.ConfigInfo["admin_email"]}
-	log.Debug("Set notifications config email values to admin defaults")
+
+	if viper.GetString("admin") != "" {
+		toEmail = viper.GetString("admin")
+	} else {
+		toEmail = pnConfig.ConfigInfo["admin_email"]
+	}
+
+	pnConfig.To = []string{toEmail}
+	log.Debug("Set notifications config email values to admin values")
 	return
 }
