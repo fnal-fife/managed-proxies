@@ -157,6 +157,7 @@ func createExptConfig(expt string) (experiment.ExptConfig, error) {
 		KeyFile:        keyfile,
 		TimeoutsConfig: tConfig,
 		KerbConfig:     krbConfig,
+		IsTest:         viper.GetBool("test"),
 	}
 
 	log.WithField("experiment", c.Name).Debug("Set up experiment config")

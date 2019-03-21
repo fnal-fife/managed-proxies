@@ -54,6 +54,7 @@ func createExptConfig(expt string) (experiment.ExptConfig, error) {
 		CertFile:       certfile,
 		KeyFile:        keyfile,
 		TimeoutsConfig: tConfig,
+		IsTest:         viper.GetBool("test"),
 	}
 
 	log.WithField("experiment", c.Name).Debug("Set up experiment config")
