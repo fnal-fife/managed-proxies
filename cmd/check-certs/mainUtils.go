@@ -17,7 +17,7 @@ var emailRegexp = regexp.MustCompile(`^[\w\._%+-]+@[\w\.-]+\.\w{2,}$`)
 
 // createExptConfig takes the config information from the global file and creates an exptConfig object
 func createExptConfig(expt string) (experiment.ExptConfig, error) {
-	var vomsprefix, certfile, keyfile string
+	var certfile, keyfile string
 	var c experiment.ExptConfig
 
 	exptKey := "experiments." + expt
@@ -30,12 +30,6 @@ func createExptConfig(expt string) (experiment.ExptConfig, error) {
 	}
 
 	exptSubConfig := viper.Sub(exptKey)
-
-	if exptSubConfig.IsSet("vomsgroup") {
-		vomsprefix = exptSubConfig.GetString("vomsgroup")
-	} else {
-		vomsprefix = viper.GetString("vomsproxyinit.defaultvomsprefixroot") + expt + "/"
-	}
 
 	if exptSubConfig.IsSet("certfile") {
 		certfile = exptSubConfig.GetString("certfile")
