@@ -47,8 +47,6 @@ func createExptConfig(expt string) (experiment.ExptConfig, error) {
 	c = experiment.ExptConfig{
 		Name:           expt,
 		CertBaseDir:    viper.GetString("global.cert_base_dir"),
-		DestDir:        exptSubConfig.GetString("dir"),
-		Nodes:          exptSubConfig.GetStringSlice("nodes"),
 		Accounts:       exptSubConfig.GetStringMapString("accounts"),
 		VomsPrefix:     vomsprefix,
 		CertFile:       certfile,
