@@ -1,9 +1,12 @@
-The Managed Proxies Service is reporting that the following service certificates will be expiring within 30 days.  Any certificates that expire in less than 28 days may cause cigetcert to fail.  Please renew these certificates, or delete them if they are no longer needed.
-
+{{ define "certSlice" }}
 {{ printf "\n%-20s" "Account" }}{{ printf "\t%11s\t%-s" "Days Left" "DN" }}
 {{ range . }}
 {{ printf "%-20s" .Account }}{{ printf "\t%11d\t%-s" .DaysLeft .DN }}
 {{ end }}
+{{ end }}
+The Managed Proxies Service is reporting that the following service certificates will be expiring within {{.ConfigNumDaysLeft}} days.  Any certificates that expire in less than 28 days may cause cigetcert to fail.  Please renew these certificates, or delete them if they are no longer needed.
+
+{{template "certSlice" .CSlice}}
 
 
 {{/* This template is to report the impending expiration of service certificates to the administrators.  We're expecting a slice of structs with Account, DN string, DaysLeft int */}}

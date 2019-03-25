@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"math"
 	"strings"
 	"sync"
 	"text/template"
@@ -203,14 +204,23 @@ func SendCertAlarms(ctx context.Context, nConfig Config, cSlice []CertExpiration
 
 	wg.Add(2)
 
-	templateData, err := ioutil.ReadFile(templateFileName)
+	timeLeftConfig, err := time.ParseDuration(nConfig.ConfigInfo["expireWarningCutoff"])
 	if err != nil {
-		log.WithField("caller", "SendCertAlarms").Errorf("Could not read checkcerts template file: %s", err)
-		return err
+		log.WithField("caller", "SendCertAlarms").Errorf("Failed to parse time left from configuration struct %s", err)
 	}
-	certAlarmTemplate := template.Must(template.New("checkcerts").Parse(string(templateData)))
+	numDaysConfig := int(math.Round(timeLeftConfig.Hours() / 24.0))
 
-	if err = certAlarmTemplate.Execute(&b, cSlice); err != nil {
+	certAlarmTemplate := template.Must(template.ParseFiles(templateFileName))
+
+	templateInput := struct {
+		ConfigNumDaysLeft int
+		CSlice            []CertExpirationNotification
+	}{
+		ConfigNumDaysLeft: numDaysConfig,
+		CSlice:            cSlice,
+	}
+
+	if err = certAlarmTemplate.Execute(&b, templateInput); err != nil {
 		log.WithField("caller", "SendCertAlarms").Errorf("Failed to execute checkcerts email template: %s", err)
 		return err
 	}

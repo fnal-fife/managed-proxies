@@ -111,6 +111,8 @@ func init() {
 	}
 	nConfig.ConfigInfo["smtphost"] = viper.GetString("global.smtphost")
 	nConfig.ConfigInfo["smtpport"] = strconv.Itoa(viper.GetInt("global.smtpport"))
+	// Add cert expiration cutoff time to nConfig.ConfigInfo so we can pass it to the template
+	nConfig.ConfigInfo["expireWarningCutoff"] = viper.GetString("times.expireWarningCutoff")
 	nConfig.IsTest = viper.GetBool("test")
 	nConfig.From = viper.GetString("notifications.admin_email")
 	timestamp := time.Now().Format(time.RFC822)
