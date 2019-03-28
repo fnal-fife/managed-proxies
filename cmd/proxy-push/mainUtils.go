@@ -18,25 +18,21 @@ import (
 
 var emailRegexp = regexp.MustCompile(`^[\w\._%+-]+@[\w\.-]+\.\w{2,}$`)
 
-// manageExperimentChannels starts up the various experimentutil.Workers and listens for their response.  It puts these
-// statuses into an aggregate channel.
-func manageExperimentChannels(ctx context.Context, exptConfigs []experiment.ExptConfig) <-chan experiment.ExperimentSuccess {
-	agg := make(chan experiment.ExperimentSuccess, len(exptConfigs))
-	var wg, nwg, cwg sync.WaitGroup
-	wg.Add(len(exptConfigs))
+func workerSlot(ctx context.Context, workerID int, configChan <-chan experiment.ExptConfig, aggChan chan<- experiment.ExperimentSuccess, wwg, ewg, nwg *sync.WaitGroup) {
 
-	// This is the wait group that will trigger closing of the agg channel
-	cwg.Add(2)
+	defer func() {
+		log.WithField("workerId", workerID).Debug("Worker Slot shutting down")
+		wwg.Done()
+	}()
 
-	// Start all of the experiment workers, put their results into the agg channel
-	for _, eConfig := range exptConfigs {
-		go func(eConfig experiment.ExptConfig) {
+	for eConfig := range configChan {
+		func(eConfig experiment.ExptConfig) {
 			/* Order of operations in cleanup:
 			* Experiment finishes processing, closes notification Manager and experiment success channel
 			* Notifications get sent, then nwg is decremented
 			* Once nwg and wg are down to 0, we close the agg channel to tell main to cleanup
 			 */
-			defer wg.Done()
+			defer ewg.Done()
 			exptSubConfig := viper.Sub("experiments." + eConfig.Name)
 
 			// Notifications setup
@@ -51,7 +47,7 @@ func manageExperimentChannels(ctx context.Context, exptConfigs []experiment.Expt
 			// Don't let this func return (and thus the aggregate waitgroup decrement) until emails are sent
 			nwg.Add(1)
 			//defer nwg.Wait()
-			nMgr := notifications.NewManager(ctx, &nwg, n)
+			nMgr := notifications.NewManager(ctx, nwg, n)
 
 			exptContext, exptCancel := context.WithTimeout(ctx, tConfig["expttimeoutDuration"])
 			defer exptCancel()
@@ -70,7 +66,7 @@ func manageExperimentChannels(ctx context.Context, exptConfigs []experiment.Expt
 						return
 					}
 					log.WithFields(log.Fields{"experiment": eConfig.Name}).Debug("Received status")
-					agg <- status
+					aggChan <- status
 					log.WithFields(log.Fields{"experiment": eConfig.Name}).Debug("Put status into aggregation channel")
 
 				case <-exptContext.Done():
@@ -86,6 +82,96 @@ func manageExperimentChannels(ctx context.Context, exptConfigs []experiment.Expt
 			}
 		}(eConfig)
 	}
+
+}
+
+// manageExperimentChannels starts up the various experimentutil.Workers and listens for their response.  It puts these
+// statuses into an aggregate channel.
+func manageExperimentChannels(ctx context.Context, exptConfigs []experiment.ExptConfig) <-chan experiment.ExperimentSuccess {
+	agg := make(chan experiment.ExperimentSuccess, len(exptConfigs))
+	var wg, wwg, nwg, cwg sync.WaitGroup
+	wg.Add(len(exptConfigs))
+	configChan := make(chan experiment.ExptConfig)
+
+	// This is the wait group that will trigger closing of the agg channel
+	cwg.Add(2)
+
+	// Get number of workers from config, launch workers
+	// TODO Correct this key if needed
+	wwg.Add(viper.GetInt("global.numPushWorkers"))
+	go func() {
+		for i := 0; i < viper.GetInt("global.numPushWorkers"); i++ {
+			go workerSlot(ctx, i, configChan, agg, &wwg, &wg, &nwg)
+		}
+	}()
+
+	go func() {
+		defer close(configChan)
+		for _, eConfig := range exptConfigs {
+			configChan <- eConfig
+		}
+	}()
+
+	// TODO  Start cut here
+	// Start all of the experiment workers, put their results into the agg channel
+	//	for _, eConfig := range exptConfigs {
+	//		go func(eConfig experiment.ExptConfig) {
+	//			/* Order of operations in cleanup:
+	//			* Experiment finishes processing, closes notification Manager and experiment success channel
+	//			* Notifications get sent, then nwg is decremented
+	//			* Once nwg and wg are down to 0, we close the agg channel to tell main to cleanup
+	//			 */
+	//			defer wg.Done()
+	//			exptSubConfig := viper.Sub("experiments." + eConfig.Name)
+	//
+	//			// Notifications setup
+	//			n := notifications.Config{}
+	//			copier.Copy(&n, &nConfig)
+	//			n.Experiment = eConfig.Name
+	//			if !viper.GetBool("test") {
+	//				n.To = exptSubConfig.GetStringSlice("emails")
+	//			}
+	//			n.Subject = n.Subject + " - " + eConfig.Name
+	//
+	//			// Don't let this func return (and thus the aggregate waitgroup decrement) until emails are sent
+	//			nwg.Add(1)
+	//			//defer nwg.Wait()
+	//			nMgr := notifications.NewManager(ctx, &nwg, n)
+	//
+	//			exptContext, exptCancel := context.WithTimeout(ctx, tConfig["expttimeoutDuration"])
+	//			defer exptCancel()
+	//
+	//			// If all goes well, each experiment Worker channel will be ready to be received on twice:  once when the
+	//			// successful status is sent, and when the channel closes after cleanup.  If we timeout, just move on.
+	//			// Expt channel is buffered anyway, so if the worker tries to send later and there's no receiver,
+	//			// garbage collection will take care of it
+	//			log.WithFields(log.Fields{"experiment": eConfig.Name}).Debug("Starting worker")
+	//			c := experiment.Worker(exptContext, eConfig, promPush, nMgr)
+	//			for {
+	//				select {
+	//				case status, chanOpen := <-c: // Grab status from channel
+	//					if !chanOpen {
+	//						log.WithFields(log.Fields{"experiment": eConfig.Name}).Debug("Experiment channel closed.  Returning.")
+	//						return
+	//					}
+	//					log.WithFields(log.Fields{"experiment": eConfig.Name}).Debug("Received status")
+	//					agg <- status
+	//					log.WithFields(log.Fields{"experiment": eConfig.Name}).Debug("Put status into aggregation channel")
+	//
+	//				case <-exptContext.Done():
+	//					if err := exptContext.Err(); err == context.DeadlineExceeded {
+	//						msg := "Timed out waiting for experiment success info to be reported. Someone from USDC should " +
+	//							"look into this and cleanup if needed.  See " +
+	//							"https://cdcvs.fnal.gov/redmine/projects/discompsupp/wiki/MANAGEDPROXIES for instructions."
+	//						log.WithFields(log.Fields{"experiment": eConfig.Name}).Error(msg)
+	//					} else {
+	//						log.WithFields(log.Fields{"experiment": eConfig.Name}).Error(err)
+	//					}
+	//				}
+	//			}
+	//		}(eConfig)
+	//	}
+	//TODO  This is where we cut out 'til
 
 	/* This will wait until all expt workers have put their values into agg channel, and have finished
 	sending notifications.
