@@ -23,22 +23,12 @@ var emailRegexp = regexp.MustCompile(`^[\w\._%+-]+@[\w\.-]+\.\w{2,}$`)
 func manageExperimentChannels(ctx context.Context, exptConfigs []experiment.ExptConfig) <-chan experiment.ExperimentSuccess {
 	agg := make(chan experiment.ExperimentSuccess, len(exptConfigs))
 	configChan := make(chan experiment.ExptConfig) // chan of configurations to send to workerSlots
-	// var wg, wwg, nwg, cwg sync.WaitGroup
 	var wg, wwg, nwg sync.WaitGroup
 	waitGroups := waitGroupCollection{
 		&wg,  // experiment workers
 		&wwg, // Worker slots
 		&nwg, // Notification managers
 	}
-
-	//	waitGroups := []*sync.WaitGroup{
-	//		&wg,  // experiment workers
-	//		&wwg, // Worker slots
-	//		&nwg, // Notification managers
-	//	}
-
-	// This is the wait group that will trigger closing of the agg channel.
-	// cwg.Add(len(waitGroups))
 
 	wg.Add(len(exptConfigs)) // Get number of experiments to run on
 
@@ -67,35 +57,9 @@ func manageExperimentChannels(ctx context.Context, exptConfigs []experiment.Expt
 	agg channel before all values have been sent into it.
 	*/
 
-	//	for _, w := range waitGroups {
-	//		go func(myWaitGroup *sync.WaitGroup) {
-	//			defer cwg.Done()
-	//			myWaitGroup.Wait()
-	//		}(w)
-	//	}
-
-	//	// Wait for all experiment workers to finish
-	//	go func() {
-	//		defer cwg.Done()
-	//		wg.Wait()
-	//	}()
-	//
-	//	// Wait for all experiment notification managers to finish
-	//	go func() {
-	//		defer cwg.Done()
-	//		nwg.Wait()
-	//	}()
-	//
-	//	// Wait for all workerSlots to shut down
-	//	go func() {
-	//		defer cwg.Done()
-	//		wwg.Wait()
-	//	}()
-
 	// Wait for the previous two goroutines to finish and close agg
 	go func() {
 		waitGroups.Wait()
-		//cwg.Wait()
 		log.Debug("Closing aggregation channel")
 		close(agg)
 	}()
@@ -133,7 +97,6 @@ func workerSlot(ctx context.Context, workerID int, configChan <-chan experiment.
 
 			// Don't let this func return (and thus the aggregate waitgroup decrement) until emails are sent
 			nwg.Add(1)
-			//defer nwg.Wait()
 			nMgr := notifications.NewManager(ctx, nwg, n)
 
 			exptContext, exptCancel := context.WithTimeout(ctx, tConfig["expttimeoutDuration"])
@@ -249,19 +212,23 @@ func setAdminEmail(pnConfig *notifications.Config) {
 	return
 }
 
+// checkNumWorkers makes sure there is at least one worker configured to handle the proxy pushes
 func checkNumWorkers() {
 	if viper.GetInt("global.numpushworkers") < 1 {
-		msg := fmt.Sprintf("Must have at least 1 proxy push worker.  The current number configured is %d", viper.GetInt("global.numpushworkers"))
+		msg := fmt.Sprintf("Must have at least 1 Proxy Push Worker Slot.  The current number configured is %d", viper.GetInt("global.numpushworkers"))
 		log.Panic(msg)
 	}
 }
 
+// waitGroupCollection is a slice of pointers to WaitGroups.  The main reason I created this was for the waitGroupCollection.Wait() method
 type waitGroupCollection []*sync.WaitGroup
 
+// Add adds a waitgroup pointer to the waitGroupCollection
 func (w *waitGroupCollection) Add(wg *sync.WaitGroup) {
 	*w = append(*w, wg)
 }
 
+// Wait will wait until all of the waitgroups in the waitGroupCollection have decremented to 0, and then return
 func (w *waitGroupCollection) Wait() {
 	var masterWg sync.WaitGroup
 	masterWg.Add(len(*w))
