@@ -22,12 +22,25 @@ var emailRegexp = regexp.MustCompile(`^[\w\._%+-]+@[\w\.-]+\.\w{2,}$`)
 // statuses into an aggregate channel.
 func manageExperimentChannels(ctx context.Context, exptConfigs []experiment.ExptConfig) <-chan experiment.ExperimentSuccess {
 	agg := make(chan experiment.ExperimentSuccess, len(exptConfigs))
-	var wg, wwg, nwg, cwg sync.WaitGroup
-	wg.Add(len(exptConfigs))
 	configChan := make(chan experiment.ExptConfig) // chan of configurations to send to workerSlots
+	// var wg, wwg, nwg, cwg sync.WaitGroup
+	var wg, wwg, nwg sync.WaitGroup
+	waitGroups := waitGroupCollection{
+		&wg,  // experiment workers
+		&wwg, // Worker slots
+		&nwg, // Notification managers
+	}
 
-	// This is the wait group that will trigger closing of the agg channel.  The "3" is for wwg, nwg, and wg.
-	cwg.Add(3)
+	//	waitGroups := []*sync.WaitGroup{
+	//		&wg,  // experiment workers
+	//		&wwg, // Worker slots
+	//		&nwg, // Notification managers
+	//	}
+
+	// This is the wait group that will trigger closing of the agg channel.
+	// cwg.Add(len(waitGroups))
+
+	wg.Add(len(exptConfigs)) // Get number of experiments to run on
 
 	// Get number of workers from config, launch workers
 	wwg.Add(viper.GetInt("global.numPushWorkers"))
@@ -38,6 +51,7 @@ func manageExperimentChannels(ctx context.Context, exptConfigs []experiment.Expt
 		}
 	}()
 
+	// Put our expt configs into the configChan so workers can start processing experiments
 	go func() {
 		defer close(configChan)
 		for _, eConfig := range exptConfigs {
@@ -53,18 +67,12 @@ func manageExperimentChannels(ctx context.Context, exptConfigs []experiment.Expt
 	agg channel before all values have been sent into it.
 	*/
 
-	waitGroups := []*sync.WaitGroup{
-		&wg,  // experiment workers
-		&wwg, // Worker slots
-		&nwg, // Notification managers
-	}
-
-	for _, w := range waitGroups {
-		go func(myWaitGroup *sync.WaitGroup) {
-			defer cwg.Done()
-			myWaitGroup.Wait()
-		}(w)
-	}
+	//	for _, w := range waitGroups {
+	//		go func(myWaitGroup *sync.WaitGroup) {
+	//			defer cwg.Done()
+	//			myWaitGroup.Wait()
+	//		}(w)
+	//	}
 
 	//	// Wait for all experiment workers to finish
 	//	go func() {
@@ -86,7 +94,8 @@ func manageExperimentChannels(ctx context.Context, exptConfigs []experiment.Expt
 
 	// Wait for the previous two goroutines to finish and close agg
 	go func() {
-		cwg.Wait()
+		waitGroups.Wait()
+		//cwg.Wait()
 		log.Debug("Closing aggregation channel")
 		close(agg)
 	}()
@@ -238,4 +247,24 @@ func setAdminEmail(pnConfig *notifications.Config) {
 	pnConfig.To = []string{toEmail}
 	log.Debug("Set notifications config email values to admin values")
 	return
+}
+
+type waitGroupCollection []*sync.WaitGroup
+
+func (w *waitGroupCollection) Add(wg *sync.WaitGroup) {
+	*w = append(*w, wg)
+}
+
+func (w *waitGroupCollection) Wait() {
+	var masterWg sync.WaitGroup
+	masterWg.Add(len(*w))
+
+	for _, wg := range *w {
+		go func(myWaitGroup *sync.WaitGroup) {
+			defer masterWg.Done()
+			myWaitGroup.Wait()
+		}(wg)
+	}
+
+	masterWg.Wait()
 }
