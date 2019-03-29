@@ -249,6 +249,13 @@ func setAdminEmail(pnConfig *notifications.Config) {
 	return
 }
 
+func checkNumWorkers() {
+	if viper.GetInt("global.numpushworkers") < 1 {
+		msg := fmt.Sprintf("Must have at least 1 proxy push worker.  The current number configured is %d", viper.GetInt("global.numpushworkers"))
+		log.Panic(msg)
+	}
+}
+
 type waitGroupCollection []*sync.WaitGroup
 
 func (w *waitGroupCollection) Add(wg *sync.WaitGroup) {

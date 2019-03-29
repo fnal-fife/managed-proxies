@@ -43,6 +43,7 @@ func init() {
 	startSetup = time.Now()
 	// Defaults
 	viper.SetDefault("notifications.admin_email", "fife-group@fnal.gov")
+	viper.SetDefault("global.numpushworkers", 10)
 
 	// Parse our command-line arguments
 	pflag.StringP("experiment", "e", "", "Name of single experiment to push proxies")
@@ -98,6 +99,9 @@ func init() {
 		log.FatalLevel: viper.GetString("logs.logfile"),
 		log.PanicLevel: viper.GetString("logs.logfile"),
 	}, &log.TextFormatter{FullTimestamp: true}))
+
+	// Make sure we have a reasonable amount of workers
+	checkNumWorkers()
 
 	log.Debugf("Using config file %s", viper.ConfigFileUsed())
 
