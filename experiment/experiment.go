@@ -205,7 +205,8 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 		// voms-proxy-init
 		// If voms-proxy-init fails, we'll just continue on.  We'll still try to push proxies,
 		// since they're valid for 24 hours
-		vomsProxies := make([]*proxy.VomsProxy, 0, len(eConfig.Accounts))
+		// vomsProxies := make([]*proxy.VomsProxy, 0, len(eConfig.Accounts))
+		vomsProxyStatuses := make([]vomsProxyInitStatus, 0, len(eConfig.Accounts))
 		vpiCtx, vpiCancel := context.WithTimeout(ctx, eConfig.TimeoutsConfig["vpitimeoutDuration"])
 		vpiChan := getVomsProxiesForExperiment(vpiCtx, certs, eConfig.VomsPrefix)
 
@@ -247,6 +248,7 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 					break vpiLoop
 				}
 
+				vomsProxyStatuses = append(vomsProxyStatuses, vpi)
 				if vpi.err != nil {
 					msg := fmt.Sprintf("Error generating voms proxy from service cert for %s.  See logs", eConfig.Name)
 					expt.Success = false
@@ -259,7 +261,7 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 						"experiment":        eConfig.Name,
 						"vomsProxyFilename": vpi.vomsProxy.Path,
 					}).Debug("Generated voms proxy")
-					vomsProxies = append(vomsProxies, vpi.vomsProxy)
+					// vomsProxies = append(vomsProxies, vpi.vomsProxy)
 				}
 			}
 		}
@@ -277,12 +279,12 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 				}
 			}
 
-			for _, v := range vomsProxies {
-				if err := v.Remove(); err != nil {
+			for _, v := range vomsProxyStatuses {
+				if err := v.vomsProxy.Remove(); err != nil {
 					nMsg := "Failed to clean up experiment: could not delete VOMS proxy."
 					log.WithFields(log.Fields{
 						"experiment": eConfig.Name,
-						"role":       v.Role,
+						"role":       v.vomsProxy.Role,
 					}).Error(nMsg)
 					nMgr <- notifications.Notification{
 						Msg:       nMsg,
@@ -291,7 +293,7 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 				} else {
 					log.WithFields(log.Fields{
 						"experiment": eConfig.Name,
-						"role":       v.Role,
+						"role":       v.vomsProxy.Role,
 					}).Debug("Cleaned up VOMS Proxy")
 				}
 			}
@@ -310,6 +312,14 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 			}
 			c <- expt
 			return
+		}
+
+		vomsProxies := make([]*proxy.VomsProxy, 0, len(eConfig.Accounts))
+
+		for _, vpistatus := range vomsProxyStatuses {
+			if vpistatus.err == nil {
+				vomsProxies = append(vomsProxies, vpistatus.vomsProxy)
+			}
 		}
 
 		// Proxy transfer
