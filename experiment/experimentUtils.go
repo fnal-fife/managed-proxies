@@ -248,7 +248,7 @@ func failedPrettifyRolesNodesMap(roleNodesMap map[string]map[string]struct{}) st
 // prettifyRolesNodesMap takes a map of nodes and roles and prints it in columns
 func prettifyRolesNodesMap(roleNodesMap map[string]map[string]struct{}) string {
 	var b strings.Builder
-	w := tabwriter.NewWriter(&b, 0, 8, 1, '\t', 0)
+	w := tabwriter.NewWriter(&b, 0, 8, 1, ' ', 0)
 
 	//	tmpl := `
 	//{{ printf "\n%-20s" "Node" }}{{ printf "\t%-s" "Role" }}
