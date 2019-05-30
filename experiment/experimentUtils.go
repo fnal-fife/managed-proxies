@@ -249,14 +249,6 @@ func failedPrettifyRolesNodesMap(roleNodesMap map[string]map[string]struct{}) st
 func prettifyRolesNodesMap(roleNodesMap map[string]map[string]struct{}) string {
 	var b strings.Builder
 	w := tabwriter.NewWriter(&b, 0, 8, 1, '\t', 0)
-
-	//	tmpl := `
-	//{{ printf "\n%-20s" "Node" }}{{ printf "\t%-s" "Role" }}
-	//{{ range . }}
-	//{{ printf "%-20s" .Node }}{{ printf "\t%-s" .Role }}
-	//{{ end }}
-	//`
-
 	fmt.Fprintln(w, "Node\tRole")
 
 	for role, nodeMap := range roleNodesMap {
@@ -266,14 +258,5 @@ func prettifyRolesNodesMap(roleNodesMap map[string]map[string]struct{}) string {
 		}
 	}
 	w.Flush()
-
-	//	roleNodesTmpl := template.Must(template.New("roleNodes").Parse(tmpl))
-	//	if err := roleNodesTmpl.Execute(&b, RowSlice); err != nil {
-	//		msg := "Could not execute filling of roleNodesMap template.  Will still continue with run."
-	//		log.Error(msg)
-	//		log.Error(err)
-	//		return "", errors.New(msg)
-	//	}
-	//
 	return b.String()
 }
