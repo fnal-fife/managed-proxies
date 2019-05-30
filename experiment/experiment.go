@@ -338,9 +338,11 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 						"experiment": eConfig.Name,
 						"action":     "copy proxies",
 					}).Error(copyTout)
-					msg := copyTout + " for experiment " + eConfig.Name
-					nMgr <- notifications.Notification{
-						Msg: msg,
+					msg := failedPrettifyRolesNodesMap(failedCopies)
+					if len(msg) > 0 {
+						nMgr <- notifications.Notification{
+							Msg: msg,
+						}
 					}
 				} else {
 					log.WithFields(log.Fields{
@@ -371,7 +373,7 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 
 					for _, n := range badNodesSlice {
 						if pushproxy.node == n {
-							copyProxyErrorf = copyProxyErrorf + "The node was not pingable earlier, so please look into the status of that node to make sure it's up and working."
+							copyProxyErrorf = copyProxyErrorf + " The node was not pingable earlier, so please look into the status of that node to make sure it's up and working."
 							break
 						}
 					}
@@ -422,6 +424,13 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 			}).Debugf("Successful copies")
 		}
 
+		failedMsg := failedPrettifyRolesNodesMap(failedCopies)
+		if len(failedMsg) > 0 {
+			nMgr <- notifications.Notification{
+				Msg: failedMsg,
+			}
+		}
+
 		for role, nodes := range failedCopies {
 			var nodesSlice []string
 			if len(nodes) == 0 {
@@ -432,15 +441,10 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 			}
 			sort.Strings(nodesSlice)
 			nodesString := strings.Join(nodesSlice, ", ")
-			nodesMsgf := "Failed copies for role %s were %s"
 			log.WithFields(log.Fields{
 				"role":  role,
 				"nodes": nodesString,
 			}).Errorf("Failed copies")
-			nMsg := fmt.Sprintf(nodesMsgf, role, nodesString)
-			nMgr <- notifications.Notification{
-				Msg: nMsg,
-			}
 		}
 
 		log.WithField("experiment", eConfig.Name).Info("Finished processing experiment")

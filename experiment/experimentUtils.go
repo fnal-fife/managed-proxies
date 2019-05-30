@@ -9,6 +9,7 @@ import (
 	"path"
 	"strings"
 	"sync"
+	"text/tabwriter"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -230,4 +231,49 @@ func checkKeys(ctx context.Context, eConfig ExptConfig) error {
 		return errors.New(checkKeysError)
 	}
 	return nil
+}
+
+// failedPrettifyRolesNodesMap formats a map of failed nodes and roles into node, role columns and appends a message onto the beginning
+func failedPrettifyRolesNodesMap(roleNodesMap map[string]map[string]struct{}) string {
+	if len(roleNodesMap) == 0 {
+		return ""
+	}
+	table := prettifyRolesNodesMap(roleNodesMap)
+
+	finalTable := fmt.Sprintf("The following is a list of nodes on which all proxies were not refreshed, and the corresponding roles for those failed proxy refreshes:\n\n%s", table)
+	return finalTable
+
+}
+
+// prettifyRolesNodesMap takes a map of nodes and roles and prints it in columns
+func prettifyRolesNodesMap(roleNodesMap map[string]map[string]struct{}) string {
+	var b strings.Builder
+	w := tabwriter.NewWriter(&b, 0, 8, 1, '\t', 0)
+
+	//	tmpl := `
+	//{{ printf "\n%-20s" "Node" }}{{ printf "\t%-s" "Role" }}
+	//{{ range . }}
+	//{{ printf "%-20s" .Node }}{{ printf "\t%-s" .Role }}
+	//{{ end }}
+	//`
+
+	fmt.Fprintln(w, "Node\tRole")
+
+	for role, nodeMap := range roleNodesMap {
+		for node := range nodeMap {
+			row := fmt.Sprintf("%s\t%s", node, role)
+			fmt.Fprintln(w, row)
+		}
+	}
+	w.Flush()
+
+	//	roleNodesTmpl := template.Must(template.New("roleNodes").Parse(tmpl))
+	//	if err := roleNodesTmpl.Execute(&b, RowSlice); err != nil {
+	//		msg := "Could not execute filling of roleNodesMap template.  Will still continue with run."
+	//		log.Error(msg)
+	//		log.Error(err)
+	//		return "", errors.New(msg)
+	//	}
+	//
+	return b.String()
 }
