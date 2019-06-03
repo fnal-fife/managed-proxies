@@ -235,9 +235,19 @@ func checkKeys(ctx context.Context, eConfig ExptConfig) error {
 
 // failedPrettifyRolesNodesMap formats a map of failed nodes and roles into node, role columns and appends a message onto the beginning
 func failedPrettifyRolesNodesMap(roleNodesMap map[string]map[string]struct{}) string {
-	if len(roleNodesMap) == 0 {
+	empty := true
+
+	for _, nodeMap := range roleNodesMap {
+		if len(nodeMap) > 0 {
+			empty = false
+			break
+		}
+	}
+
+	if empty {
 		return ""
 	}
+
 	table := prettifyRolesNodesMap(roleNodesMap)
 
 	finalTable := fmt.Sprintf("The following is a list of nodes on which all proxies were not refreshed, and the corresponding roles for those failed proxy refreshes:\n\n%s", table)
