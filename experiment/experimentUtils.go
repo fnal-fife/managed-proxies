@@ -227,14 +227,14 @@ func checkKeys(ctx context.Context, eConfig ExptConfig) error {
 	}
 
 	if len(eConfig.Nodes) == 0 || len(eConfig.Accounts) == 0 {
-		log.WithField("caller", "checkKeys").Error(checkKeysError)
-		return errors.New(checkKeysError)
+		log.WithField("caller", "checkKeys").Error(checkKeysErrorString)
+		return errors.New(checkKeysErrorString)
 	}
 	return nil
 }
 
 // failedPrettifyRolesNodesMap formats a map of failed nodes and roles into node, role columns and appends a message onto the beginning
-func failedPrettifyRolesNodesMap(roleNodesMap map[string]map[string]struct{}) string {
+func failedPrettifyRolesNodesMap(roleNodesMap map[string]map[string]error) string {
 	empty := true
 
 	for _, nodeMap := range roleNodesMap {
@@ -256,17 +256,29 @@ func failedPrettifyRolesNodesMap(roleNodesMap map[string]map[string]struct{}) st
 }
 
 // prettifyRolesNodesMap takes a map of nodes and roles and prints it in columns
-func prettifyRolesNodesMap(roleNodesMap map[string]map[string]struct{}) string {
+func prettifyRolesNodesMap(roleNodesMap map[string]map[string]error) string {
 	var b strings.Builder
 	w := tabwriter.NewWriter(&b, 0, 8, 1, '\t', 0)
-	fmt.Fprintln(w, "Node\tRole")
+	fmt.Fprintln(w, "Node\tRole\tError")
 
 	for role, nodeMap := range roleNodesMap {
-		for node := range nodeMap {
-			row := fmt.Sprintf("%s\t%s", node, role)
+		for node, err := range nodeMap {
+			row := fmt.Sprintf("%s\t%s\t%s", node, role, err.Error())
 			fmt.Fprintln(w, row)
 		}
 	}
 	w.Flush()
 	return b.String()
+}
+
+// generateNewErrorStringForTable is meant to change an error string based on whether it is currently equal to the defaultError.  If the testError and defaultError match, this func will return an error with the text of errStringSlice.  If they don't, then this func will append the contents of errStringSlice onto the testError text, and return a new error with the combined string.  The separator formats how different error strings should be distinguished.   This func should only be used to concatenate error strings
+func generateNewErrorStringForTable(defaultError, testError error, errStringSlice []string, separator string) error {
+	var newErrStringSlice []string
+	if testError == defaultError {
+		newErrStringSlice = errStringSlice
+	} else {
+		newErrStringSlice = append([]string{testError.Error()}, errStringSlice...)
+	}
+
+	return errors.New(strings.Join(newErrStringSlice, separator))
 }

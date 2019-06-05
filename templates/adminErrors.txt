@@ -1,7 +1,17 @@
 The following errors were reported by the Managed Proxies service at {{.Timestamp}} while performing operation {{.Operation}}:
 
-{{range .ErrorMessages}}
-  - {{.}}
+{{range $expt, $adminData := .AdminErrors}}
+{{ $expt }}
+Setup errors:
+{{ range $adminData.SetupErrors }}
+{{ . }}
 {{end}}
+
+Processing errors:
+{{ $adminData.RunErrorsTable }}
+
+{{end}}
+
+Please look at the logs for more details.
 
 {{/* This template is to report error messages from the proxy-push and myproxy-store executables to the administrators.  */}}

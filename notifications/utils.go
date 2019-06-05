@@ -19,7 +19,8 @@ func NewManager(ctx context.Context, wg *sync.WaitGroup, nConfig Config) Manager
 	c := make(Manager)
 
 	go func() {
-		msgSlice := make([]string, 0) // Collect experiment-specific messages
+		//msgSlice := make([]string, 0) // Collect experiment-specific messages
+		var exptErrorTable string
 		defer wg.Done()
 		for {
 			select {
@@ -43,8 +44,8 @@ func NewManager(ctx context.Context, wg *sync.WaitGroup, nConfig Config) Manager
 				if !chanOpen {
 					// If running for real, send the experiment email
 					if !nConfig.IsTest {
-						if len(msgSlice) > 0 {
-							if err := SendExperimentEmail(ctx, nConfig, msgSlice); err != nil {
+						if len(exptErrorTable) > 0 {
+							if err := SendExperimentEmail(ctx, nConfig, exptErrorTable); err != nil {
 								log.WithFields(log.Fields{
 									"caller":     "NewManager",
 									"experiment": nConfig.Experiment,
@@ -55,10 +56,14 @@ func NewManager(ctx context.Context, wg *sync.WaitGroup, nConfig Config) Manager
 					return
 				}
 				// Direct the message as needed
-				if !n.AdminOnly {
-					msgSlice = append(msgSlice, n.Msg)
+				switch n.NotificationType {
+				case SetupError:
+					addSetupErrorToAdminErrors(&n)
+				case RunError:
+					exptErrorTable = n.Message
+					addTableToAdminErrors(&n)
 				}
-				adminMsgSlice = append(adminMsgSlice, n.Msg)
+
 			}
 		}
 	}()
@@ -67,7 +72,7 @@ func NewManager(ctx context.Context, wg *sync.WaitGroup, nConfig Config) Manager
 }
 
 // SendExperimentEmail sends an experiment-specific error message email based on nConfig.  It expects a valid template file configured at notifications.experiment_template
-func SendExperimentEmail(ctx context.Context, nConfig Config, errorsSlice []string) (err error) {
+func SendExperimentEmail(ctx context.Context, nConfig Config, errorTable string) (err error) {
 	var wg sync.WaitGroup
 	var b strings.Builder
 
@@ -92,11 +97,11 @@ func SendExperimentEmail(ctx context.Context, nConfig Config, errorsSlice []stri
 	timestamp := time.Now().Format(time.RFC822)
 	exptEmailTemplate := template.Must(template.New("exptEmail").Parse(string(templateData)))
 	if err = exptEmailTemplate.Execute(&b, struct {
-		Timestamp     string
-		ErrorMessages []string
+		Timestamp  string
+		ErrorTable string
 	}{
-		Timestamp:     timestamp,
-		ErrorMessages: errorsSlice,
+		Timestamp:  timestamp,
+		ErrorTable: errorTable,
 	}); err != nil {
 		log.WithFields(log.Fields{
 			"caller":     "SendAdminNotifications",
@@ -124,8 +129,23 @@ func SendAdminNotifications(ctx context.Context, nConfig Config, operation strin
 	var wg sync.WaitGroup
 	var emailErr, slackErr error
 	var b strings.Builder
+	var adminErrorsMap map[string]AdminData
 
-	if len(adminMsgSlice) == 0 {
+	// Convert from sync.Map to Map
+	adminErrors.Range(func(expt, adminData interface{}) bool {
+		e, ok := expt.(string)
+		if !ok {
+			log.Panic("Improper key in admin notifications map.")
+		}
+		a, ok := adminData.(AdminData)
+		if !ok {
+			log.Panic("Invalid admin data stored for notification")
+		}
+		adminErrorsMap[e] = a
+		return true
+	})
+
+	if len(adminErrorsMap) == 0 {
 		if nConfig.IsTest {
 			slackMsg := "Test run completed successfully"
 			if slackErr = SendSlackMessage(ctx, nConfig, slackMsg); slackErr != nil {
@@ -155,13 +175,13 @@ func SendAdminNotifications(ctx context.Context, nConfig Config, operation strin
 	adminTemplate := template.Must(template.New("admin").Parse(string(templateData)))
 
 	if err = adminTemplate.Execute(&b, struct {
-		Timestamp     string
-		Operation     string
-		ErrorMessages []string
+		Timestamp   string
+		Operation   string
+		AdminErrors map[string]AdminData
 	}{
-		Timestamp:     timestamp,
-		Operation:     operation,
-		ErrorMessages: adminMsgSlice,
+		Timestamp:   timestamp,
+		Operation:   operation,
+		AdminErrors: adminErrorsMap,
 	}); err != nil {
 		log.WithField("caller", "SendAdminNotifications").Errorf("Failed to execute admin email template: %s", err)
 		return err
@@ -252,4 +272,41 @@ func SendCertAlarms(ctx context.Context, nConfig Config, cSlice []CertExpiration
 	}
 	return nil
 
+}
+
+// addSetupErrorToAdminErrors adds a Notification.Message to the adminErrors[Notification.Experiment].SetupErrors slice if the Notifications.NotificationType is SetupError
+func addSetupErrorToAdminErrors(n *Notification) {
+	// is the expt key there?
+	// If so, grab the AdminData struct, set it aside
+	// Add to that AdminData stuff
+	if actual, loaded := adminErrors.LoadOrStore(
+		n.Experiment,
+		AdminData{
+			SetupErrors: []string{n.Message},
+		},
+	); loaded {
+		if adminData, ok := actual.(AdminData); !ok {
+			log.Panic("Invalid data stored in admin errors map.")
+		} else {
+			adminData.SetupErrors = append(adminData.SetupErrors, n.Message)
+			adminErrors.Store(n.Experiment, adminData)
+		}
+	}
+	return
+}
+
+// addTableToAdminErrors populates adminErrors[Notification.Experiment].RunErrorsTable with the Notification.Message if the Notifications.NotificationType is RunError
+func addTableToAdminErrors(n *Notification) {
+	if actual, loaded := adminErrors.LoadOrStore(
+		n.Experiment,
+		AdminData{RunErrorsTable: n.Message},
+	); loaded {
+		if adminData, ok := actual.(AdminData); !ok {
+			log.Panic("Invalid data stored in admin errors map.")
+		} else {
+			adminData.RunErrorsTable = n.Message
+			adminErrors.Store(n.Experiment, adminData)
+		}
+	}
+	return
 }

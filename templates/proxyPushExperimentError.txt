@@ -1,8 +1,13 @@
-In the most recent push of your experiment's managed proxies to the destination nodes, dated {{.Timestamp}}, there were a few errors.  Please review them below and take any action if necessary.  If you have any questions, please open a Service Desk ticket to the Distributed Computing Support group.
+In the most recent push of your experiment's managed proxies to the destination nodes, dated {{.Timestamp}}, there were some errors.  Please review them below and take any action if necessary.  
 
-{{range .ErrorMessages}}
-  - {{.}}
-{{end}}
+In the table at the end of the messages, there are generally two courses of action we recommend:
+
+    1)  If the error mentions that a node was not pingable, please try to log in to that node.  If you can't, open a ServiceNow ticket to Scientific Server Support.
+    2)  For any other error, if you have any questions, please open a ticket to the Distributed Computing Support group.
+
+{{.ErrorTable}}
+
+If you have any other questions, please open a Service Desk ticket to the Distributed Computing Support group.
 
 Thank you very much,
 The FIFE group

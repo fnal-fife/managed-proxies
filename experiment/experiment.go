@@ -4,6 +4,7 @@ package experiment
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -18,11 +19,11 @@ import (
 
 var kinitExecutable = "/usr/krb5/bin/kinit"
 
-// ExperimentSuccess stores information on whether all the processes involved in generating, copying, and changing
+// Success stores information on whether all the processes involved in generating, copying, and changing
 // permissions on all proxies for an experiment were successful.
-type ExperimentSuccess struct {
-	Name    string
-	Success bool
+type Success struct {
+	Name       string
+	Successful bool
 }
 
 type (
@@ -51,9 +52,10 @@ type ExptConfig struct {
 
 // Worker is the main function that manages the processes involved in generating and copying VOMS proxies to
 // an experiment's nodes.  It returns a channel on which it reports the status of that experiment's proxy push.
-func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPush, nMgr notifications.Manager) <-chan ExperimentSuccess {
-	c := make(chan ExperimentSuccess, 2)
-	expt := ExperimentSuccess{eConfig.Name, true} // Initialize
+func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPush, nMgr notifications.Manager) <-chan Success {
+	c := make(chan Success, 2)
+	expt := Success{eConfig.Name, true} // Initialize
+	genericTimeoutError := errors.New(genericTimeoutErrorString)
 
 	log.WithField("experiment", eConfig.Name).Debug("Now processing experiment to push proxies")
 
@@ -63,21 +65,21 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 
 		// Helper functions
 		declareExptFailure := func() {
-			expt.Success = false
+			expt.Successful = false
 			c <- expt
 		}
 
 		// General Setup
 		successfulCopies := make(map[string][]string)
-		failedCopies := make(map[string]map[string]struct{})
+		failedCopies := make(map[string]map[string]error)
 		badNodesSlice := make([]string, 0, len(eConfig.Nodes))
 
 		// Set up failedCopies for troubleshooting issues.  As pushes succeed, we'll be deleting these
 		// from the map.
 		for _, role := range eConfig.Accounts {
-			failedCopies[role] = make(map[string]struct{})
+			failedCopies[role] = make(map[string]error)
 			for _, n := range eConfig.Nodes {
-				failedCopies[role][n] = struct{}{}
+				failedCopies[role][n] = genericTimeoutError
 			}
 		}
 
@@ -88,8 +90,9 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 				"experiment": eConfig.Name,
 			}).Error(krb5ConfigError)
 			nMgr <- notifications.Notification{
-				Msg:       krb5ConfigError,
-				AdminOnly: true,
+				Message:          krb5ConfigError,
+				Experiment:       eConfig.Name,
+				NotificationType: notifications.SetupError,
 			}
 			declareExptFailure()
 			return
@@ -105,8 +108,9 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 				"experiment": eConfig.Name,
 			}).Warn(krb5Error)
 			nMgr <- notifications.Notification{
-				Msg:       krb5Error,
-				AdminOnly: true,
+				Message:          krb5Error,
+				Experiment:       eConfig.Name,
+				NotificationType: notifications.SetupError,
 			}
 		}
 
@@ -118,8 +122,9 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 			}).Error("Error processing experiment")
 			declareExptFailure()
 			nMgr <- notifications.Notification{
-				Msg:       checkKeysError,
-				AdminOnly: true,
+				Message:          checkKeysErrorString,
+				Experiment:       eConfig.Name,
+				NotificationType: notifications.SetupError,
 			}
 			return
 		}
@@ -141,16 +146,8 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 				if e := pingCtx.Err(); e == context.DeadlineExceeded {
 					pingTout := "Hit the timeout pinging nodes"
 					log.WithField("experiment", eConfig.Name).Error(pingTout)
-					nMsg := pingTout + fmt.Sprintf(" for experiment %s", eConfig.Name)
-					nMgr <- notifications.Notification{
-						Msg:       nMsg,
-						AdminOnly: true}
 				} else {
 					log.WithField("experiment", eConfig.Name).Error(e)
-					nMgr <- notifications.Notification{
-						Msg:       fmt.Sprintf(generalContextErrorf, eConfig.Name),
-						AdminOnly: true,
-					}
 				}
 				pingCancel()
 				break pingLoop
@@ -161,18 +158,12 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 					break pingLoop
 				}
 				if testnode.Err != nil {
-					pingNodeAdminMsgf := "Error pinging node: %s"
 					n := testnode.PingNoder.String()
 					badNodesSlice = append(badNodesSlice, n)
 					log.WithFields(log.Fields{
 						"experiment": eConfig.Name,
 						"node":       n,
 					}).Error(testnode.Err)
-					nMsg := fmt.Sprintf(pingNodeAdminMsgf, n)
-					nMgr <- notifications.Notification{
-						Msg:       nMsg,
-						AdminOnly: true,
-					}
 				}
 			}
 		}
@@ -184,7 +175,9 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 			nMsg := fmt.Sprintf(pingNodeAggMessagef, strings.Join(badNodesSlice, ", "))
 			log.WithField("experiment", eConfig.Name).Error(nMsg)
 			nMgr <- notifications.Notification{
-				Msg: nMsg,
+				Message:          nMsg,
+				Experiment:       eConfig.Name,
+				NotificationType: notifications.SetupError,
 			}
 		}
 
@@ -193,10 +186,11 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 		if err != nil {
 			msg := "Error setting up experiment:  one or more service certs could not be ingested"
 			log.WithField("experiment", eConfig.Name).Error()
-			expt.Success = false
+			expt.Successful = false
 			nMgr <- notifications.Notification{
-				Msg:       msg,
-				AdminOnly: true,
+				Message:          msg,
+				Experiment:       eConfig.Name,
+				NotificationType: notifications.SetupError,
 			}
 		} else {
 			log.WithField("experiment", eConfig.Name).Debug("Ingested service certs successfully")
@@ -221,22 +215,12 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 						"experiment": eConfig.Name,
 						"action":     "voms-proxy-init",
 					}).Error(vpiTout)
-					msg := vpiTout + " for experiment " + eConfig.Name
-					nMgr <- notifications.Notification{
-						Msg:       msg,
-						AdminOnly: true,
-					}
 				} else {
 					log.WithFields(log.Fields{
 						"caller":     "experimentutil.Worker",
 						"experiment": eConfig.Name,
 						"action":     "voms-proxy-init",
 					}).Error(e)
-					msg := fmt.Sprintf(generalContextErrorf, eConfig.Name)
-					nMgr <- notifications.Notification{
-						Msg:       msg,
-						AdminOnly: true,
-					}
 				}
 				vpiCancel()
 				break vpiLoop
@@ -249,12 +233,11 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 
 				vomsProxyStatuses = append(vomsProxyStatuses, vpi)
 				if vpi.err != nil {
-					msg := fmt.Sprintf("Error generating voms proxy from service cert for %s.  See logs", eConfig.Name)
-					expt.Success = false
-					nMgr <- notifications.Notification{
-						Msg:       msg,
-						AdminOnly: true,
-					}
+					expt.Successful = false
+					log.WithFields(log.Fields{
+						"experiment": eConfig.Name,
+						"role":       vpi.vomsProxy.Role,
+					}).Error("Failed to generate voms proxy")
 				} else {
 					log.WithFields(log.Fields{
 						"experiment":        eConfig.Name,
@@ -270,11 +253,6 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 			if r != nil {
 				msg := fmt.Sprintf("Recovered from panic:  %s.  Will clean up voms proxies", r)
 				log.WithField("experiment", eConfig.Name).Error(msg)
-				nMsg := msg + " for experiment " + eConfig.Name
-				nMgr <- notifications.Notification{
-					Msg:       nMsg,
-					AdminOnly: true,
-				}
 			}
 
 			for _, v := range vomsProxyStatuses {
@@ -285,8 +263,9 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 						"role":       v.vomsProxy.Role,
 					}).Error(nMsg)
 					nMgr <- notifications.Notification{
-						Msg:       nMsg,
-						AdminOnly: true,
+						Message:          nMsg,
+						Experiment:       eConfig.Name,
+						NotificationType: notifications.SetupError,
 					}
 				} else {
 					log.WithFields(log.Fields{
@@ -317,7 +296,14 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 		for _, vpistatus := range vomsProxyStatuses {
 			if vpistatus.err == nil {
 				vomsProxies = append(vomsProxies, vpistatus.vomsProxy)
+			} else {
+				vpRole := vpistatus.vomsProxy.Role
+				// We won't try to push proxies for this role.  Set all nodes' errors in table to be VPI error
+				for node := range failedCopies[vpRole] {
+					failedCopies[vpRole][node] = errors.New(genericVpiErrorString)
+				}
 			}
+
 		}
 
 		// Proxy transfer
@@ -338,25 +324,26 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 						"experiment": eConfig.Name,
 						"action":     "copy proxies",
 					}).Error(copyTout)
-					msg := failedPrettifyRolesNodesMap(failedCopies)
-					if len(msg) > 0 {
-						nMgr <- notifications.Notification{
-							Msg: msg,
-						}
-					}
 				} else {
 					log.WithFields(log.Fields{
 						"caller":     "experiment.Worker",
 						"experiment": eConfig.Name,
 						"action":     "copy proxies",
 					}).Error(e)
-					msg := fmt.Sprintf(generalContextErrorf, eConfig.Name)
-					nMgr <- notifications.Notification{
-						Msg: msg,
+					msg := []string{generalContextErrorString}
+					for role, nodeMap := range failedCopies {
+						for node, err := range nodeMap {
+							failedCopies[role][node] = generateNewErrorStringForTable(
+								genericTimeoutError,
+								err,
+								msg,
+								"; ",
+							)
+						}
 					}
 				}
 
-				expt.Success = false
+				expt.Successful = false
 				copyCancel()
 				break copyLoop
 
@@ -368,12 +355,13 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 
 				log.WithField("experiment", eConfig.Name).Debug(pushproxy)
 				if pushproxy.err != nil {
-					var copyProxyErrorf string
-					copyProxyErrorf = "Error copying proxy to %s for role %s."
+					var copyProxyErrorSlice []string
+					copyProxyErrorSlice = []string{"Error copying proxy"}
 
 					for _, n := range badNodesSlice {
 						if pushproxy.node == n {
-							copyProxyErrorf = copyProxyErrorf + " The node was not pingable earlier, so please look into the status of that node to make sure it's up and working."
+							//copyProxyErrorf = copyProxyErrorf + " The node was not pingable earlier, so please look into the status of that node to make sure it's up and working."
+							copyProxyErrorSlice = append(copyProxyErrorSlice, "Node not pingable earlier")
 							break
 						}
 					}
@@ -385,11 +373,15 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 						"role":    pushproxy.role,
 						"action":  "copy proxies",
 					}).Error(pushproxy.err)
-					expt.Success = false
-					nMsg := fmt.Sprintf(copyProxyErrorf, pushproxy.node, pushproxy.role)
-					nMgr <- notifications.Notification{
-						Msg: nMsg,
-					}
+
+					failedCopies[pushproxy.role][pushproxy.node] = generateNewErrorStringForTable(
+						genericTimeoutError,
+						failedCopies[pushproxy.role][pushproxy.node],
+						copyProxyErrorSlice,
+						"; ",
+					)
+
+					expt.Successful = false
 				} else {
 					successfulCopies[pushproxy.role] = append(successfulCopies[pushproxy.role], pushproxy.node)
 					delete(failedCopies[pushproxy.role], pushproxy.node)
@@ -401,10 +393,6 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 							"node":   pushproxy.node,
 							"role":   pushproxy.role,
 						}).Warn(msg)
-						nMgr <- notifications.Notification{
-							Msg:       msg,
-							AdminOnly: true,
-						}
 					} else {
 						log.WithFields(log.Fields{
 							"node": pushproxy.node,
@@ -427,7 +415,9 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 		failedMsg := failedPrettifyRolesNodesMap(failedCopies)
 		if len(failedMsg) > 0 {
 			nMgr <- notifications.Notification{
-				Msg: failedMsg,
+				Message:          failedMsg,
+				Experiment:       eConfig.Name,
+				NotificationType: notifications.RunError,
 			}
 		}
 
@@ -461,8 +451,10 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 
 // Notifications messages
 const (
-	generalContextErrorf = "Context error for experiment: %s.  See logs"
-	checkKeysError       = `Input file improperly formatted (accounts or nodes don't 
+	generalContextErrorString = "Context error for experiment"
+	checkKeysErrorString      = `Input file improperly formatted (accounts or nodes don't 
 			exist for this experiment). Please check the config file on fifeutilgpvm01.
 			 I will skip this experiment for now`
+	genericTimeoutErrorString = "Timeout error"
+	genericVpiErrorString     = "Failed to generate VOMS proxy"
 )
