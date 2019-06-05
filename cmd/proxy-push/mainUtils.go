@@ -20,8 +20,8 @@ var emailRegexp = regexp.MustCompile(`^[\w\._%+-]+@[\w\.-]+\.\w{2,}$`)
 
 // manageExperimentChannels starts up the various experimentutil.Workers and listens for their response.  It puts these
 // statuses into an aggregate channel.
-func manageExperimentChannels(ctx context.Context, exptConfigs []experiment.ExptConfig) <-chan experiment.ExperimentSuccess {
-	agg := make(chan experiment.ExperimentSuccess, len(exptConfigs))
+func manageExperimentChannels(ctx context.Context, exptConfigs []experiment.ExptConfig) <-chan experiment.Success {
+	agg := make(chan experiment.Success, len(exptConfigs))
 	configChan := make(chan experiment.ExptConfig) // chan of configurations to send to workerSlots
 	var wg, wwg, nwg sync.WaitGroup
 	waitGroups := waitGroupCollection{
@@ -69,7 +69,7 @@ func manageExperimentChannels(ctx context.Context, exptConfigs []experiment.Expt
 
 // workerSlot is a slot into which experiment.Workers can be assigned.  global.numPushWorkers defines the number of these that manageExperimentChannels will create.
 // Listens on configChan and writes to aggChan
-func workerSlot(ctx context.Context, workerID int, configChan <-chan experiment.ExptConfig, aggChan chan<- experiment.ExperimentSuccess, wwg, ewg, nwg *sync.WaitGroup) {
+func workerSlot(ctx context.Context, workerID int, configChan <-chan experiment.ExptConfig, aggChan chan<- experiment.Success, wwg, ewg, nwg *sync.WaitGroup) {
 
 	defer func() {
 		log.WithField("workerId", workerID).Debug("Worker Slot shutting down")

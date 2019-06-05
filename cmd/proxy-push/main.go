@@ -323,7 +323,7 @@ func main() {
 				return
 			}
 			// Otherwise, add the information coming in to the map.
-			exptSuccesses[expt.Name] = expt.Success
+			exptSuccesses[expt.Name] = expt.Successful
 		case <-ctx.Done():
 			// Timeout
 			if e := ctx.Err(); e == context.DeadlineExceeded {
