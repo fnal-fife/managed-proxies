@@ -172,6 +172,7 @@ func init() {
 
 func main() {
 	var nwg, wg sync.WaitGroup
+	var exptFailures map[string]map[string]error
 	ctx, cancel := context.WithTimeout(context.Background(), tConfig["globaltimeoutDuration"])
 
 	/* Order of defers (in execution order):
@@ -184,6 +185,7 @@ func main() {
 	defer cancel()
 
 	// Start notifications manager, just for admin
+	//TODO Need to change this to tabulate results.  Maybe use experiment package?
 
 	// Send admin notifications at the end
 	defer func() {
@@ -281,10 +283,10 @@ func main() {
 						"experiment": e.Name,
 						"account":    account,
 					}).Error(msg)
-					nMsg := msg + " for experiment " + e.Name + " andperiment " + e.Name
+					nMsg := msg + " for experiment " + e.Name + " and account " + account
 					nMgr <- notifications.Notification{
-						Msg:       nMsg,
-						AdminOnly: true,
+						Message:          nMsg,
+						NotificationType: notifications.SetupError,
 					}
 					return
 				}
@@ -301,8 +303,8 @@ func main() {
 					}).Error(msg)
 					nMsg := msg + " for experiment " + e.Name + " and account " + account
 					nMgr <- notifications.Notification{
-						Msg:       nMsg,
-						AdminOnly: true,
+						Message:          nMsg,
+						NotificationType: notifications.SetupError,
 					}
 					return
 				}
@@ -317,8 +319,8 @@ func main() {
 						}).Error("r")
 						nMsg := msg + " for experiment " + e.Name + " and account " + account
 						nMgr <- notifications.Notification{
-							Msg:       nMsg,
-							AdminOnly: true,
+							Message:          nMsg,
+							NotificationType: notifications.SetupError,
 						}
 					}
 					g.Remove()
@@ -338,11 +340,12 @@ func main() {
 				if err := proxy.StoreInMyProxy(mCtx, g, retrievers, viper.GetString("global.myproxyserver"), tConfig["gpivalidDuration"]); err != nil {
 					msg := "Could not store grid proxy in myproxy"
 					log.WithField("experiment", e.Name).Error(msg)
-					nMsg := msg + " for experiment " + e.Name
-					nMgr <- notifications.Notification{
-						Msg:       nMsg,
-						AdminOnly: true,
-					}
+					exptFailures[e.Name][account] = err
+					// nMsg := msg + " for experiment " + e.Name
+					//					nMgr <- notifications.Notification{
+					//						Message:       nMsg,
+					//						AdminOnly: true,
+					//}
 				} else {
 					log.WithFields(log.Fields{
 						"experiment":    e.Name,
@@ -357,8 +360,8 @@ func main() {
 						}).Error(msg)
 						nMsg := msg + "myProxyStoreTime for dn " + g.DN
 						nMgr <- notifications.Notification{
-							Msg:       nMsg,
-							AdminOnly: true,
+							Message:          nMsg,
+							NotificationType: notifications.SetupError,
 						}
 					}
 				}
@@ -366,6 +369,14 @@ func main() {
 		}(eConfig)
 
 	}
-
 	wg.Wait()
+
+	if len(exptFailures) > 0 {
+		header := []string{"Experiment", "Account", "Error"}
+		table := utils.DoubleErrorMapToTable(exptFailures, header)
+		nMgr <- notifications.Notification{
+			Message:          table,
+			NotificationType: notifications.RunError,
+		}
+	}
 }

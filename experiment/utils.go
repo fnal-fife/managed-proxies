@@ -15,6 +15,7 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/proxy"
+	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/utils"
 )
 
 // vomsProxyInitStatus stores information about an attempt to run voms-proxy-init to generate a VOMS proxy.
@@ -248,15 +249,16 @@ func failedPrettifyRolesNodesMap(roleNodesMap map[string]map[string]error) strin
 		return ""
 	}
 
-	table := prettifyRolesNodesMap(roleNodesMap)
+	table := utils.DoubleErrorMapToTable(roleNodesMap, []string{"Node", "Role", "Error"})
 
 	finalTable := fmt.Sprintf("The following is a list of nodes on which all proxies were not refreshed, and the corresponding roles for those failed proxy refreshes:\n\n%s", table)
 	return finalTable
 
 }
 
+// Should be able to get rid of this TODO
 // prettifyRolesNodesMap takes a map of nodes and roles and prints it in columns
-func prettifyRolesNodesMap(roleNodesMap map[string]map[string]error) string {
+func tabulateRolesNodesMap(roleNodesMap map[string]map[string]error) string {
 	var b strings.Builder
 	w := tabwriter.NewWriter(&b, 0, 8, 1, '\t', 0)
 	fmt.Fprintln(w, "Node\tRole\tError")
