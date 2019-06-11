@@ -138,6 +138,28 @@ func TestMapToTableData(t *testing.T) {
 				[]string{"expt3", "node1", "error1expt3"},
 			},
 		},
+		{
+			testObject: map[string]map[string]int{
+				"expt1": {
+					"node1": 1,
+					"node2": 2,
+				},
+				"expt2": {
+					"node1": 3,
+					"node2": 4,
+				},
+				"expt3": {
+					"node1": 5,
+				},
+			},
+			expectedResult: [][]string{
+				[]string{"expt1", "node1", "1"},
+				[]string{"expt1", "node2", "2"},
+				[]string{"expt2", "node1", "3"},
+				[]string{"expt2", "node2", "4"},
+				[]string{"expt3", "node1", "5"},
+			},
+		},
 	}
 
 	for _, test := range tests {
