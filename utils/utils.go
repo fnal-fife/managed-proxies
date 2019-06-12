@@ -112,6 +112,12 @@ func MapToTableData(v reflect.Value, curData [][]string, curRow []string) [][]st
 			curData = MapToTableData(v.MapIndex(k), curData, rowStage)
 		}
 	case reflect.Array, reflect.Slice:
+		// Empty slice in our structure
+		if v.Len() == 0 {
+			curData = append(curData, curRow)
+			return curData
+		}
+
 		for i := 0; i < v.Len(); i++ {
 			curData = MapToTableData(v.Index(i), curData, rowStage)
 		}
@@ -141,6 +147,8 @@ func MapToTableData(v reflect.Value, curData [][]string, curRow []string) [][]st
 				rowStage = append(rowStage, val.String())
 				curData = append(curData, rowStage)
 			}
+		} else {
+			curData = append(curData, curRow)
 		}
 	}
 	return curData
