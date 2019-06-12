@@ -110,6 +110,7 @@ func init() {
 	}
 	nConfig.ConfigInfo["smtphost"] = viper.GetString("global.smtphost")
 	nConfig.ConfigInfo["smtpport"] = strconv.Itoa(viper.GetInt("global.smtpport"))
+	nConfig.Experiment = "all experiments"
 	nConfig.IsTest = viper.GetBool("test")
 	nConfig.From = viper.GetString("notifications.admin_email")
 	timestamp := time.Now().Format(time.RFC822)

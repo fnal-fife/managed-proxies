@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os/user"
 	"regexp"
+	"strings"
+	"text/tabwriter"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
@@ -88,3 +90,35 @@ func checkUser(authuser string) error {
 	}
 	return nil
 }
+
+// TODO Deprecate
+func tabulateExptAccountFailures(exptAcctFailures map[string]map[string]error) string {
+	var b strings.Builder
+	w := tabwriter.NewWriter(&b, 0, 8, 1, '\t', 0)
+	fmt.Fprintln(w, "Experiment\tAccount\tError")
+
+	for expt, acctMap := range exptAcctFailures {
+		for acct, err := range acctMap {
+			row := fmt.Sprintf("%s\t%s\t%s", expt, acct, err.Error())
+			fmt.Fprintln(w, row)
+		}
+	}
+	w.Flush()
+	return b.String()
+}
+
+// TODO Deprecate
+//func tabulateMap(map[string]map[string]error) string {
+//	var b strings.Builder
+//	w := tabwriter.NewWriter(&b, 0, 8, 1, '\t', 0)
+//	fmt.Fprintln(w, "Experiment\tAccount\tError")
+//
+//	for expt, acctMap := range exptAcctFailures {
+//		for acct, err := range acctMap {
+//			row := fmt.Sprintf("%s\t%s\t%s", expt, acct, err.Error())
+//			fmt.Fprintln(w, row)
+//		}
+//	}
+//	w.Flush()
+//	return b.String()
+//}
