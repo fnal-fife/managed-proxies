@@ -129,7 +129,7 @@ func SendAdminNotifications(ctx context.Context, nConfig Config, operation strin
 	var wg sync.WaitGroup
 	var emailErr, slackErr error
 	var b strings.Builder
-	var adminErrorsMap map[string]AdminData
+	adminErrorsMap := make(map[string]AdminData)
 
 	// Convert from sync.Map to Map
 	adminErrors.Range(func(expt, adminData interface{}) bool {
