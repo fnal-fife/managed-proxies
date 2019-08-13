@@ -2,14 +2,18 @@ The following errors were reported by the Managed Proxies service at {{.Timestam
 
 {{range $expt, $adminData := .AdminErrors}}
 {{ $expt }}
-Setup errors:
+{{ if $adminData.SetupErrors }} 
+Setup errors: 
 {{ range $adminData.SetupErrors }}
 {{ . }}
 {{end}}
+{{end}}
 
+{{ if $adminData.RunErrorsTable }}
 Processing errors:
 {{ $adminData.RunErrorsTable }}
 
+{{end}}
 {{end}}
 
 Please look at the logs for more details.

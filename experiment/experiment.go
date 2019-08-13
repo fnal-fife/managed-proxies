@@ -102,13 +102,24 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 		// If we can't get a kerb ticket, log error and keep going.
 		// We might have an old one that's still valid.
 		if err := getKerbTicket(ctx, eConfig.KerbConfig); err != nil {
-			krb5Error := "Could not obtain new kerberos ticket.  Will try to use old one and push proxies."
+			var reportErrString string
+			if e := ctx.Err(); e == context.DeadlineExceeded {
+				reportErrString = genericTimeoutErrorString
+				nMgr <- notifications.Notification{
+					Message:          reportErrString,
+					Experiment:       eConfig.Name,
+					NotificationType: notifications.SetupError,
+				}
+				declareExptFailure()
+				return
+			}
+			reportErrString = "Could not obtain new kerberos ticket.  Will try to use old one and push proxies."
 			log.WithFields(log.Fields{
 				"caller":     "experiment.Worker",
 				"experiment": eConfig.Name,
-			}).Warn(krb5Error)
+			}).Warn(reportErrString)
 			nMgr <- notifications.Notification{
-				Message:          krb5Error,
+				Message:          reportErrString,
 				Experiment:       eConfig.Name,
 				NotificationType: notifications.SetupError,
 			}
@@ -116,13 +127,19 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 
 		// If check of exptConfig keys fails, experiment fails immediately
 		if err := checkKeys(ctx, eConfig); err != nil {
+			var reportErrString string
+			if e := ctx.Err(); e == context.DeadlineExceeded {
+				reportErrString = genericTimeoutErrorString
+			} else {
+				reportErrString = checkKeysErrorString
+			}
 			log.WithFields(log.Fields{
 				"caller":     "experiment.Worker",
 				"experiment": eConfig.Name,
 			}).Error("Error processing experiment")
 			declareExptFailure()
 			nMgr <- notifications.Notification{
-				Message:          checkKeysErrorString,
+				Message:          reportErrString,
 				Experiment:       eConfig.Name,
 				NotificationType: notifications.SetupError,
 			}
