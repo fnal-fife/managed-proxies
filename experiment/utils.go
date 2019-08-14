@@ -256,23 +256,6 @@ func failedPrettifyRolesNodesMap(roleNodesMap map[string]map[string]error) strin
 
 }
 
-//// Should be able to get rid of this TODO
-//// prettifyRolesNodesMap takes a map of nodes and roles and prints it in columns
-//func tabulateRolesNodesMap(roleNodesMap map[string]map[string]error) string {
-//	var b strings.Builder
-//	w := tabwriter.NewWriter(&b, 0, 8, 1, '\t', 0)
-//	fmt.Fprintln(w, "Node\tRole\tError")
-//
-//	for role, nodeMap := range roleNodesMap {
-//		for node, err := range nodeMap {
-//			row := fmt.Sprintf("%s\t%s\t%s", node, role, err.Error())
-//			fmt.Fprintln(w, row)
-//		}
-//	}
-//	w.Flush()
-//	return b.String()
-//}
-
 // generateNewErrorStringForTable is meant to change an error string based on whether it is currently equal to the defaultError.  If the testError and defaultError match, this func will return an error with the text of errStringSlice.  If they don't, then this func will append the contents of errStringSlice onto the testError text, and return a new error with the combined string.  The separator formats how different error strings should be distinguished.   This func should only be used to concatenate error strings
 func generateNewErrorStringForTable(defaultError, testError error, errStringSlice []string, separator string) error {
 	var newErrStringSlice []string

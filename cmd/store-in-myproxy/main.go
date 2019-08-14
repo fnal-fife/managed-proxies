@@ -186,7 +186,6 @@ func main() {
 	defer cancel()
 
 	// Start notifications manager, just for admin
-	//TODO Need to change this to tabulate results.  Maybe use experiment package?
 
 	// Send admin notifications at the end
 	defer func() {
