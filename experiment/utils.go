@@ -249,7 +249,7 @@ func failedPrettifyRolesNodesMap(roleNodesMap map[string]map[string]error) strin
 		return ""
 	}
 
-	table := utils.DoubleErrorMapToTable(roleNodesMap, []string{"Node", "Role", "Error"})
+	table := utils.DoubleErrorMapToTable(roleNodesMap, []string{"Role", "Node", "Error"})
 
 	finalTable := fmt.Sprintf("The following is a list of nodes on which all proxies were not refreshed, and the corresponding roles for those failed proxy refreshes:\n\n%s", table)
 	return finalTable
