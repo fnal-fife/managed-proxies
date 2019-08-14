@@ -68,6 +68,7 @@ func DoubleErrorMapToTable(myMap map[string]map[string]error, header []string) s
 	table := tablewriter.NewWriter(&b)
 	table.SetHeader(header)
 	table.AppendBulk(data)
+	table.SetBorder(false)
 	table.Render()
 
 	return b.String()
