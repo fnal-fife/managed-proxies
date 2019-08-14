@@ -25,7 +25,9 @@ import (
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/proxy"
 )
 
-const configFile string = "managedProxies"
+const (
+	configFile string = "managedProxies"
+)
 
 var (
 	nConfig notifications.Config
@@ -52,7 +54,7 @@ func init() {
 	viper.BindPFlags(pflag.CommandLine)
 
 	if viper.GetBool("version") {
-		fmt.Printf("Managed Proxies version %s\n", packaging.Version)
+		fmt.Printf("Managed Proxies Version %s, Build %s\n", packaging.Version, packaging.Build)
 		os.Exit(0)
 	}
 
