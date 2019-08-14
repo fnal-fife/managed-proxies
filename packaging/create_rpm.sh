@@ -24,7 +24,7 @@ for dir in `ls -1`
 do
   echo ${dir}
   cd ${STARTDIR}/cmd/${dir}
-  GOOS=linux go build -ldflags="-X packaging.Build=${BUILD}"
+  GOOS=linux go build -ldflags="-X cdcvs.fnal.gov/discompsupp/ken_proxy_push/packaging.Build=${BUILD}"
 
   if [[ $? -ne 0 ]] ; then
     echo "Could not build executable in directory $dir"
