@@ -1,12 +1,11 @@
 #/bin/bash
 
-echo "${GOPATH:?Need to have $GOPATH set}"
-
 NAME=managed-proxies
-GOIMPORTPATH=cdcvs.fnal.gov/discompsupp/ken_proxy_push
 RPMARCH=i696-redhat-linux 
 
-STARTDIR=${GOPATH}/src/${GOIMPORTPATH}
+# Thank you https://stackoverflow.com/a/246128
+PWD="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+STARTDIR=${PWD}/..
 PACKAGEINFOFILE=${STARTDIR}/packaging/packaging.go
 SPECFILE=${STARTDIR}/packaging/${NAME}.spec
 VERSION=`grep "Version = " ${PACKAGEINFOFILE} | cut -d \" -f 2`

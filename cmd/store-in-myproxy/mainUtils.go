@@ -9,8 +9,8 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 
-	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/experiment"
-	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/notifications"
+	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/experiment"
+	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/notifications"
 )
 
 var emailRegexp = regexp.MustCompile(`^[\w\._%+-]+@[\w\.-]+\.\w{2,}$`)
