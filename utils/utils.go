@@ -91,7 +91,6 @@ func WrapMapToTableData(myObject interface{}) [][]string {
 	)
 }
 
-//TODO Unit test this
 // MapToTableData takes an arbitrarily nested map whose value is given in v, iterates through it, and returns each unique key(s)/value set as a row.  Adapted from https://stackoverflow.com/a/53159340
 func MapToTableData(v reflect.Value, curData [][]string, curRow []string) [][]string {
 	rowStage := append([]string(nil), curRow...)
