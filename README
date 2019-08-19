@@ -5,7 +5,7 @@ The Managed Proxies service can be run from this repository by building any (or 
    2.  store-in-myproxy:  Create grid proxies from the service certs and store them in a configured myproxy server
    3.  proxy-push:  Create VOMS proxies from the service certs and push them to configured nodes.
 
-To build any of these, make sure this repository is cloned in your $GOPATH at the right location ($GOPATH/src/cdcvs.fnal.gov/discompsupp/ken_proxy_push), navigate to the appropriate directory under cmd/, and run "GOOS=linux go build" (assuming you want to build a linux binary).  So for example, if you want to build the proxy-push executable, go to $GOPATH/src/cdcvs.fnal.gov/discompsupp/ken_proxy_push/cmd/proxy-push, and run "GOOS=linux go build".  The proxy-push executable will be created in that directory if the build is successful.
+To build any of these, clone this repository, navigate to the appropriate directory under cmd/, and run "GOOS=linux go build" (assuming you want to build a linux binary).  So for example, if you want to build the proxy-push executable, go to cmd/proxy-push, and run "GOOS=linux go build".  The proxy-push executable will be created in that directory if the build is successful.  Note that in this case, the build will be set to ".".
 
 Alternatively, if your machine is able to build RPMs, you can simply build the three executables as detailed above, and then run ./packaging/create_rpm.sh from the top directory of this repo.  That should create an RPM in the standard location, which you can then use to deploy.  Included in the RPM are:
 
@@ -16,6 +16,6 @@ Alternatively, if your machine is able to build RPMs, you can simply build the t
 5)  An empty log directory will be created at /var/log/managed-proxies
 
 Development:
-Clone the git repo into $GOPATH/src/cdcvs.fnal.gov/discompsupp/ken_proxy_push or run go get cdcvs.fnal.gov/discompsupp/ken_proxy_push for imports to work correctly.
+Clone the git repo or run go get cdcvs.fnal.gov/discompsupp/ken_proxy_push for imports to work correctly.
 
 Then have at it.  The central repository is held at https://cdcvs.fnal.gov/redmine/projects/discompsupp/repository/ken_proxy_push and requires ssh access to be able to write.
