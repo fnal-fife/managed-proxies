@@ -104,10 +104,10 @@ func getVomsProxiesForExperiment(ctx context.Context, vpMap map[string]proxy.Vom
 
 }
 
-// copyFileConfig holds the information needed to copy a proxy.ProxyTransferer to a destination node
+// copyFileConfig holds the information needed to copy a proxy.Transferer to a destination node
 type copyFileConfig struct {
 	node, account, destPath, role string
-	pt                            proxy.ProxyTransferer
+	pt                            proxy.Transferer
 }
 
 // copyProxiesStatus stores information that uniquely identifies a VOMS proxy within an experiment (account, role) and

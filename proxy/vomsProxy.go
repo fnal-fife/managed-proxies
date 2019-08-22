@@ -42,13 +42,13 @@ type VomsProxyer interface {
 	getVomsProxy(ctx context.Context, vomsFQAN string) (*VomsProxy, error)
 }
 
-// ProxyTransferer encapsulates the method to copy an object to a destination node
-type ProxyTransferer interface {
+// Transferer encapsulates the method to copy an object to a destination node
+type Transferer interface {
 	CopyProxy(ctx context.Context, node, account, dest string) error
 }
 
 // VomsProxy contains the information generally needed from a VOMS proxy, along with the Cert object used to create the VomsProxy itself
-// Implements the Cert, VomsProxyer, and ProxyTransferer interfaces
+// Implements the Cert, VomsProxyer, and Transferer interfaces
 type VomsProxy struct {
 	Path string
 	Role string
