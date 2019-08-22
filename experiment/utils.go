@@ -85,6 +85,10 @@ func getVomsProxiesForExperiment(ctx context.Context, vpMap map[string]proxy.Vom
 			defer wg.Done()
 			fqan := vomsFQANPrefix + "Role=" + role
 			v, err := proxy.NewVomsProxy(ctx, vp, fqan)
+			checkErr := v.Check(ctx)
+			if checkErr != nil {
+				err = checkErr
+			}
 			vpi := vomsProxyInitStatus{v, err}
 			c <- vpi
 		}(role, vp)

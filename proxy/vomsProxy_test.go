@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io/ioutil"
+	"os"
 	"strconv"
 	"testing"
 	"time"
@@ -59,7 +60,8 @@ func TestRemoveVomsProxy(t *testing.T) {
 			v: &VomsProxy{
 				Path: strconv.FormatInt(time.Now().UnixNano(), 36),
 			},
-			err: errors.New("VOMS Proxy file does not exist"),
+			// err: errors.New("VOMS Proxy file does not exist"),
+			err: os.ErrNotExist,
 		},
 	}
 

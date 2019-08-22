@@ -1,6 +1,8 @@
 package proxy
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -17,19 +19,22 @@ import (
 )
 
 const (
-	vpiArgs   = "-dont-verify-ac -rfc -valid 24:00 -voms {{.VomsFQAN}} -cert {{.CertFile}} -key {{.KeyFile}} -out {{.OutfilePath}}"
-	sshOpts   = "-o ConnectTimeout=30 -o ServerAliveInterval=30 -o ServerAliveCountMax=1"
-	rsyncArgs = "-p -e \"{{.SSHExe}} {{.SSHOpts}}\" --chmod=u=r,go= {{.SourcePath}} {{.Account}}@{{.Node}}.fnal.gov:{{.DestPath}}"
+	vomsProxyInitArgs = "-dont-verify-ac -rfc -valid 24:00 -voms {{.VomsFQAN}} -cert {{.CertFile}} -key {{.KeyFile}} -out {{.OutfilePath}}"
+	vomsProxyInfoArgs = "-fqan -file {{.ProxyPath}}"
+	sshOpts           = "-o ConnectTimeout=30 -o ServerAliveInterval=30 -o ServerAliveCountMax=1"
+	rsyncArgs         = "-p -e \"{{.SSHExe}} {{.SSHOpts}}\" --chmod=u=r,go= {{.SourcePath}} {{.Account}}@{{.Node}}.fnal.gov:{{.DestPath}}"
 )
 
 var (
 	vomsProxyExecutables = map[string]string{
 		"voms-proxy-init": "",
+		"voms-proxy-info": "",
 		"rsync":           "",
 		"ssh":             "",
 	}
-	vpiTemplate   = template.Must(template.New("voms-proxy-init").Parse(vpiArgs))
-	rsyncTemplate = template.Must(template.New("rsync").Parse(rsyncArgs))
+	vomsProxyInitTemplate = template.Must(template.New("voms-proxy-init").Parse(vomsProxyInitArgs))
+	vomsProxyInfoTemplate = template.Must(template.New("voms-proxy-info").Parse(vomsProxyInfoArgs))
+	rsyncTemplate         = template.Must(template.New("rsync").Parse(rsyncArgs))
 )
 
 // VomsProxyer encapsulates the method to obtain a VOMS proxy from an object
@@ -60,8 +65,19 @@ func NewVomsProxy(ctx context.Context, vp VomsProxyer, vomsFQAN string) (*VomsPr
 			"vomsProxyer": fmt.Sprintf("%v", vp),
 			"FQAN":        vomsFQAN,
 		}).Error(err)
+		log.WithFields(log.Fields{
+			"vomsProxyer": fmt.Sprintf("%v", vp),
+			"FQAN":        vomsFQAN,
+		}).Debug("Attempting to clean up VOMS Proxy file")
+		if err2 := v.Remove(); err2 != nil && !os.IsNotExist(err2) {
+			log.WithFields(log.Fields{
+				"vomsProxyer": fmt.Sprintf("%v", vp),
+				"FQAN":        vomsFQAN,
+			}).Error("Cleanup failed")
+		}
 		return &VomsProxy{}, errors.New(err)
 	}
+
 	log.WithFields(log.Fields{
 		"Path": v.Path,
 		"Role": v.Role,
@@ -70,12 +86,70 @@ func NewVomsProxy(ctx context.Context, vp VomsProxyer, vomsFQAN string) (*VomsPr
 	return v, nil
 }
 
+// Check runs voms-proxy-info to make sure that voms-proxy-init didn't lie to us...which it does way too often
+func (v *VomsProxy) Check(ctx context.Context) error {
+	var b strings.Builder
+
+	cArgs := struct{ Path string }{Path: v.Path}
+
+	if err := vomsProxyInfoTemplate.Execute(&b, cArgs); err != nil {
+		err := fmt.Sprintf("Could not execute voms-proxy-info template: %s", err.Error())
+		log.WithField("proxyPath", v.Path).Error(err)
+		return errors.New(err)
+	}
+
+	args, err := utils.GetArgsFromTemplate(b.String())
+	if err != nil {
+		err := fmt.Sprintf("Could not get voms-proxy-info command arguments from template: %s", err.Error())
+		log.WithField("proxyPath", v.Path).Error(err)
+		return errors.New(err)
+	}
+
+	// Run voms-proxy-info -fqan
+	cmd := exec.CommandContext(ctx, vomsProxyExecutables["voms-proxy-info"], args...)
+	out, err := cmd.Output()
+	if err != nil {
+		err := fmt.Sprintf("Could not execute voms-proxy-info command: %s", err.Error())
+		log.WithFields(log.Fields{
+			"proxyPath": v.Path,
+			"role":      v.Role,
+			"command":   strings.Join(cmd.Args, " "),
+		}).Error(err)
+		return errors.New(err)
+	}
+
+	// Read top line from output of voms-proxy-info -fqan
+	fqanReader := bufio.NewReader(bytes.NewReader(out))
+	topLine, err := fqanReader.ReadString('\n')
+	if err != nil {
+		err := fmt.Sprintf("Could not read lines from voms-proxy-info command output: %s", err.Error())
+		log.WithFields(log.Fields{
+			"proxyPath": v.Path,
+			"role":      v.Role,
+		}).Error(err)
+		return errors.New(err)
+	}
+
+	// Check the top line against our desired FQAN
+	testRole := getRoleFromFQAN(topLine)
+	if testRole != v.Role {
+		err := "VOMS Proxy validation failed: voms-proxy-info -fqan disagrees with nominal role of VOMS proxy object"
+		log.WithFields(log.Fields{
+			"proxyPath": v.Path,
+			"role":      v.Role,
+			"testRole":  testRole,
+		}).Error(err)
+		return errors.New(err)
+	}
+
+	return nil
+}
+
 // Remove deletes the file at VomsProxy.Path
 func (v *VomsProxy) Remove() error {
 	if err := os.Remove(v.Path); os.IsNotExist(err) {
-		err := "VOMS Proxy file does not exist"
-		log.WithField("path", v.Path).Error(err)
-		return errors.New(err)
+		log.WithField("path", v.Path).Error("VOMS Proxy file does not exist")
+		return os.ErrNotExist
 	} else if err != nil {
 		log.WithField("path", v.Path).Error(err)
 		return err
@@ -109,6 +183,7 @@ func (s *serviceCert) getVomsProxy(ctx context.Context, vomsFQAN string) (*VomsP
 		return &VomsProxy{}, errors.New(err)
 	}
 	outfile := _outfile.Name()
+	v := VomsProxy{Path: outfile, Role: getRoleFromFQAN(vomsFQAN)}
 
 	cArgs := struct{ VomsFQAN, CertFile, KeyFile, OutfilePath string }{
 		VomsFQAN:    vomsFQAN,
@@ -117,17 +192,17 @@ func (s *serviceCert) getVomsProxy(ctx context.Context, vomsFQAN string) (*VomsP
 		OutfilePath: outfile,
 	}
 
-	if err := vpiTemplate.Execute(&b, cArgs); err != nil {
+	if err := vomsProxyInitTemplate.Execute(&b, cArgs); err != nil {
 		err := fmt.Sprintf("Could not execute voms-proxy-init template: %s", err.Error())
 		log.WithField("certPath", s.getCertPath()).Error(err)
-		return &VomsProxy{}, errors.New(err)
+		return &v, errors.New(err)
 	}
 
 	args, err := utils.GetArgsFromTemplate(b.String())
 	if err != nil {
 		err := fmt.Sprintf("Could not get voms-proxy-init command arguments from template: %s", err.Error())
 		log.WithField("certPath", s.getCertPath()).Error(err)
-		return &VomsProxy{}, errors.New(err)
+		return &v, errors.New(err)
 	}
 
 	cmd := exec.CommandContext(ctx, vomsProxyExecutables["voms-proxy-init"], args...)
@@ -138,10 +213,8 @@ func (s *serviceCert) getVomsProxy(ctx context.Context, vomsFQAN string) (*VomsP
 			"vomsFQAN": vomsFQAN,
 			"command":  strings.Join(cmd.Args, " "),
 		}).Error(err)
-		return &VomsProxy{}, errors.New(err)
+		return &v, errors.New(err)
 	}
-
-	v := VomsProxy{Path: outfile, Role: getRoleFromFQAN(vomsFQAN)}
 
 	_dn, err := s.getCertSubject(ctx)
 	if err != nil {
@@ -150,7 +223,7 @@ func (s *serviceCert) getVomsProxy(ctx context.Context, vomsFQAN string) (*VomsP
 			"certPath": s.getCertPath(),
 			"vomsFQAN": vomsFQAN,
 		}).Error(err)
-		return &VomsProxy{}, errors.New(err)
+		return &v, errors.New(err)
 	}
 	v.DN = _dn
 	v.Cert = s
