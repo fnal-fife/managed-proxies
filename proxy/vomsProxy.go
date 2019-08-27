@@ -90,7 +90,7 @@ func NewVomsProxy(ctx context.Context, vp VomsProxyer, vomsFQAN string) (*VomsPr
 func (v *VomsProxy) Check(ctx context.Context) error {
 	var b strings.Builder
 
-	cArgs := struct{ Path string }{Path: v.Path}
+	cArgs := struct{ ProxyPath string }{ProxyPath: v.Path}
 
 	if err := vomsProxyInfoTemplate.Execute(&b, cArgs); err != nil {
 		err := fmt.Sprintf("Could not execute voms-proxy-info template: %s", err.Error())
@@ -129,6 +129,7 @@ func (v *VomsProxy) Check(ctx context.Context) error {
 		}).Error(err)
 		return errors.New(err)
 	}
+	topLine = strings.TrimSpace(topLine)
 
 	// Check the top line against our desired FQAN
 	testRole := getRoleFromFQAN(topLine)
@@ -307,6 +308,6 @@ func init() {
 
 // getRoleFromFQAN parses the fqan string and returns the role
 func getRoleFromFQAN(fqan string) string {
-	pattern := regexp.MustCompile("^.+Role=([a-zA-Z]+)$")
+	pattern := regexp.MustCompile("^.+Role=([a-zA-Z]+)(/Capability=NULL)?$")
 	return pattern.FindStringSubmatch(fqan)[1]
 }
