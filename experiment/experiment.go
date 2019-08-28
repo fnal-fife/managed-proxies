@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 	"time"
@@ -274,15 +275,22 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 
 			for _, v := range vomsProxyStatuses {
 				if err := v.vomsProxy.Remove(); err != nil {
-					nMsg := "Failed to clean up experiment: could not delete VOMS proxy."
-					log.WithFields(log.Fields{
-						"experiment": eConfig.Name,
-						"role":       v.vomsProxy.Role,
-					}).Error(nMsg)
-					nMgr <- notifications.Notification{
-						Message:          nMsg,
-						Experiment:       eConfig.Name,
-						NotificationType: notifications.SetupError,
+					if !os.IsNotExist(err) {
+						nMsg := "Failed to clean up experiment: could not delete VOMS proxy."
+						log.WithFields(log.Fields{
+							"experiment": eConfig.Name,
+							"role":       v.vomsProxy.Role,
+						}).Error(nMsg)
+						nMgr <- notifications.Notification{
+							Message:          nMsg,
+							Experiment:       eConfig.Name,
+							NotificationType: notifications.SetupError,
+						}
+					} else {
+						log.WithFields(log.Fields{
+							"experiment": eConfig.Name,
+							"role":       v.vomsProxy.Role,
+						}).Debug("Attempted to clean up VOMS proxy file, but file did not exist. Moving to next file.")
 					}
 				} else {
 					log.WithFields(log.Fields{
