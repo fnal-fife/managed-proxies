@@ -274,6 +274,9 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 			}
 
 			for _, v := range vomsProxyStatuses {
+				if v.vomsProxy.Path == "" {
+					continue
+				}
 				if err := v.vomsProxy.Remove(); err != nil {
 					if !os.IsNotExist(err) {
 						nMsg := "Failed to clean up experiment: could not delete VOMS proxy."
