@@ -84,19 +84,24 @@ func getVomsProxiesForExperiment(ctx context.Context, vpMap map[string]proxy.Vom
 		go func(role string, vp proxy.VomsProxyer) {
 			defer wg.Done()
 			fqan := vomsFQANPrefix + "Role=" + role
+
 			v, err := proxy.NewVomsProxy(ctx, vp, fqan)
+			if err != nil {
+				vpi := vomsProxyInitStatus{v, err}
+				c <- vpi
+				return
+			}
+
 			checkErr := v.Check(ctx)
-			if checkErr != nil {
-				err = checkErr
-			} else {
+			if checkErr == nil {
 				log.WithFields(log.Fields{
 					"Role": v.Role,
 					"DN":   v.DN,
 				}).Debug("Successfully checked new VOMS Proxy")
 			}
-
-			vpi := vomsProxyInitStatus{v, err}
+			vpi := vomsProxyInitStatus{v, checkErr}
 			c <- vpi
+
 		}(role, vp)
 	}
 
