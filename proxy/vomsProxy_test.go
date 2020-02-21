@@ -21,7 +21,7 @@ func (f *fakeVomsProxy) getVomsProxy(ctx context.Context, vomsFQAN string) (*Vom
 // TestNewVomsProxy ensures that NewVomsProxy returns the appropriate errors given valid/invalid input
 func TestNewVomsProxy(t *testing.T) {
 	tests := []struct {
-		v   VomsProxyer
+		v   GetVomsProxyer
 		err error
 	}{
 		{

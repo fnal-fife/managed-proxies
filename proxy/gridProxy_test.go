@@ -21,7 +21,7 @@ func (f *fakeGridProxy) getGridProxy(ctx context.Context, valid time.Duration) (
 // TestNewGridProxy tests that we get the expected errors back from NewGridProxy
 func TestNewGridProxy(t *testing.T) {
 	tests := []struct {
-		g   GridProxyer
+		g   GetGridProxyer
 		err error
 	}{
 		{
@@ -106,4 +106,12 @@ func TestFmtDurationForGPI(t *testing.T) {
 			t.Errorf("Expected outputs did not match.  Wanted %s, got %s", test.expectedOut, result)
 		}
 	}
+}
+
+// Allow us to check values of nil errors against each other TODO: MOve this somewhere else
+func errorString(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
 }
