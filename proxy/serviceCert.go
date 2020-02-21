@@ -7,7 +7,9 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
+	"os"
 	"strings"
 	"time"
 
@@ -16,20 +18,10 @@ import (
 
 // Cert encapsulates the methods that would be normally performed on a certificate to get information
 type Cert interface {
-	getCertSubject(context.Context) (string, error)
-	getCertExpiration(context.Context) (time.Time, error)
-	getCertPath() string
-	getKeyPath() string
-}
-
-// GetDN is a function that accepts any object that satisifies the Cert interface and returns its DN
-func GetDN(ctx context.Context, c Cert) (string, error) {
-	dn, err := c.getCertSubject(ctx)
-	if err != nil {
-		log.WithField("path", c.getCertPath()).Error("Could not get certificate subject")
-		return "", err
-	}
-	return dn, err
+	Subject() string
+	Expires() time.Time
+	CertPath() string
+	KeyPath() string
 }
 
 // serviceCert is an object that collects the pertinent information about a service certificate
@@ -37,7 +29,7 @@ func GetDN(ctx context.Context, c Cert) (string, error) {
 type serviceCert struct {
 	certPath   string
 	keyPath    string
-	DN         string
+	dn         string
 	Expiration time.Time
 }
 
@@ -48,91 +40,75 @@ func NewServiceCert(ctx context.Context, certPath, keyPath string) (*serviceCert
 		keyPath:  keyPath,
 	}
 
-	dn, err := s.getCertSubject(ctx)
+	certFile, err := os.Open(s.certPath)
 	if err != nil {
-		err := "Could not get DN from certificate"
-		log.WithField("certPath", certPath).Error(err)
-		return nil, errors.New(err)
+		err := fmt.Sprintf("Could not open cert file: %s", err.Error())
+		log.WithField("certPath", s.certPath).Error(err)
+		return s, errors.New(err)
 	}
-	s.DN = dn
+	defer certFile.Close()
 
-	expires, err := s.getCertExpiration(ctx)
+	cert, err := ingestCertificate(certFile)
 	if err != nil {
-		err := "Could not get expiration date from certificate"
-		log.WithField("certPath", certPath).Error(err)
-		return nil, errors.New(err)
+		err := fmt.Sprintf("Could not ingest cert file: %s", err.Error())
+		log.WithField("certPath", s.certPath).Error(err)
+		return s, errors.New(err)
 	}
-	s.Expiration = expires
+
+	log.WithField("certPath", s.certPath).Debug("Read in and decoded cert file, getting dn and expiration")
+	s.dn = parseDN(cert.Subject.Names, "/")
+	s.Expiration = cert.NotAfter
 
 	log.WithFields(log.Fields{
 		"certPath":   certPath,
-		"subject":    s.DN,
+		"subject":    s.dn,
 		"expiration": s.Expiration,
 	}).Debug("Successfully ingested service certificate")
 	return s, nil
 }
 
-func (s *serviceCert) getCertPath() string { return s.certPath }
-func (s *serviceCert) getKeyPath() string  { return s.keyPath }
-func (s *serviceCert) getCertSubject(ctx context.Context) (string, error) {
-	if s.DN != "" {
-		return s.DN, nil
-	}
+func (s *serviceCert) CertPath() string   { return s.certPath }
+func (s *serviceCert) KeyPath() string    { return s.keyPath }
+func (s *serviceCert) Subject() string    { return s.dn }
+func (s *serviceCert) Expires() time.Time { return s.Expiration }
 
-	certContent, err := ioutil.ReadFile(s.certPath)
+// ingestCertificate takes an io.Reader representing a DER-encoded x509 certificate and returns an x509.Certificate object
+func ingestCertificate(r io.Reader) (*x509.Certificate, error) {
+	certContent, err := ioutil.ReadAll(r)
 	if err != nil {
 		err := fmt.Sprintf("Could not read cert file: %s", err.Error())
-		log.WithField("certPath", s.certPath).Error(err)
-		return "", errors.New(err)
+		log.Error(err)
+		return &x509.Certificate{}, errors.New(err)
 	}
 
-	certDER, _ := pem.Decode(certContent)
-	if certDER == nil {
-		err := "Could not decode PEM block containing cert"
-		log.WithField("certPath", s.certPath).Error(err)
-		return "", errors.New(err)
-	}
-
-	cert, err := x509.ParseCertificate(certDER.Bytes)
+	cert, err := decodeCertificate(certContent)
 	if err != nil {
-		err := "Could not parse certificate from DER data"
-		log.WithField("certPath", s.certPath).Error(err)
-		return "", errors.New(err)
+		err := "Could not decode certificate from raw input"
+		log.Error(err)
+		return &x509.Certificate{}, errors.New(err)
 	}
-
-	log.WithField("certPath", s.certPath).Debug("Read in and decoded cert file, will now find subject")
-	return parseDN(cert.Subject.Names, "/"), nil
+	return cert, nil
 }
 
-func (s *serviceCert) getCertExpiration(ctx context.Context) (time.Time, error) {
-	var t time.Time
-	certContent, err := ioutil.ReadFile(s.certPath)
-	if err != nil {
-		err := fmt.Sprintf("Could not read cert file: %s", err.Error())
-		log.WithField("certPath", s.certPath).Error(err)
-		return t, errors.New(err)
-	}
-
-	certDER, _ := pem.Decode(certContent)
+// decodeCertificate takes a byte slice representing an x509 certificate and returns an x509.Certificate object
+func decodeCertificate(certBytes []byte) (*x509.Certificate, error) {
+	var cert *x509.Certificate
+	certDER, _ := pem.Decode(certBytes)
 	if certDER == nil {
-		err := "Could not decode PEM block containing cert"
-		log.WithField("certPath", s.certPath).Error(err)
-		return t, errors.New(err)
+		err := errors.New("Could not decode PEM block containing cert data")
+		return cert, err
 	}
 
 	cert, err := x509.ParseCertificate(certDER.Bytes)
 	if err != nil {
-		err := "Could not parse certificate from DER data"
-		log.WithField("certPath", s.certPath).Error(err)
-		return t, errors.New(err)
+		err := errors.New("Could not parse certificate from DER data")
+		return cert, err
 	}
-
-	log.WithField("certPath", s.certPath).Debug("Read in and decoded cert file, will now find expiration")
-	return cert.NotAfter, nil
+	return cert, nil
 }
 
 // Thank you FERRY for this.  names can be *x509.Certificate.Subject.Names object
-// parseDN takes a []pkix.AttributeTypeAndValue slice (like the elements of a cert Subject), the separator, and returns a DN, formatted in the openssl format
+// parsedn takes a []pkix.AttributeTypeAndValue slice (like the elements of a cert Subject), the separator, and returns a dn, formatted in the openssl format
 func parseDN(names []pkix.AttributeTypeAndValue, sep string) string {
 	var oid = map[string]string{
 		"2.5.4.3":                    "CN",

@@ -32,21 +32,21 @@ var (
 	myproxystoreTemplate = template.Must(template.New("myproxy-store").Parse(myproxystoreArgs))
 )
 
-// GridProxyer is the interface for types that support getting a grid proxy
-type GridProxyer interface {
+// GetGridProxyer is the interface for types that support getting a grid proxy
+type GetGridProxyer interface {
 	getGridProxy(context.Context, time.Duration) (*GridProxy, error)
 }
 
 // GridProxy contains the path to the grid proxy file, the DN of the proxy, and the Cert object used to create the proxy
-// Satisfies the Cert and MyProxyer interfaces
+// Satisfies the MyProxyer interfaces
 type GridProxy struct {
 	Path string
 	DN   string
 	Cert
 }
 
-// NewGridProxy returns a new GridProxy object given a GridProxyer object and the lifetime of the intended proxy
-func NewGridProxy(ctx context.Context, gp GridProxyer, valid time.Duration) (*GridProxy, error) {
+// NewGridProxy returns a new GridProxy object given a GetGridProxyer object and the lifetime of the intended proxy
+func NewGridProxy(ctx context.Context, gp GetGridProxyer, valid time.Duration) (*GridProxy, error) {
 	if valid.Seconds() == 0 {
 		valid, _ = time.ParseDuration(defaultValidity)
 	}
@@ -85,12 +85,7 @@ func (g *GridProxy) storeInMyProxy(ctx context.Context, retrievers, myProxyServe
 
 	hours := strconv.FormatFloat(valid.Hours(), 'f', -1, 32)
 
-	owner, err := g.Cert.getCertSubject(ctx)
-	if err != nil {
-		err := "Could not get cert subject to store in myproxy"
-		log.WithField("certPath", g.Cert.getCertPath()).Error(err)
-		return errors.New(err)
-	}
+	owner := g.Subject()
 
 	cArgs := struct{ CertFile, KeyFile, Server, Retrievers, Owner, Hours string }{
 		CertFile:   g.Path,
@@ -115,8 +110,8 @@ func (g *GridProxy) storeInMyProxy(ctx context.Context, retrievers, myProxyServe
 	}
 
 	env := []string{
-		fmt.Sprintf("X509_USER_CERT=%s", g.Cert.getCertPath()),
-		fmt.Sprintf("X509_USER_KEY=%s", g.Cert.getKeyPath()),
+		fmt.Sprintf("X509_USER_CERT=%s", g.CertPath()),
+		fmt.Sprintf("X509_USER_KEY=%s", g.KeyPath()),
 	}
 
 	cmd := exec.CommandContext(ctx, gridProxyExecutables["myproxy-store"], args...)
@@ -138,19 +133,6 @@ func (g *GridProxy) storeInMyProxy(ctx context.Context, retrievers, myProxyServe
 	return nil
 }
 
-func (g *GridProxy) getCertPath() string { return g.Cert.getCertPath() }
-func (g *GridProxy) getKeyPath() string  { return g.Cert.getKeyPath() }
-
-func (g *GridProxy) getCertSubject(ctx context.Context) (string, error) {
-	dn, err := g.Cert.getCertSubject(ctx)
-	if err != nil {
-		err := "Could not get subject for grid proxy"
-		log.WithField("certPath", g.Cert.getCertPath()).Error(err)
-		return "", errors.New(err)
-	}
-	return dn, nil
-}
-
 // getGridProxy returns a GridProxy given a serviceCert object
 func (s *serviceCert) getGridProxy(ctx context.Context, valid time.Duration) (*GridProxy, error) {
 	var b strings.Builder
@@ -158,7 +140,7 @@ func (s *serviceCert) getGridProxy(ctx context.Context, valid time.Duration) (*G
 	_outfile, err := ioutil.TempFile("", "managed_proxy_grid_")
 	if err != nil {
 		err := fmt.Sprintf("Couldn't get tempfile: %s", err.Error())
-		log.WithField("certPath", s.getCertPath()).Error(err)
+		log.WithField("certPath", s.certPath).Error(err)
 		return &GridProxy{}, errors.New(err)
 	}
 	outfile := _outfile.Name()
@@ -174,14 +156,14 @@ func (s *serviceCert) getGridProxy(ctx context.Context, valid time.Duration) (*G
 
 	if err := gpiTemplate.Execute(&b, cArgs); err != nil {
 		err := fmt.Sprintf("Could not execute grid-proxy-init template: %s", err.Error())
-		log.WithField("certPath", s.getCertPath()).Error(err)
+		log.WithField("certPath", s.certPath).Error(err)
 		return &GridProxy{}, errors.New(err)
 	}
 
 	args, err := utils.GetArgsFromTemplate(b.String())
 	if err != nil {
 		err := fmt.Sprintf("Could not get grid-proxy-init command arguments from template: %s", err.Error())
-		log.WithField("certPath", s.getCertPath()).Error(err)
+		log.WithField("certPath", s.certPath).Error(err)
 		return &GridProxy{}, errors.New(err)
 	}
 
@@ -189,7 +171,7 @@ func (s *serviceCert) getGridProxy(ctx context.Context, valid time.Duration) (*G
 	if err := cmd.Run(); err != nil {
 		err := fmt.Sprintf("Could not execute grid-proxy-init command: %s", err.Error())
 		log.WithFields(log.Fields{
-			"certPath": s.getCertPath(),
+			"certPath": cArgs.CertPath,
 			"command":  strings.Join(cmd.Args, " "),
 		}).Error(err)
 		return &GridProxy{}, errors.New(err)
@@ -197,13 +179,7 @@ func (s *serviceCert) getGridProxy(ctx context.Context, valid time.Duration) (*G
 
 	g := GridProxy{Path: outfile, Cert: s}
 
-	_dn, err := g.getCertSubject(ctx)
-	if err != nil {
-		err := "Could not get proxy subject from grid proxy"
-		log.WithField("certPath", s.getCertPath()).Error(err)
-		return &GridProxy{}, errors.New(err)
-	}
-	g.DN = _dn
+	g.DN = g.Subject()
 	log.WithFields(log.Fields{
 		"path":    g.Path,
 		"subject": g.DN,

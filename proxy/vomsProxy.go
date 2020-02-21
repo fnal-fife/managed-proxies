@@ -37,18 +37,23 @@ var (
 	rsyncTemplate         = template.Must(template.New("rsync").Parse(rsyncArgs))
 )
 
-// VomsProxyer encapsulates the method to obtain a VOMS proxy from an object
-type VomsProxyer interface {
+// GetVomsProxyer encapsulates the method to obtain a VOMS proxy from an object
+type GetVomsProxyer interface {
 	getVomsProxy(ctx context.Context, vomsFQAN string) (*VomsProxy, error)
 }
 
-// Transferer encapsulates the method to copy an object to a destination node
-type Transferer interface {
-	CopyProxy(ctx context.Context, node, account, dest string) error
+// CopyProxyer encapsulates the method to copy an object to a destination node
+type CopyProxyer interface {
+	copyProxy(ctx context.Context, node, account, dest string) error
+}
+
+// CopyToNode copies a CopyProxyer to a specified destination on a remote node using the specified account
+func CopyToNode(ctx context.Context, cp CopyProxyer, node, acct, dest string) error {
+	return cp.copyProxy(ctx, node, acct, dest)
 }
 
 // VomsProxy contains the information generally needed from a VOMS proxy, along with the Cert object used to create the VomsProxy itself
-// Implements the Cert, VomsProxyer, and Transferer interfaces
+// Implements the GetVomsProxyer, and CopyProxyer interfaces
 type VomsProxy struct {
 	Path string
 	Role string
@@ -56,8 +61,8 @@ type VomsProxy struct {
 	Cert
 }
 
-// NewVomsProxy returns a VOMS proxy from a VomsProxyer
-func NewVomsProxy(ctx context.Context, vp VomsProxyer, vomsFQAN string) (*VomsProxy, error) {
+// NewVomsProxy returns a VOMS proxy from a GetVomsProxyer
+func NewVomsProxy(ctx context.Context, vp GetVomsProxyer, vomsFQAN string) (*VomsProxy, error) {
 	v, err := vp.getVomsProxy(ctx, vomsFQAN)
 	if err != nil {
 		err := "Could not generate a VOMS proxy"
@@ -159,8 +164,8 @@ func (v *VomsProxy) Remove() error {
 	return nil
 }
 
-// CopyProxy copies the proxy from VomsProxy.Path to account@node:dest
-func (v *VomsProxy) CopyProxy(ctx context.Context, node, account, dest string) error {
+// copyProxy copies the proxy from VomsProxy.Path to account@node:dest
+func (v *VomsProxy) copyProxy(ctx context.Context, node, account, dest string) error {
 	err := rsyncFile(ctx, v.Path, node, account, dest, sshOpts)
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -180,11 +185,11 @@ func (s *serviceCert) getVomsProxy(ctx context.Context, vomsFQAN string) (*VomsP
 	_outfile, err := ioutil.TempFile("", "managed_proxy_voms_")
 	if err != nil {
 		err := fmt.Sprintf("Couldn't get tempfile: %s", err.Error())
-		log.WithField("certPath", s.getCertPath()).Error(err)
+		log.WithField("certPath", s.certPath).Error(err)
 		return &VomsProxy{}, errors.New(err)
 	}
 	outfile := _outfile.Name()
-	v := VomsProxy{Path: outfile, Role: getRoleFromFQAN(vomsFQAN)}
+	v := VomsProxy{Path: outfile, Role: getRoleFromFQAN(vomsFQAN), Cert: s}
 
 	cArgs := struct{ VomsFQAN, CertFile, KeyFile, OutfilePath string }{
 		VomsFQAN:    vomsFQAN,
@@ -195,14 +200,14 @@ func (s *serviceCert) getVomsProxy(ctx context.Context, vomsFQAN string) (*VomsP
 
 	if err := vomsProxyInitTemplate.Execute(&b, cArgs); err != nil {
 		err := fmt.Sprintf("Could not execute voms-proxy-init template: %s", err.Error())
-		log.WithField("certPath", s.getCertPath()).Error(err)
+		log.WithField("certPath", s.certPath).Error(err)
 		return &v, errors.New(err)
 	}
 
 	args, err := utils.GetArgsFromTemplate(b.String())
 	if err != nil {
 		err := fmt.Sprintf("Could not get voms-proxy-init command arguments from template: %s", err.Error())
-		log.WithField("certPath", s.getCertPath()).Error(err)
+		log.WithField("certPath", s.certPath).Error(err)
 		return &v, errors.New(err)
 	}
 
@@ -210,24 +215,14 @@ func (s *serviceCert) getVomsProxy(ctx context.Context, vomsFQAN string) (*VomsP
 	if err := cmd.Run(); err != nil {
 		err := fmt.Sprintf("Could not execute voms-proxy-init command: %s", err.Error())
 		log.WithFields(log.Fields{
-			"certPath": s.getCertPath(),
+			"certPath": s.certPath,
 			"vomsFQAN": vomsFQAN,
 			"command":  strings.Join(cmd.Args, " "),
 		}).Error(err)
 		return &v, errors.New(err)
 	}
 
-	_dn, err := s.getCertSubject(ctx)
-	if err != nil {
-		err := "Could not get proxy subject from voms proxy"
-		log.WithFields(log.Fields{
-			"certPath": s.getCertPath(),
-			"vomsFQAN": vomsFQAN,
-		}).Error(err)
-		return &v, errors.New(err)
-	}
-	v.DN = _dn
-	v.Cert = s
+	v.DN = v.Subject()
 	log.WithFields(log.Fields{
 		"path":    v.Path,
 		"subject": v.DN,
@@ -237,6 +232,7 @@ func (s *serviceCert) getVomsProxy(ctx context.Context, vomsFQAN string) (*VomsP
 	return &v, nil
 }
 
+//TODO:  Does this belong somewhere else?
 // rsyncFile runs rsync on a file at source, and syncs it with the destination account@node:dest
 func rsyncFile(ctx context.Context, source, node, account, dest string, sshOptions string) error {
 	var b strings.Builder
@@ -285,19 +281,6 @@ func rsyncFile(ctx context.Context, source, node, account, dest string, sshOptio
 	}).Debug("rsync successful")
 	return nil
 
-}
-
-func (v *VomsProxy) getCertPath() string { return v.Cert.getCertPath() }
-func (v *VomsProxy) getKeyPath() string  { return v.Cert.getKeyPath() }
-
-func (v *VomsProxy) getCertSubject(ctx context.Context) (string, error) {
-	dn, err := v.Cert.getCertSubject(ctx)
-	if err != nil {
-		err := "Could not get subject for VOMS proxy"
-		log.WithField("certPath", v.Cert.getCertPath()).Error(err)
-		return "", errors.New(err)
-	}
-	return dn, nil
 }
 
 func init() {
