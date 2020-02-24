@@ -18,6 +18,10 @@ import (
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/proxy"
 )
 
+//TODO
+//  Prometheus stuff should come into this code.  Then we don't have to pass in the prom pusher
+//
+
 var kinitExecutable = "/usr/krb5/bin/kinit"
 
 // Success stores information on whether all the processes involved in generating, copying, and changing
@@ -157,34 +161,34 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 		pingChannel := node.PingAllNodes(pingCtx, configNodes...)
 
 		// Listen until we either timeout or the pingChannel is closed
-	pingLoop:
-		for {
-			select {
-			case <-pingCtx.Done():
-				if e := pingCtx.Err(); e == context.DeadlineExceeded {
-					pingTout := "Hit the timeout pinging nodes"
-					log.WithField("experiment", eConfig.Name).Error(pingTout)
-				} else {
-					log.WithField("experiment", eConfig.Name).Error(e)
-				}
-				pingCancel()
-				break pingLoop
+		func() {
+			defer pingCancel()
+			for {
+				select {
+				case <-pingCtx.Done():
+					if e := pingCtx.Err(); e == context.DeadlineExceeded {
+						pingTout := "Hit the timeout pinging nodes"
+						log.WithField("experiment", eConfig.Name).Error(pingTout)
+					} else {
+						log.WithField("experiment", eConfig.Name).Error(e)
+					}
+					return
 
-			case testnode, chanOpen := <-pingChannel: // Receive on pingChannel
-				if !chanOpen { // Break out of loop and proceed only if channel is not open
-					pingCancel()
-					break pingLoop
-				}
-				if testnode.Err != nil {
-					n := testnode.PingNoder.String()
-					badNodesSlice = append(badNodesSlice, n)
-					log.WithFields(log.Fields{
-						"experiment": eConfig.Name,
-						"node":       n,
-					}).Error(testnode.Err)
+				case testnode, chanOpen := <-pingChannel: // Receive on pingChannel
+					if !chanOpen { // Break out of loop and proceed only if channel is not open
+						return
+					}
+					if testnode.Err != nil {
+						n := testnode.PingNoder.String()
+						badNodesSlice = append(badNodesSlice, n)
+						log.WithFields(log.Fields{
+							"experiment": eConfig.Name,
+							"node":       n,
+						}).Error(testnode.Err)
+					}
 				}
 			}
-		}
+		}()
 
 		if len(badNodesSlice) > 0 {
 			pingNodeAggMessagef := "The node(s) %s didn't return a response to ping after 5 " +
@@ -222,48 +226,48 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 		vpiChan := getVomsProxiesForExperiment(vpiCtx, certs, eConfig.VomsPrefix)
 
 		// Listen until we either timeout or vpiChan is closed
-	vpiLoop:
-		for {
-			select {
-			case <-vpiCtx.Done():
-				if e := vpiCtx.Err(); e == context.DeadlineExceeded {
-					vpiTout := "Timeout obtaining VOMS proxies"
-					log.WithFields(log.Fields{
-						"caller":     "experimentutil.Worker",
-						"experiment": eConfig.Name,
-						"action":     "voms-proxy-init",
-					}).Error(vpiTout)
-				} else {
-					log.WithFields(log.Fields{
-						"caller":     "experimentutil.Worker",
-						"experiment": eConfig.Name,
-						"action":     "voms-proxy-init",
-					}).Error(e)
-				}
-				vpiCancel()
-				break vpiLoop
+		func() {
+			defer vpiCancel()
+			for {
+				select {
+				case <-vpiCtx.Done():
+					if e := vpiCtx.Err(); e == context.DeadlineExceeded {
+						vpiTout := "Timeout obtaining VOMS proxies"
+						log.WithFields(log.Fields{
+							"caller":     "experimentutil.Worker",
+							"experiment": eConfig.Name,
+							"action":     "voms-proxy-init",
+						}).Error(vpiTout)
+					} else {
+						log.WithFields(log.Fields{
+							"caller":     "experimentutil.Worker",
+							"experiment": eConfig.Name,
+							"action":     "voms-proxy-init",
+						}).Error(e)
+					}
+					return
 
-			case vpi, chanOpen := <-vpiChan: // receive on vpiChan
-				if !chanOpen {
-					vpiCancel()
-					break vpiLoop
-				}
+				case vpi, chanOpen := <-vpiChan: // receive on vpiChan
+					if !chanOpen {
+						return
+					}
 
-				vomsProxyStatuses = append(vomsProxyStatuses, vpi)
-				if vpi.err != nil {
-					expt.Successful = false
-					log.WithFields(log.Fields{
-						"experiment": eConfig.Name,
-						"role":       vpi.vomsProxy.Role,
-					}).Error("Failed to generate voms proxy")
-				} else {
-					log.WithFields(log.Fields{
-						"experiment":        eConfig.Name,
-						"vomsProxyFilename": vpi.vomsProxy.Path,
-					}).Debug("Generated voms proxy")
+					vomsProxyStatuses = append(vomsProxyStatuses, vpi)
+					if vpi.err != nil {
+						expt.Successful = false
+						log.WithFields(log.Fields{
+							"experiment": eConfig.Name,
+							"role":       vpi.vomsProxy.Role,
+						}).Error("Failed to generate voms proxy")
+					} else {
+						log.WithFields(log.Fields{
+							"experiment":        eConfig.Name,
+							"vomsProxyFilename": vpi.vomsProxy.Path,
+						}).Debug("Generated voms proxy")
+					}
 				}
 			}
-		}
+		}()
 
 		// Remove VOMS proxies that have been generated after Worker returns, or if there's a panic
 		defer func() {
@@ -341,95 +345,95 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 		copyChan := copyAllProxies(copyCtx, copyCfgs)
 
 		// Listen until we either timeout or the copyChan is closed
-	copyLoop:
-		for {
-			select {
-			case <-copyCtx.Done():
-				if e := copyCtx.Err(); e == context.DeadlineExceeded {
-					copyTout := "Timeout copying proxies to destination"
-					log.WithFields(log.Fields{
-						"caller":     "experiment.Worker",
-						"experiment": eConfig.Name,
-						"action":     "copy proxies",
-					}).Error(copyTout)
-				} else {
-					log.WithFields(log.Fields{
-						"caller":     "experiment.Worker",
-						"experiment": eConfig.Name,
-						"action":     "copy proxies",
-					}).Error(e)
-					msg := []string{generalContextErrorString}
-					for role, nodeMap := range failedCopies {
-						for node, err := range nodeMap {
-							failedCopies[role][node] = generateNewErrorStringForTable(
-								genericTimeoutError,
-								err,
-								msg,
-								"; ",
-							)
-						}
-					}
-				}
-
-				expt.Successful = false
-				copyCancel()
-				break copyLoop
-
-			case pushproxy, chanOpen := <-copyChan:
-				if !chanOpen {
-					copyCancel()
-					break copyLoop
-				}
-
-				log.WithField("experiment", eConfig.Name).Debug(pushproxy)
-				if pushproxy.err != nil {
-					var copyProxyErrorSlice []string
-					copyProxyErrorSlice = []string{"Error copying proxy"}
-
-					for _, n := range badNodesSlice {
-						if pushproxy.node == n {
-							//copyProxyErrorf = copyProxyErrorf + " The node was not pingable earlier, so please look into the status of that node to make sure it's up and working."
-							copyProxyErrorSlice = append(copyProxyErrorSlice, "Node not pingable earlier")
-							break
-						}
-					}
-
-					log.WithFields(log.Fields{
-						"caller":  "experiment.Worker",
-						"account": pushproxy.account,
-						"node":    pushproxy.node,
-						"role":    pushproxy.role,
-						"action":  "copy proxies",
-					}).Error(pushproxy.err)
-
-					failedCopies[pushproxy.role][pushproxy.node] = generateNewErrorStringForTable(
-						genericTimeoutError,
-						failedCopies[pushproxy.role][pushproxy.node],
-						copyProxyErrorSlice,
-						"; ",
-					)
-
-					expt.Successful = false
-				} else {
-					successfulCopies[pushproxy.role] = append(successfulCopies[pushproxy.role], pushproxy.node)
-					delete(failedCopies[pushproxy.role], pushproxy.node)
-					if err := b.PushNodeRoleTimestamp(expt.Name, pushproxy.node, pushproxy.role); err != nil {
-						msg := "Could not report success metrics to prometheus"
+		func() {
+			defer copyCancel()
+			for {
+				select {
+				case <-copyCtx.Done():
+					if e := copyCtx.Err(); e == context.DeadlineExceeded {
+						copyTout := "Timeout copying proxies to destination"
 						log.WithFields(log.Fields{
-							"caller": "experiment.Worker",
-							"action": "prometheus metric push",
-							"node":   pushproxy.node,
-							"role":   pushproxy.role,
-						}).Warn(msg)
+							"caller":     "experiment.Worker",
+							"experiment": eConfig.Name,
+							"action":     "copy proxies",
+						}).Error(copyTout)
 					} else {
 						log.WithFields(log.Fields{
-							"node": pushproxy.node,
-							"role": pushproxy.role,
-						}).Debug("Pushed prometheus success timestamp")
+							"caller":     "experiment.Worker",
+							"experiment": eConfig.Name,
+							"action":     "copy proxies",
+						}).Error(e)
+						msg := []string{generalContextErrorString}
+						for role, nodeMap := range failedCopies {
+							for node, err := range nodeMap {
+								failedCopies[role][node] = generateNewErrorStringForTable(
+									genericTimeoutError,
+									err,
+									msg,
+									"; ",
+								)
+							}
+						}
+					}
+
+					expt.Successful = false
+					return
+
+				case pushproxy, chanOpen := <-copyChan:
+					if !chanOpen {
+						return
+					}
+
+					log.WithField("experiment", eConfig.Name).Debug(pushproxy)
+					if pushproxy.err != nil {
+						var copyProxyErrorSlice []string
+						copyProxyErrorSlice = []string{"Error copying proxy"}
+
+						for _, n := range badNodesSlice {
+							if pushproxy.node == n {
+								//copyProxyErrorf = copyProxyErrorf + " The node was not pingable earlier, so please look into the status of that node to make sure it's up and working."
+								copyProxyErrorSlice = append(copyProxyErrorSlice, "Node not pingable earlier")
+								break
+							}
+						}
+
+						log.WithFields(log.Fields{
+							"caller":  "experiment.Worker",
+							"account": pushproxy.account,
+							"node":    pushproxy.node,
+							"role":    pushproxy.role,
+							"action":  "copy proxies",
+						}).Error(pushproxy.err)
+
+						failedCopies[pushproxy.role][pushproxy.node] = generateNewErrorStringForTable(
+							genericTimeoutError,
+							failedCopies[pushproxy.role][pushproxy.node],
+							copyProxyErrorSlice,
+							"; ",
+						)
+
+						expt.Successful = false
+					} else {
+						successfulCopies[pushproxy.role] = append(successfulCopies[pushproxy.role], pushproxy.node)
+						delete(failedCopies[pushproxy.role], pushproxy.node)
+						if err := b.PushNodeRoleTimestamp(expt.Name, pushproxy.node, pushproxy.role); err != nil {
+							msg := "Could not report success metrics to prometheus"
+							log.WithFields(log.Fields{
+								"caller": "experiment.Worker",
+								"action": "prometheus metric push",
+								"node":   pushproxy.node,
+								"role":   pushproxy.role,
+							}).Warn(msg)
+						} else {
+							log.WithFields(log.Fields{
+								"node": pushproxy.node,
+								"role": pushproxy.role,
+							}).Debug("Pushed prometheus success timestamp")
+						}
 					}
 				}
 			}
-		}
+		}()
 
 		// Note successes and failures
 		for role, nodes := range successfulCopies {
