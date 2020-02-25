@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io/ioutil"
 	"os"
+	"reflect"
 	"strconv"
 	"testing"
 	"time"
@@ -26,7 +27,7 @@ func TestNewVomsProxy(t *testing.T) {
 	}{
 		{
 			v:   &fakeVomsProxy{errors.New("This failed for some reason")},
-			err: errors.New("Could not generate a VOMS proxy"),
+			err: &NewVomsProxyError{"Could not generate a VOMS proxy"},
 		},
 		{
 			v:   &fakeVomsProxy{err: nil},
@@ -36,8 +37,9 @@ func TestNewVomsProxy(t *testing.T) {
 
 	ctx := context.Background()
 	for _, test := range tests {
-		if _, err := NewVomsProxy(ctx, test.v, ""); errorString(err) != errorString(test.err) {
-			t.Errorf("NewVomsProxy test should have returned %s; got %s instead", test.err, err)
+		_, _, err := NewVomsProxy(ctx, test.v, "")
+		if reflect.TypeOf(err) != reflect.TypeOf(test.err) {
+			t.Errorf("NewVomsProxy test should have returned %T; got %T instead", test.err, err)
 		}
 	}
 
@@ -66,8 +68,8 @@ func TestRemoveVomsProxy(t *testing.T) {
 
 	for _, test := range tests {
 		err := test.v.Remove()
-		if errorString(err) != errorString(test.err) {
-			t.Errorf("Expected and actual errors do not match.  Expected %s, got %s", test.err, err)
+		if reflect.TypeOf(err) != reflect.TypeOf(test.err) {
+			t.Errorf("Expected and actual errors do not match.  Expected %T, got %T", test.err, err)
 		}
 	}
 }
