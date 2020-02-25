@@ -25,12 +25,12 @@ type Cert interface {
 }
 
 // serviceCert is an object that collects the pertinent information about a service certificate
-// Satisifies the Cert, GridProxyer, and VOMSProxyer interfaces
+// Satisifies the Cert, GetGridProxyer, and GetVomsProxyer interfaces
 type serviceCert struct {
 	certPath   string
 	keyPath    string
 	dn         string
-	Expiration time.Time
+	expiration time.Time
 }
 
 // NewServiceCert ingests a service certificate file and returns a pointer to a serviceCert object
@@ -57,12 +57,12 @@ func NewServiceCert(ctx context.Context, certPath, keyPath string) (*serviceCert
 
 	log.WithField("certPath", s.certPath).Debug("Read in and decoded cert file, getting dn and expiration")
 	s.dn = parseDN(cert.Subject.Names, "/")
-	s.Expiration = cert.NotAfter
+	s.expiration = cert.NotAfter
 
 	log.WithFields(log.Fields{
 		"certPath":   certPath,
 		"subject":    s.dn,
-		"expiration": s.Expiration,
+		"expiration": s.expiration,
 	}).Debug("Successfully ingested service certificate")
 	return s, nil
 }
@@ -70,7 +70,7 @@ func NewServiceCert(ctx context.Context, certPath, keyPath string) (*serviceCert
 func (s *serviceCert) CertPath() string   { return s.certPath }
 func (s *serviceCert) KeyPath() string    { return s.keyPath }
 func (s *serviceCert) Subject() string    { return s.dn }
-func (s *serviceCert) Expires() time.Time { return s.Expiration }
+func (s *serviceCert) Expires() time.Time { return s.expiration }
 
 // ingestCertificate takes an io.Reader representing a DER-encoded x509 certificate and returns an x509.Certificate object
 func ingestCertificate(r io.Reader) (*x509.Certificate, error) {
