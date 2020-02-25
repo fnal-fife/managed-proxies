@@ -1,11 +1,14 @@
 package utils
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os/exec"
 	"reflect"
 	"strconv"
 	"strings"
+	"text/template"
 
 	"github.com/google/shlex"
 	"github.com/olekukonko/tablewriter"
@@ -160,8 +163,7 @@ func MapToTableData(v reflect.Value, curData [][]string, curRow []string) [][]st
 
 // rsyncFile runs rsync on a file at source, and syncs it with the destination account@node:dest
 func rsyncFile(ctx context.Context, source, node, account, dest string, sshOptions string) error {
-
-	rsyncExecutables = map[string]string{
+	rsyncExecutables := map[string]string{
 		"rsync": "",
 		"ssh":   "",
 	}
@@ -185,7 +187,7 @@ func rsyncFile(ctx context.Context, source, node, account, dest string, sshOptio
 		return errors.New(err)
 	}
 
-	args, err := utils.GetArgsFromTemplate(b.String())
+	args, err := GetArgsFromTemplate(b.String())
 	if err != nil {
 		err := fmt.Sprintf("Could not get rsync command arguments from template: %s", err.Error())
 		log.WithField("source", source).Error(err)
