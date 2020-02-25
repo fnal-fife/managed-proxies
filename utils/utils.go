@@ -161,8 +161,8 @@ func MapToTableData(v reflect.Value, curData [][]string, curRow []string) [][]st
 	return curData
 }
 
-// rsyncFile runs rsync on a file at source, and syncs it with the destination account@node:dest
-func rsyncFile(ctx context.Context, source, node, account, dest string, sshOptions string) error {
+// RsyncFile runs rsync on a file at source, and syncs it with the destination account@node:dest
+func RsyncFile(ctx context.Context, source, node, account, dest string, sshOptions string) error {
 	rsyncExecutables := map[string]string{
 		"rsync": "",
 		"ssh":   "",
