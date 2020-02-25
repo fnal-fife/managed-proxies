@@ -12,6 +12,10 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+const rsyncArgs = "-p -e \"{{.SSHExe}} {{.SSHOpts}}\" --chmod=u=r,go= {{.SourcePath}} {{.Account}}@{{.Node}}.fnal.gov:{{.DestPath}}"
+
+var rsyncTemplate = template.Must(template.New("rsync").Parse(rsyncArgs))
+
 // GetArgsFromTemplate takes a template string and breaks it into a slice of args
 func GetArgsFromTemplate(s string) ([]string, error) {
 	args := make([]string, 0)
@@ -34,11 +38,11 @@ func GetArgsFromTemplate(s string) ([]string, error) {
 // checks if each executable is in $PATH.  If so, it saves the path in the map.  If not, it returns an error
 func CheckForExecutables(exeMap map[string]string) error {
 	for exe := range exeMap {
-		if pth, err := exec.LookPath(exe); err != nil {
+		pth, err := exec.LookPath(exe)
+		if err != nil {
 			return fmt.Errorf("%s was not found in $PATH", exe)
-		} else {
-			exeMap[exe] = pth
 		}
+		exeMap[exe] = pth
 	}
 	return nil
 }
@@ -152,4 +156,62 @@ func MapToTableData(v reflect.Value, curData [][]string, curRow []string) [][]st
 		}
 	}
 	return curData
+}
+
+// rsyncFile runs rsync on a file at source, and syncs it with the destination account@node:dest
+func rsyncFile(ctx context.Context, source, node, account, dest string, sshOptions string) error {
+
+	rsyncExecutables = map[string]string{
+		"rsync": "",
+		"ssh":   "",
+	}
+
+	CheckForExecutables(rsyncExecutables)
+
+	var b strings.Builder
+
+	cArgs := struct{ SSHExe, SSHOpts, SourcePath, Account, Node, DestPath string }{
+		SSHExe:     rsyncExecutables["ssh"],
+		SSHOpts:    sshOptions,
+		SourcePath: source,
+		Account:    account,
+		Node:       node,
+		DestPath:   dest,
+	}
+
+	if err := rsyncTemplate.Execute(&b, cArgs); err != nil {
+		err := fmt.Sprintf("Could not execute rsync template: %s", err.Error())
+		log.WithField("source", source).Error(err)
+		return errors.New(err)
+	}
+
+	args, err := utils.GetArgsFromTemplate(b.String())
+	if err != nil {
+		err := fmt.Sprintf("Could not get rsync command arguments from template: %s", err.Error())
+		log.WithField("source", source).Error(err)
+		return errors.New(err)
+	}
+
+	cmd := exec.CommandContext(ctx, rsyncExecutables["rsync"], args...)
+	if err := cmd.Run(); err != nil {
+		err := fmt.Sprintf("rsync command failed: %s", err.Error())
+		log.WithFields(log.Fields{
+			"sshOpts":    sshOptions,
+			"sourcePath": source,
+			"account":    account,
+			"node":       node,
+			"destPath":   dest,
+			"command":    strings.Join(cmd.Args, " "),
+		}).Error(err)
+
+		return errors.New(err)
+	}
+
+	log.WithFields(log.Fields{
+		"account":  account,
+		"node":     node,
+		"destPath": dest,
+	}).Debug("rsync successful")
+	return nil
+
 }
