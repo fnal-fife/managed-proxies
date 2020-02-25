@@ -45,38 +45,49 @@ type GridProxy struct {
 	Cert
 }
 
-// NewGridProxy returns a new GridProxy object given a GetGridProxyer object and the lifetime of the intended proxy
-func NewGridProxy(ctx context.Context, gp GetGridProxyer, valid time.Duration) (*GridProxy, error) {
+// NewGridProxyError TODO
+type NewGridProxyError struct {
+	message string
+}
+
+func (ne *NewGridProxyError) Error() string {
+	return fmt.Sprintf("Could not generate grid proxy: %s", ne.message)
+}
+
+// NewGridProxy returns a new GridProxy object, a teardown func, and an error, given a GetGridProxyer object and the lifetime of the intended proxy
+func NewGridProxy(ctx context.Context, gp GetGridProxyer, valid time.Duration) (*GridProxy, func() error, error) {
 	if valid.Seconds() == 0 {
 		valid, _ = time.ParseDuration(defaultValidity)
 	}
 
+	teardown := func() error { return nil }
+
 	g, err := gp.getGridProxy(ctx, valid)
 	if err != nil {
-		err := "Could not get a new grid proxy from gridProxyer"
+		err := &NewGridProxyError{"Could not get a new grid proxy from gridProxyer"}
 		log.WithField("gridProxyer", fmt.Sprintf("%v", gp)).Error(err)
-		return nil, errors.New(err)
+		return nil, teardown, err
 	}
 	log.WithFields(log.Fields{
 		"path": g.Path,
 		"DN":   g.DN,
 	}).Debug("Generated new GridProxy")
-	return g, nil
-}
 
-// Remove deletes the file at GridProxy.Path
-func (g *GridProxy) Remove() error {
-	if err := os.Remove(g.Path); os.IsNotExist(err) {
-		err := "Grid proxy file does not exist"
-		log.WithField("path", g.Path).Error(err)
-		return errors.New(err)
-	} else if err != nil {
-		log.WithField("path", g.Path).Error(err)
-		return err
+	teardown = func() error {
+		if err := os.Remove(g.Path); os.IsNotExist(err) {
+			errText := "Grid proxy file does not exist"
+			log.WithField("path", g.Path).Error(errText)
+			return err
+		} else if err != nil {
+			log.WithField("path", g.Path).Error(err)
+			return err
+		}
+
+		log.WithField("path", g.Path).Debug("Grid Proxy removed")
+		return nil
 	}
 
-	log.WithField("path", g.Path).Debug("Grid Proxy removed")
-	return nil
+	return g, teardown, nil
 }
 
 // storeInMyProxy stores a GridProxy object on a myproxy server by using myproxy-store

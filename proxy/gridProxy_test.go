@@ -3,8 +3,7 @@ package proxy
 import (
 	"context"
 	"errors"
-	"io/ioutil"
-	"strconv"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -26,7 +25,7 @@ func TestNewGridProxy(t *testing.T) {
 	}{
 		{
 			g:   &fakeGridProxy{errors.New("This failed for some reason")},
-			err: errors.New("Could not get a new grid proxy from gridProxyer"),
+			err: &NewGridProxyError{"Could not get a new grid proxy from gridProxyer"},
 		},
 		{
 			g:   &fakeGridProxy{err: nil},
@@ -37,40 +36,12 @@ func TestNewGridProxy(t *testing.T) {
 	ctx := context.Background()
 	valid, _ := time.ParseDuration(defaultValidity)
 	for _, test := range tests {
-		if _, err := NewGridProxy(ctx, test.g, valid); errorString(err) != errorString(test.err) {
-			t.Errorf("NewGridProxy test should have returned %s; got %s instead", test.err, err)
+		_, _, err := NewGridProxy(ctx, test.g, valid)
+		if reflect.TypeOf(err) != reflect.TypeOf(test.err) {
+			t.Errorf("NewGridProxy test should have returned %T; got %T instead", test.err, err)
 		}
 	}
 
-}
-
-// TestRemoveGridProxy make sure that GridProxy.Remove() behaves as we expect in case a file doesn't exist, etc.
-func TestRemoveGridProxy(t *testing.T) {
-	tmpLocation, _ := ioutil.TempFile("", "proxytest")
-	tests := []struct {
-		g   *GridProxy
-		err error
-	}{
-		{
-			g: &GridProxy{
-				Path: tmpLocation.Name(),
-			},
-			err: nil,
-		},
-		{
-			g: &GridProxy{
-				Path: strconv.FormatInt(time.Now().UnixNano(), 36),
-			},
-			err: errors.New("Grid proxy file does not exist"),
-		},
-	}
-
-	for _, test := range tests {
-		err := test.g.Remove()
-		if errorString(err) != errorString(test.err) {
-			t.Errorf("Expected and actual errors do not match.  Expected %s, got %s", test.err, err)
-		}
-	}
 }
 
 // TestFmtDurationForGPI verifies that if we give a valid time.Duration, it is formatted correctly
