@@ -43,11 +43,6 @@ type CopyProxyer interface {
 	copyProxy(ctx context.Context, node, account, dest string) error
 }
 
-// CopyProxyError TODO
-type CopyProxyError struct{ message string }
-
-func (c *CopyProxyError) Error() string { return c.message }
-
 // CopyToNode copies a CopyProxyer to a specified destination on a remote node using the specified account
 func CopyToNode(ctx context.Context, cp CopyProxyer, node, acct, dest string) error {
 	if err := cp.copyProxy(ctx, node, acct, dest); err != nil {
@@ -64,11 +59,6 @@ type VomsProxy struct {
 	DN   string
 	Cert
 }
-
-// NewVomsProxyError TODO
-type NewVomsProxyError struct{ message string }
-
-func (n *NewVomsProxyError) Error() string { return n.message }
 
 // NewVomsProxy returns a VOMS proxy and a teardown func from a GetVomsProxyer
 func NewVomsProxy(ctx context.Context, vp GetVomsProxyer, vomsFQAN string) (*VomsProxy, func() error, error) {
@@ -250,8 +240,6 @@ func (s *serviceCert) getVomsProxy(ctx context.Context, vomsFQAN string) (*VomsP
 	return &v, nil
 }
 
-//TODO:  Does this belong somewhere else?
-
 func init() {
 	if err := utils.CheckForExecutables(vomsProxyExecutables); err != nil {
 		log.WithField("executableGroup", "vomsProxy").Error("One or more required executables were not found in $PATH.  Will still attempt to run, but this will probably fail")
@@ -263,3 +251,13 @@ func getRoleFromFQAN(fqan string) string {
 	pattern := regexp.MustCompile("^.+Role=([a-zA-Z]+)(/Capability=NULL)?$")
 	return pattern.FindStringSubmatch(fqan)[1]
 }
+
+// CopyProxyError TODO
+type CopyProxyError struct{ message string }
+
+func (c *CopyProxyError) Error() string { return c.message }
+
+// NewVomsProxyError TODO
+type NewVomsProxyError struct{ message string }
+
+func (n *NewVomsProxyError) Error() string { return n.message }
