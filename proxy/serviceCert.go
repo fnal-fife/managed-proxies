@@ -42,13 +42,18 @@ func NewServiceCert(ctx context.Context, certPath, keyPath string) (*serviceCert
 
 	certFile, err := os.Open(s.certPath)
 	if err != nil {
-		err := fmt.Sprintf("Could not open cert file: %s", err.Error())
+		if os.IsNotExist(err) {
+			errText := fmt.Sprintf("certPath does not exist")
+			log.WithField("certPath", s.certPath).Error(errText)
+			return s, err
+		}
+		err := &OpenCertFileError{err.Error()}
 		log.WithField("certPath", s.certPath).Error(err)
-		return s, errors.New(err)
+		return s, err
 	}
 	defer certFile.Close()
 
-	cert, err := ingestCertificate(certFile)
+	cert, err := IngestCertificate(certFile)
 	if err != nil {
 		err := fmt.Sprintf("Could not ingest cert file: %s", err.Error())
 		log.WithField("certPath", s.certPath).Error(err)
@@ -72,36 +77,24 @@ func (s *serviceCert) KeyPath() string    { return s.keyPath }
 func (s *serviceCert) Subject() string    { return s.dn }
 func (s *serviceCert) Expires() time.Time { return s.expiration }
 
-// ingestCertificate takes an io.Reader representing a DER-encoded x509 certificate and returns an x509.Certificate object
-func ingestCertificate(r io.Reader) (*x509.Certificate, error) {
+// IngestCertificate takes an io.Reader representing a DER-encoded x509 certificate and returns an x509.Certificate object
+func IngestCertificate(r io.Reader) (*x509.Certificate, error) {
 	certContent, err := ioutil.ReadAll(r)
 	if err != nil {
-		err := fmt.Sprintf("Could not read cert file: %s", err.Error())
+		err := &IngestError{fmt.Sprintf("Could not read cert file: %s", err.Error())}
 		log.Error(err)
-		return &x509.Certificate{}, errors.New(err)
+		return &x509.Certificate{}, err
 	}
 
-	cert, err := decodeCertificate(certContent)
-	if err != nil {
-		err := "Could not decode certificate from raw input"
-		log.Error(err)
-		return &x509.Certificate{}, errors.New(err)
-	}
-	return cert, nil
-}
-
-// decodeCertificate takes a byte slice representing an x509 certificate and returns an x509.Certificate object
-func decodeCertificate(certBytes []byte) (*x509.Certificate, error) {
-	var cert *x509.Certificate
-	certDER, _ := pem.Decode(certBytes)
+	certDER, _ := pem.Decode(certContent)
 	if certDER == nil {
-		err := errors.New("Could not decode PEM block containing cert data")
-		return cert, err
+		err := &IngestError{"Could not decode PEM block containing cert data"}
+		return &x509.Certificate{}, err
 	}
 
 	cert, err := x509.ParseCertificate(certDER.Bytes)
 	if err != nil {
-		err := errors.New("Could not parse certificate from DER data")
+		err := &IngestError{fmt.Sprintf("Could not parse certificate from DER data: %s", err.Error())}
 		return cert, err
 	}
 	return cert, nil
@@ -136,4 +129,22 @@ func parseDN(names []pkix.AttributeTypeAndValue, sep string) string {
 		subject = append(subject, fmt.Sprintf("%s=%s", oid[i.Type.String()], i.Value))
 	}
 	return sep + strings.Join(subject, sep)
+}
+
+// IngestError TODO
+type IngestError struct {
+	message string
+}
+
+func (oc *IngestError) Error() string {
+	return fmt.Sprintf("Could not ingest cert data: %s", oc.message)
+}
+
+// OpenCertFileError TODO
+type OpenCertFileError struct {
+	message string
+}
+
+func (oc *OpenCertFileError) Error() string {
+	return fmt.Sprintf("Could not open cert file: %s", oc.message)
 }
