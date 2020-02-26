@@ -40,11 +40,11 @@ const (
 // Config contains the information needed to send notifications from the proxy push service
 type Config struct {
 	ConfigInfo map[string]string
+	Experiment string
+	IsTest     bool
 	From       string
 	To         []string
 	Subject    string
-	Experiment string
-	IsTest     bool
 }
 
 // AdminData stores the information needed to generate the Admin notifications
@@ -56,28 +56,51 @@ type AdminData struct {
 // Manager is simply a channel on which Notification objects can be sent and received
 type Manager chan Notification
 
-// SendEmail sends an email based on nConfig
-func SendEmail(ctx context.Context, nConfig Config, msg string) error {
-	if nConfig.IsTest {
-		log.Info("This is a test.  Not sending email")
-		return nil
-	}
+// SendMessager wraps the SendMessage method
+type SendMessager interface {
+	SendMessage(context.Context, string, map[string]string) error
+}
 
-	port, err := strconv.Atoi(nConfig.ConfigInfo["smtpport"])
+// SendMessageError TODO
+type SendMessageError struct{ message string }
+
+func (s *SendMessageError) Error() string { return s.message }
+
+// SendMessage TODO Use THIS everywhere, then we can make a mock.
+func SendMessage(ctx context.Context, s SendMessager, msg string, ConfigInfo map[string]string) error {
+	err := s.SendMessage(ctx, msg, ConfigInfo)
+	if err != nil {
+		err := &SendMessageError{"Error sending message"}
+		log.Error(err)
+		return err
+	}
+	return nil
+}
+
+// Email TODO
+type Email struct {
+	From    string
+	To      []string
+	Subject string
+}
+
+// SendMessage sends message as an email based on the Config
+func (e *Email) SendMessage(ctx context.Context, message string, ConfigInfo map[string]string) error {
+	port, err := strconv.Atoi(ConfigInfo["smtpport"])
 	if err != nil {
 		return err
 	}
 
 	emailDialer = gomail.Dialer{
-		Host: nConfig.ConfigInfo["smtphost"],
+		Host: ConfigInfo["smtphost"],
 		Port: port,
 	}
 
 	m := gomail.NewMessage()
-	m.SetHeader("From", nConfig.From)
-	m.SetHeader("To", nConfig.To...)
-	m.SetHeader("Subject", nConfig.Subject)
-	m.SetBody("text/plain", msg)
+	m.SetHeader("From", e.From)
+	m.SetHeader("To", e.To...)
+	m.SetHeader("Subject", e.Subject)
+	m.SetBody("text/plain", message)
 
 	c := make(chan error)
 	go func() {
@@ -87,26 +110,30 @@ func SendEmail(ctx context.Context, nConfig Config, msg string) error {
 	}()
 
 	select {
-	case e := <-c:
-		if e != nil {
-			log.WithField("recipient", strings.Join(nConfig.To, ", ")).Errorf("Error sending email: %s", e)
+	case err := <-c:
+		if err != nil {
+			log.WithField("recipient", strings.Join(e.To, ", ")).Errorf("Error sending email: %s", err)
 		} else {
-			log.WithField("recipient", strings.Join(nConfig.To, ", ")).Info("Sent email")
+			log.WithField("recipient", strings.Join(e.To, ", ")).Info("Sent email")
 		}
-		return e
+		return err
 	case <-ctx.Done():
-		e := ctx.Err()
-		if e == context.DeadlineExceeded {
-			log.WithField("recipient", strings.Join(nConfig.To, ", ")).Error("Error sending email: timeout")
+		err := ctx.Err()
+		if err == context.DeadlineExceeded {
+			log.WithField("recipient", strings.Join(e.To, ", ")).Error("Error sending email: timeout")
 		} else {
-			log.WithField("recipient", strings.Join(nConfig.To, ", ")).Errorf("Error sending email: %s", e)
+			log.WithField("recipient", strings.Join(e.To, ", ")).Errorf("Error sending email: %s", err)
 		}
-		return e
+		return err
 	}
+
 }
 
-// SendSlackMessage sends an HTTP POST request to a URL specified in the config file.
-func SendSlackMessage(ctx context.Context, nConfig Config, message string) error {
+// SlackMessage TODO
+type SlackMessage struct{}
+
+// SendMessage sends message as a Slack message based on the Config
+func (s *SlackMessage) SendMessage(ctx context.Context, message string, ConfigInfo map[string]string) error {
 	if e := ctx.Err(); e != nil {
 		log.Errorf("Error sending slack message: %s", e)
 		return e
@@ -118,7 +145,7 @@ func SendSlackMessage(ctx context.Context, nConfig Config, message string) error
 	}
 
 	msg := []byte(fmt.Sprintf(`{"text": "%s"}`, strings.Replace(message, "\"", "\\\"", -1)))
-	req, err := http.NewRequest("POST", nConfig.ConfigInfo["slack_alerts_url"], bytes.NewBuffer(msg))
+	req, err := http.NewRequest("POST", ConfigInfo["slack_alerts_url"], bytes.NewBuffer(msg))
 	if err != nil {
 		log.Errorf("Error sending slack message: %s", err)
 		return err

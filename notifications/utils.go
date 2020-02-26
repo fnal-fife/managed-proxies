@@ -43,19 +43,20 @@ func NewManager(ctx context.Context, wg *sync.WaitGroup, nConfig Config) Manager
 				// Channel is closed --> send emails
 				if !chanOpen {
 					// If running for real, send the experiment email
-					if !nConfig.IsTest {
-						if len(exptErrorTable) > 0 {
-							if err := SendExperimentEmail(ctx, nConfig, exptErrorTable); err != nil {
-								log.WithFields(log.Fields{
-									"caller":     "NewManager",
-									"experiment": nConfig.Experiment,
-								}).Error("Error sending email")
-							}
+					if nConfig.IsTest {
+						return
+					}
+					if len(exptErrorTable) > 0 {
+						if err := SendExperimentEmail(ctx, nConfig, exptErrorTable); err != nil {
+							log.WithFields(log.Fields{
+								"caller":     "NewManager",
+								"experiment": nConfig.Experiment,
+							}).Error("Error sending email")
 						}
 					}
 					return
 				}
-				// Direct the message as needed
+				// Channel is open: direct the message as needed
 				switch n.NotificationType {
 				case SetupError:
 					addSetupErrorToAdminErrors(&n)
@@ -88,7 +89,7 @@ func SendExperimentEmail(ctx context.Context, nConfig Config, errorTable string)
 	templateData, err := ioutil.ReadFile(experimentTemplateFile)
 	if err != nil {
 		log.WithFields(log.Fields{
-			"caller":     "SendAdminNotifications",
+			"caller":     "SendExperimentEmail",
 			"experiment": nConfig.Experiment,
 		}).Errorf("Could not read experiment error template file: %s", err)
 		return err
@@ -104,7 +105,7 @@ func SendExperimentEmail(ctx context.Context, nConfig Config, errorTable string)
 		ErrorTable: errorTable,
 	}); err != nil {
 		log.WithFields(log.Fields{
-			"caller":     "SendAdminNotifications",
+			"caller":     "SendExperimentEmail",
 			"experiment": nConfig.Experiment,
 		}).Errorf("Failed to execute experiment email template: %s", err)
 		return err
@@ -112,9 +113,21 @@ func SendExperimentEmail(ctx context.Context, nConfig Config, errorTable string)
 
 	go func(wg *sync.WaitGroup) {
 		defer wg.Done()
-		if err = SendEmail(ctx, nConfig, b.String()); err != nil {
+		email := &Email{
+			From:    nConfig.From,
+			To:      nConfig.To,
+			Subject: nConfig.Subject,
+		}
+
+		if nConfig.IsTest {
+			log.Info("This is a test.  Not sending email")
+			err = nil
+			return
+		}
+
+		if err = SendMessage(ctx, email, b.String(), nConfig.ConfigInfo); err != nil {
 			log.WithFields(log.Fields{
-				"caller":     "SendAdminNotifications",
+				"caller":     "SendExperimentEmail",
 				"experiment": nConfig.Experiment,
 			}).Error("Failed to send experiment email")
 		}
@@ -147,8 +160,9 @@ func SendAdminNotifications(ctx context.Context, nConfig Config, operation strin
 
 	if len(adminErrorsMap) == 0 {
 		if nConfig.IsTest {
-			slackMsg := "Test run completed successfully"
-			if slackErr = SendSlackMessage(ctx, nConfig, slackMsg); slackErr != nil {
+			s := &SlackMessage{}
+			msg := "Test run completed successfully"
+			if slackErr = SendMessage(ctx, s, msg, nConfig.ConfigInfo); slackErr != nil {
 				log.WithField("caller", "SendAdminNotifications").Error("Failed to send slack message")
 			}
 			return slackErr
@@ -189,14 +203,27 @@ func SendAdminNotifications(ctx context.Context, nConfig Config, operation strin
 
 	go func(wg *sync.WaitGroup) {
 		defer wg.Done()
-		if emailErr = SendEmail(ctx, nConfig, b.String()); emailErr != nil {
+		email := &Email{
+			From:    nConfig.From,
+			To:      nConfig.To,
+			Subject: nConfig.Subject,
+		}
+
+		if nConfig.IsTest {
+			log.Info("This is a test.  Not sending email")
+			err = nil
+			return
+		}
+
+		if emailErr = SendMessage(ctx, email, b.String(), nConfig.ConfigInfo); emailErr != nil {
 			log.WithField("caller", "SendAdminNotifications").Error("Failed to send admin email")
 		}
 	}(&wg)
 
 	go func(wg *sync.WaitGroup) {
 		defer wg.Done()
-		if slackErr = SendSlackMessage(ctx, nConfig, b.String()); slackErr != nil {
+		s := &SlackMessage{}
+		if slackErr = SendMessage(ctx, s, b.String(), nConfig.ConfigInfo); slackErr != nil {
 			log.WithField("caller", "SendAdminNotifications").Error("Failed to send slack message")
 		}
 	}(&wg)
@@ -253,14 +280,20 @@ func SendCertAlarms(ctx context.Context, nConfig Config, cSlice []CertExpiration
 
 	go func(wg *sync.WaitGroup) {
 		defer wg.Done()
-		if emailErr = SendEmail(ctx, nConfig, b.String()); emailErr != nil {
+		email := &Email{
+			From:    nConfig.From,
+			To:      nConfig.To,
+			Subject: nConfig.Subject,
+		}
+		if emailErr = SendMessage(ctx, email, b.String(), nConfig.ConfigInfo); emailErr != nil {
 			log.WithField("caller", "SendCertAlarms").Error("Failed to send admin email")
 		}
 	}(&wg)
 
 	go func(wg *sync.WaitGroup) {
 		defer wg.Done()
-		if slackErr = SendSlackMessage(ctx, nConfig, b.String()); slackErr != nil {
+		s := &SlackMessage{}
+		if slackErr = SendMessage(ctx, s, b.String(), nConfig.ConfigInfo); slackErr != nil {
 			log.WithField("caller", "SendCertAlarms").Error("Failed to send slack message")
 		}
 	}(&wg)
