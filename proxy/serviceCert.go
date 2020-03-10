@@ -25,7 +25,7 @@ type Cert interface {
 }
 
 // ServiceCert is an object that collects the pertinent information about a service certificate
-// Satisifies the Cert, GetGridProxyer, and GetVomsProxyer interfaces
+// Satisifies the Cert, getGridProxyer, and getVomsProxyer interfaces
 type ServiceCert struct {
 	certPath   string
 	keyPath    string

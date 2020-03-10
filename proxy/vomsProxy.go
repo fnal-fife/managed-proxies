@@ -33,26 +33,26 @@ var (
 	vomsProxyInfoTemplate = template.Must(template.New("voms-proxy-info").Parse(vomsProxyInfoArgs))
 )
 
-// GetVomsProxyer encapsulates the method to obtain a VOMS proxy from an object
-type GetVomsProxyer interface {
+// getVomsProxyer encapsulates the method to obtain a VOMS proxy from an object
+type getVomsProxyer interface {
 	getVomsProxy(ctx context.Context, vomsFQAN string) (*VomsProxy, error)
 }
 
-// CopyProxyer encapsulates the method to copy an object to a destination node
-type CopyProxyer interface {
+// copyProxyer encapsulates the method to copy an object to a destination node
+type copyProxyer interface {
 	copyProxy(ctx context.Context, node, account, dest string) error
 }
 
-// CopyToNode copies a CopyProxyer to a specified destination on a remote node using the specified account
-func CopyToNode(ctx context.Context, cp CopyProxyer, node, acct, dest string) error {
+// CopyToNode copies a copyProxyer to a specified destination on a remote node using the specified account
+func CopyToNode(ctx context.Context, cp copyProxyer, node, acct, dest string) error {
 	if err := cp.copyProxy(ctx, node, acct, dest); err != nil {
-		return &CopyProxyError{"Could not copy CopyProxyer to node"}
+		return &CopyProxyError{"Could not copy copyProxyer to node"}
 	}
 	return nil
 }
 
 // VomsProxy contains the information generally needed from a VOMS proxy, along with the Cert object used to create the VomsProxy itself
-// Implements the GetVomsProxyer, and CopyProxyer interfaces
+// Implements the getVomsProxyer, and copyProxyer interfaces
 type VomsProxy struct {
 	Path string
 	Role string
@@ -60,8 +60,8 @@ type VomsProxy struct {
 	Cert
 }
 
-// NewVomsProxy returns a VOMS proxy and a teardown func from a GetVomsProxyer
-func NewVomsProxy(ctx context.Context, vp GetVomsProxyer, vomsFQAN string) (*VomsProxy, func() error, error) {
+// NewVomsProxy returns a VOMS proxy and a teardown func from a getVomsProxyer
+func NewVomsProxy(ctx context.Context, vp getVomsProxyer, vomsFQAN string) (*VomsProxy, func() error, error) {
 	teardown := func() error { return nil }
 
 	v, err := vp.getVomsProxy(ctx, vomsFQAN)

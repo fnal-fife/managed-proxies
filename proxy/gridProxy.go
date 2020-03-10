@@ -32,8 +32,8 @@ var (
 	myproxystoreTemplate = template.Must(template.New("myproxy-store").Parse(myproxystoreArgs))
 )
 
-// GetGridProxyer is the interface for types that support getting a grid proxy
-type GetGridProxyer interface {
+// getGridProxyer is the interface for types that support getting a grid proxy
+type getGridProxyer interface {
 	getGridProxy(context.Context, time.Duration) (*GridProxy, error)
 }
 
@@ -54,8 +54,8 @@ func (ne *NewGridProxyError) Error() string {
 	return fmt.Sprintf("Could not generate grid proxy: %s", ne.message)
 }
 
-// NewGridProxy returns a new GridProxy object, a teardown func, and an error, given a GetGridProxyer object and the lifetime of the intended proxy
-func NewGridProxy(ctx context.Context, gp GetGridProxyer, valid time.Duration) (*GridProxy, func() error, error) {
+// NewGridProxy returns a new GridProxy object, a teardown func, and an error, given a getGridProxyer object and the lifetime of the intended proxy
+func NewGridProxy(ctx context.Context, gp getGridProxyer, valid time.Duration) (*GridProxy, func() error, error) {
 	if valid.Seconds() == 0 {
 		valid, _ = time.ParseDuration(defaultValidity)
 	}
