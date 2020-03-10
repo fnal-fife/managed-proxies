@@ -144,8 +144,8 @@ func (g *GridProxy) storeInMyProxy(ctx context.Context, retrievers, myProxyServe
 	return nil
 }
 
-// getGridProxy returns a GridProxy given a serviceCert object
-func (s *serviceCert) getGridProxy(ctx context.Context, valid time.Duration) (*GridProxy, error) {
+// getGridProxy returns a GridProxy given a ServiceCert object
+func (s *ServiceCert) getGridProxy(ctx context.Context, valid time.Duration) (*GridProxy, error) {
 	var b strings.Builder
 
 	_outfile, err := ioutil.TempFile("", "managed_proxy_grid_")

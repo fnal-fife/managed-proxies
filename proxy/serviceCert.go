@@ -24,18 +24,18 @@ type Cert interface {
 	KeyPath() string
 }
 
-// serviceCert is an object that collects the pertinent information about a service certificate
+// ServiceCert is an object that collects the pertinent information about a service certificate
 // Satisifies the Cert, GetGridProxyer, and GetVomsProxyer interfaces
-type serviceCert struct {
+type ServiceCert struct {
 	certPath   string
 	keyPath    string
 	dn         string
 	expiration time.Time
 }
 
-// NewServiceCert ingests a service certificate file and returns a pointer to a serviceCert object
-func NewServiceCert(ctx context.Context, certPath, keyPath string) (*serviceCert, error) {
-	s := &serviceCert{
+// NewServiceCert ingests a service certificate file and returns a pointer to a ServiceCert object
+func NewServiceCert(ctx context.Context, certPath, keyPath string) (*ServiceCert, error) {
+	s := &ServiceCert{
 		certPath: certPath,
 		keyPath:  keyPath,
 	}
@@ -72,10 +72,17 @@ func NewServiceCert(ctx context.Context, certPath, keyPath string) (*serviceCert
 	return s, nil
 }
 
-func (s *serviceCert) CertPath() string   { return s.certPath }
-func (s *serviceCert) KeyPath() string    { return s.keyPath }
-func (s *serviceCert) Subject() string    { return s.dn }
-func (s *serviceCert) Expires() time.Time { return s.expiration }
+// CertPath TODO
+func (s *ServiceCert) CertPath() string { return s.certPath }
+
+// KeyPath TODO
+func (s *ServiceCert) KeyPath() string { return s.keyPath }
+
+// Subject TODO
+func (s *ServiceCert) Subject() string { return s.dn }
+
+// Expires TODO
+func (s *ServiceCert) Expires() time.Time { return s.expiration }
 
 // IngestCertificate takes an io.Reader representing a DER-encoded x509 certificate and returns an x509.Certificate object
 func IngestCertificate(r io.Reader) (*x509.Certificate, error) {

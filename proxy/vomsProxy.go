@@ -186,8 +186,8 @@ func (v *VomsProxy) copyProxy(ctx context.Context, node, account, dest string) e
 	return err
 }
 
-// getVomsProxy obtains a VOMS proxy from a serviceCert by running voms-proxy-init
-func (s *serviceCert) getVomsProxy(ctx context.Context, vomsFQAN string) (*VomsProxy, error) {
+// getVomsProxy obtains a VOMS proxy from a ServiceCert by running voms-proxy-init
+func (s *ServiceCert) getVomsProxy(ctx context.Context, vomsFQAN string) (*VomsProxy, error) {
 	var b strings.Builder
 
 	_outfile, err := ioutil.TempFile("", "managed_proxy_voms_")
