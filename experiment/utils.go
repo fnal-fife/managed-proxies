@@ -9,7 +9,6 @@ import (
 	"path"
 	"strings"
 	"sync"
-	//	"text/tabwriter"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -18,191 +17,7 @@ import (
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/utils"
 )
 
-// vomsProxyInitStatus stores information about an attempt to run voms-proxy-init to generate a VOMS proxy.
-// If there was an error, it's stored in err.
-type vomsProxyInitStatus struct {
-	vomsProxy *proxy.VomsProxy
-	err       error
-}
-
-// getVomsProxyersForExperiment takes the service cert and list of accounts/roles, and creates a slice of proxy.VomsProxyer objects for that experiment
-func getVomsProxyersForExperiment(ctx context.Context, certBaseDir, configCertPath, configKeyPath string, accounts map[string]string) (map[string]proxy.VomsProxyer, error) {
-	m := make(map[string]proxy.VomsProxyer, len(accounts))
-	var e error
-	var once sync.Once
-
-	for account, role := range accounts {
-		certPath, keyPath := setCertKeyLocation(certBaseDir, configCertPath, configKeyPath, account)
-		certDuration, _ := time.ParseDuration("1m")
-		certCtx, certCancel := context.WithTimeout(ctx, certDuration)
-
-		cert, err := proxy.NewServiceCert(certCtx, certPath, keyPath)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"account":  account,
-				"certPath": certPath,
-				"keyPath":  keyPath,
-			}).Error("Could not ingest service cert")
-			e = err
-			once.Do(certCancel)
-			continue
-		}
-
-		m[role] = cert
-		once.Do(certCancel)
-	}
-	return m, e
-}
-
-// setCertKeyLocation takes the configured certPath, keyPath (or lack thereof), and certBaseDir, and sets the paths to look for the service certificate and key
-func setCertKeyLocation(certBaseDir, certPath, keyPath, account string) (string, string) {
-	var certfile, keyfile string
-	if certPath != "" {
-		certfile = certPath
-	} else {
-		certfile = path.Join(certBaseDir, account+".cert")
-	}
-
-	if keyPath != "" {
-		keyfile = keyPath
-	} else {
-		keyfile = path.Join(certBaseDir, account+".key")
-	}
-
-	return certfile, keyfile
-}
-
-// getVomsProxiesForExperiment takes a map of form role:proxyVomsProxyer, and generates voms proxies for each entry in the map.  It returns a channel that its caller should listen on
-func getVomsProxiesForExperiment(ctx context.Context, vpMap map[string]proxy.VomsProxyer, vomsFQANPrefix string) <-chan vomsProxyInitStatus {
-	c := make(chan vomsProxyInitStatus)
-	var wg sync.WaitGroup
-
-	wg.Add(len(vpMap))
-
-	// Run vpi on each acct, role
-	for role, vp := range vpMap {
-		go func(role string, vp proxy.VomsProxyer) {
-			defer wg.Done()
-			fqan := vomsFQANPrefix + "Role=" + role
-
-			v, err := proxy.NewVomsProxy(ctx, vp, fqan)
-			if err != nil {
-				vpi := vomsProxyInitStatus{v, err}
-				c <- vpi
-				return
-			}
-
-			checkErr := v.Check(ctx)
-			if checkErr == nil {
-				log.WithFields(log.Fields{
-					"Role": v.Role,
-					"DN":   v.DN,
-				}).Debug("Successfully checked new VOMS Proxy")
-			}
-			vpi := vomsProxyInitStatus{v, checkErr}
-			c <- vpi
-
-		}(role, vp)
-	}
-
-	// Wait for all goroutines to finish, then close channel so that caller knows there's no more objects to send in the channel
-	go func() {
-		defer close(c)
-		wg.Wait()
-	}()
-
-	return c
-
-}
-
-// copyFileConfig holds the information needed to copy a proxy.Transferer to a destination node
-type copyFileConfig struct {
-	node, account, destPath, role string
-	pt                            proxy.Transferer
-}
-
-// copyProxiesStatus stores information that uniquely identifies a VOMS proxy within an experiment (account, role) and
-// the node to which it was attempted to be copied.  If there was an error doing so, it's stored in err.
-type copyProxiesStatus struct {
-	account, node, role string
-	err                 error
-}
-
-// createCopyFileConfigs creates a slice of copyFileConfig objects for the experiment
-func createCopyFileConfigs(vp []*proxy.VomsProxy, accountMap map[string]string, nodes []string, destDir string) []copyFileConfig {
-	c := make([]copyFileConfig, 0)
-	invertAcct := make(map[string]string) // accountMap is account:role; we want role:account
-	for acct, role := range accountMap {
-		invertAcct[role] = acct
-	}
-
-	for _, v := range vp {
-		acct := invertAcct[v.Role]
-		proxyFileName := acct + "." + v.Role + ".proxy"
-		finalProxyPath := path.Join(destDir, acct, proxyFileName)
-
-		for _, n := range nodes {
-			_c := copyFileConfig{
-				account:  acct,
-				node:     n,
-				destPath: finalProxyPath,
-				role:     v.Role,
-				pt:       v,
-			}
-			c = append(c, _c)
-		}
-	}
-	return c
-}
-
-// copyAllProxies runs the CopyProxy method for each copyConfig.pt object.  It returns a channel its caller can receive the status on
-func copyAllProxies(ctx context.Context, copyConfigs []copyFileConfig) <-chan copyProxiesStatus {
-	numSlots := len(copyConfigs)
-
-	c := make(chan copyProxiesStatus, numSlots)
-	var wg sync.WaitGroup
-
-	wg.Add(numSlots)
-
-	for _, cp := range copyConfigs {
-		go func(cp copyFileConfig) {
-			cps := cp.createCopyProxiesStatus()
-			defer wg.Done()
-
-			cps.err = cp.pt.CopyProxy(ctx, cp.node, cp.account, cp.destPath)
-			if cps.err != nil {
-				if e := ctx.Err(); e == nil {
-					log.WithFields(log.Fields{
-						"node":            cp.node,
-						"account":         cp.account,
-						"role":            cp.role,
-						"destinationPath": cp.destPath,
-					}).Error("Could not copy proxy to destination")
-				}
-			}
-			c <- cps
-		}(cp)
-	}
-
-	// Wait for all goroutines to finish, then close channel so that caller knows there's no more objects to send in the channel
-	go func() {
-		defer close(c)
-		wg.Wait()
-	}()
-
-	return c
-
-}
-
-// createCopyProxiesStatus is a helper function that creates a copyProxiesStatus object for later modification
-func (c *copyFileConfig) createCopyProxiesStatus() copyProxiesStatus {
-	return copyProxiesStatus{
-		account: c.account,
-		node:    c.node,
-		role:    c.role,
-		err:     nil,
-	}
-}
+// Functions and types are roughly presented in the order they'll be called during a proxy push
 
 // getKerbTicket runs kinit to get a kerberos ticket
 func getKerbTicket(ctx context.Context, krbConfig KerbConfig) error {
@@ -233,6 +48,193 @@ func getKerbTicket(ctx context.Context, krbConfig KerbConfig) error {
 		return err
 	}
 	return nil
+}
+
+// vomsProxyInitStatus stores information about an attempt to run voms-proxy-init to generate a VOMS proxy.
+// If there was an error, it's stored in err.
+type vomsProxyInitStatus struct {
+	vomsProxy    *proxy.VomsProxy
+	teardownFunc func() error
+	err          error
+}
+
+type certKeyPair struct{ certPath, keyPath string }
+
+// getVomsProxyersForExperiment takes a map of roles and *certKeyPairs, and creates a map of role: proxy.GetVomsProxyer objects for that experiment
+func ingestServiceCertsForExperiment(ctx context.Context, certMap map[string]*certKeyPair) (map[string]*proxy.ServiceCert, error) {
+	m := make(map[string]*proxy.ServicecErt, len(certMap))
+	var e error
+	var once sync.Once
+
+	for role, c := range certMap {
+		certDuration, _ := time.ParseDuration("1m")
+		certCtx, certCancel := context.WithTimeout(ctx, certDuration)
+		cert, err := proxy.NewServiceCert(certCtx, c.certPath, c.keyPath)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"role":     role,
+				"certPath": c.certPath,
+				"keyPath":  c.keyPath,
+			}).Error("Could not ingest service cert")
+			e = err
+			once.Do(certCancel)
+			continue
+		}
+
+		m[role] = cert
+		once.Do(certCancel)
+	}
+	return m, e
+}
+
+// getVomsProxiesForExperiment takes a map of form role:proxyVomsProxyer, and generates voms proxies for each entry in the map.  It returns a channel that its caller should listen on
+func generateVomsProxiesForExperiment(ctx context.Context, certMap map[string]*proxy.ServiceCert, vomsFQANPrefix string) <-chan vomsProxyInitStatus {
+	c := make(chan vomsProxyInitStatus)
+	var wg sync.WaitGroup
+
+	wg.Add(len(certMap))
+
+	// Run vpi on each acct, role
+	for role, cert := range certMap {
+		go func(role string, cert *proxy.ServiceCert) {
+			defer wg.Done()
+			fqan := vomsFQANPrefix + "Role=" + role
+
+			v, teardown, err := proxy.NewVomsProxy(ctx, cert, fqan)
+			if err != nil {
+				certi := vomsProxyInitStatus{v, teardown, err}
+				c <- certi
+				return
+			}
+
+			checkErr := v.Check(ctx)
+			if checkErr == nil {
+				log.WithFields(log.Fields{
+					"Role": v.Role,
+					"DN":   v.DN,
+				}).Debug("Successfully checked new VOMS Proxy")
+			}
+			vpiStatus := vomsProxyInitStatus{v, teardown, checkErr}
+			c <- vpiStatus
+
+		}(role, cert)
+	}
+
+	// Wait for all goroutines to finish, then close channel so that caller knows there's no more objects to send in the channel
+	go func() {
+		defer close(c)
+		wg.Wait()
+	}()
+
+	return c
+
+}
+
+// copyFileConfig holds the information needed to copy a proxy.Transferer to a destination node
+type copyFileConfig struct {
+	node, account, destPath, role string
+	*proxy.VomsProxy
+}
+
+// copyProxiesStatus stores information that uniquely identifies a VOMS proxy within an experiment (account, role) and
+// the node to which it was attempted to be copied.  If there was an error doing so, it's stored in err.
+type copyProxiesStatus struct {
+	account, node, role string
+	err                 error
+}
+
+// createCopyProxiesStatus is a helper function that creates a copyProxiesStatus object for later modification
+func (c *copyFileConfig) createCopyProxiesStatus() copyProxiesStatus {
+	return copyProxiesStatus{
+		account: c.account,
+		node:    c.node,
+		role:    c.role,
+		err:     nil,
+	}
+}
+
+// createCopyFileConfigs creates a slice of copyFileConfig objects for the experiment
+func createCopyFileConfigs(vp []*proxy.VomsProxy, accountMap map[string]string, nodes []string, destDir string) []copyFileConfig {
+	c := make([]copyFileConfig, 0)
+	invertAcct := make(map[string]string) // accountMap is account:role; we want role:account
+	for acct, role := range accountMap {
+		invertAcct[role] = acct
+	}
+
+	for _, v := range vp {
+		acct := invertAcct[v.Role]
+		proxyFileName := acct + "." + v.Role + ".proxy"
+		finalProxyPath := path.Join(destDir, acct, proxyFileName)
+
+		for _, n := range nodes {
+			_c := copyFileConfig{
+				account:   acct,
+				node:      n,
+				destPath:  finalProxyPath,
+				role:      v.Role,
+				VomsProxy: v,
+			}
+			c = append(c, _c)
+		}
+	}
+	return c
+}
+
+// copyAllProxies runs the CopyProxy method for each copyConfig.pt object.  It returns a channel its caller can receive the status on
+func copyAllProxies(ctx context.Context, copyConfigs []copyFileConfig) <-chan copyProxiesStatus {
+	numSlots := len(copyConfigs)
+
+	c := make(chan copyProxiesStatus, numSlots)
+	var wg sync.WaitGroup
+
+	wg.Add(numSlots)
+
+	for _, cp := range copyConfigs {
+		go func(cp copyFileConfig) {
+			cps := cp.createCopyProxiesStatus()
+			defer wg.Done()
+
+			cps.err = copyToNodeViaConfig(ctx, cp)
+			if cps.err != nil {
+				if e := ctx.Err(); e == nil {
+					log.WithFields(log.Fields{
+						"node":            cp.node,
+						"account":         cp.account,
+						"role":            cp.role,
+						"destinationPath": cp.destPath,
+					}).Error("Could not copy proxy to destination")
+				}
+			}
+			c <- cps
+		}(cp)
+	}
+
+	// Wait for all goroutines to finish, then close channel so that caller knows there's no more objects to send in the channel
+	go func() {
+		defer close(c)
+		wg.Wait()
+	}()
+
+	return c
+
+}
+
+// Auxiliary functions
+
+// getCertKeyPair takes the configured certPath, keyPath (or lack thereof), and certBaseDir, and sets the paths to look for the service certificate and key
+func getCertKeyPair(certBaseDir, certPath, keyPath, account string) *certKeyPair {
+	var c certKeyPair
+	if certPath != "" && keyPath != "" {
+		return &c{certPath, keyPath}
+	}
+	c.certPath = path.Join(certBaseDir, account+".cert")
+	c.keyPath = path.Join(certBaseDir, account+".key")
+	return &c
+}
+
+//TODO
+func copyToNodeViaConfig(ctx context.Context, c copyFileConfig) error {
+	return proxy.CopyToNode(ctx, c.VomsProxy, c.node, c.acct, c.destPath)
 }
 
 // checkKeys looks at the portion of the configuration passed in and makes sure the required keys are present

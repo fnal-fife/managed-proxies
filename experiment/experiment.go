@@ -19,8 +19,9 @@ import (
 )
 
 //TODO
-//  Prometheus stuff should come into this code.  Then we don't have to pass in the prom pusher
-//
+// Errors should be custom types - not generic errors.new with different strings
+// Can we interface anything?  Maybe the promPusher?
+// Interface the config like https://nathanleclaire.com/blog/2015/03/09/youre-not-using-this-enough-part-one-go-interfaces/  See if that works well here
 
 var kinitExecutable = "/usr/krb5/bin/kinit"
 
@@ -64,6 +65,30 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 
 	log.WithField("experiment", eConfig.Name).Debug("Now processing experiment to push proxies")
 
+	teardownMultiple = func(funcs []func() error) error {
+		var errExists bool
+		c := make(chan error, len(funcs))
+		for _, f := range funcs {
+			go func(fn func() error) {
+				c <- fn()
+			}(f)
+		}
+		close(c)
+
+		for err := range c {
+			if err != nil {
+				errExists = true
+			}
+		}
+
+		if errExists {
+			msg := "One or more teardown functions failed.  Please look at the logs"
+			log.WithField("experiment", eConfig.Name).Error(msg)
+			return errors.New(msg)
+		}
+		return nil
+	}
+
 	go func() {
 		defer close(nMgr) // Send notifications
 		defer close(c)    // All expt operations are done (either successful including cleanup or at error)
@@ -74,7 +99,7 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 			c <- expt
 		}
 
-		// General Setup
+		// General Setup:
 		successfulCopies := make(map[string][]string)
 		failedCopies := make(map[string]map[string]error)
 		badNodesSlice := make([]string, 0, len(eConfig.Nodes))
@@ -204,7 +229,17 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 		}
 
 		// Ingest service certs
-		certs, err := getVomsProxyersForExperiment(ctx, eConfig.CertBaseDir, eConfig.CertFile, eConfig.KeyFile, eConfig.Accounts)
+		certMap := make(map[string]*certKeyPair)
+		for account, role := range eConfig.Accounts {
+			certMap[role] = getCertKeyPair(
+				eConfig.CertBaseDir,
+				eConfig.CertFile,
+				eConfig.KeyFile,
+				account,
+			)
+		}
+
+		certs, err := ingestServiceCertsForExperiment(ctx, certMap)
 		if err != nil {
 			msg := "Error setting up experiment:  one or more service certs could not be ingested"
 			log.WithField("experiment", eConfig.Name).Error()
@@ -223,7 +258,7 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 		// since they're valid for 24 hours
 		vomsProxyStatuses := make([]vomsProxyInitStatus, 0, len(eConfig.Accounts))
 		vpiCtx, vpiCancel := context.WithTimeout(ctx, eConfig.TimeoutsConfig["vpitimeoutDuration"])
-		vpiChan := getVomsProxiesForExperiment(vpiCtx, certs, eConfig.VomsPrefix)
+		vpiChan := generateVomsProxiesForExperiment(vpiCtx, certs, eConfig.VomsPrefix)
 
 		// Listen until we either timeout or vpiChan is closed
 		func() {
@@ -276,36 +311,11 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 				msg := fmt.Sprintf("Recovered from panic:  %s.  Will clean up voms proxies", r)
 				log.WithField("experiment", eConfig.Name).Error(msg)
 			}
-
-			for _, v := range vomsProxyStatuses {
-				if v.vomsProxy.Path == "" {
-					continue
-				}
-				if err := v.vomsProxy.Remove(); err != nil {
-					if !os.IsNotExist(err) {
-						nMsg := "Failed to clean up experiment: could not delete VOMS proxy."
-						log.WithFields(log.Fields{
-							"experiment": eConfig.Name,
-							"role":       v.vomsProxy.Role,
-						}).Error(nMsg)
-						nMgr <- notifications.Notification{
-							Message:          nMsg,
-							Experiment:       eConfig.Name,
-							NotificationType: notifications.SetupError,
-						}
-					} else {
-						log.WithFields(log.Fields{
-							"experiment": eConfig.Name,
-							"role":       v.vomsProxy.Role,
-						}).Debug("Attempted to clean up VOMS proxy file, but file did not exist. Moving to next file.")
-					}
-				} else {
-					log.WithFields(log.Fields{
-						"experiment": eConfig.Name,
-						"role":       v.vomsProxy.Role,
-					}).Debug("Cleaned up VOMS Proxy")
-				}
+			teardownFuncs := make([]func() error, 0, len(vomsProxyStatuses))
+			for _, vpiStatus := range vomsProxyStatuses {
+				teardownFuncs = append(teardownFuncs, vpiStatus.teardownFunc)
 			}
+			teardownMultiple(teardownFuncs)
 		}()
 
 		// We stop here in test mode.  Communicate success/failure and return
@@ -325,14 +335,14 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 
 		vomsProxies := make([]*proxy.VomsProxy, 0, len(eConfig.Accounts))
 
-		for _, vpistatus := range vomsProxyStatuses {
-			if vpistatus.err == nil {
-				vomsProxies = append(vomsProxies, vpistatus.vomsProxy)
+		for _, vpiStatus := range vomsProxyStatuses {
+			if vpiStatus.err == nil {
+				vomsProxies = append(vomsProxies, vpiStatus.vomsProxy)
 			} else {
-				vpRole := vpistatus.vomsProxy.Role
+				vpRole := vpiStatus.vomsProxy.Role
 				// We won't try to push proxies for this role.  Set all nodes' errors in table to be VPI error
 				for node := range failedCopies[vpRole] {
-					failedCopies[vpRole][node] = errors.New(genericVpiErrorString)
+					failedCopies[vpRole][node] = VomsProxyInitError{vpiStatus.vomsProxy}
 				}
 			}
 
@@ -340,7 +350,6 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 
 		// Proxy transfer
 		copyCfgs := createCopyFileConfigs(vomsProxies, eConfig.Accounts, eConfig.Nodes, eConfig.DestDir)
-
 		copyCtx, copyCancel := context.WithTimeout(ctx, eConfig.TimeoutsConfig["copytimeoutDuration"])
 		copyChan := copyAllProxies(copyCtx, copyCfgs)
 
@@ -479,6 +488,15 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 	}()
 
 	return c
+}
+
+// VomsProxyInitError is an error returned by any caller trying to generate a proxy.VomsProxy
+type VomsProxyInitError struct {
+	vp *proxy.ServiceCert
+}
+
+func (v *VomsProxyInitError) Error() string {
+	return fmt.Sprintf("Failed to generate VOMS proxy from %v", v.vp)
 }
 
 // Notifications messages
