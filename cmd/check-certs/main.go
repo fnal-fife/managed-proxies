@@ -19,8 +19,8 @@ import (
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 
-	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/experiment"
-	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/notifications"
+	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/internal/pkg/notifications"
+	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/internal/pkg/utils"
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/packaging"
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/proxy"
 )
@@ -120,7 +120,7 @@ func init() {
 	timestamp := time.Now().Format(time.RFC822)
 	nConfig.Subject = fmt.Sprintf("Managed Proxy Service - check-certs report %s", timestamp)
 
-	setAdminEmail(&nConfig)
+	utils.SetAdminEmail(&nConfig)
 
 	// Now that our log is set up and we've got a valid config, handle all init (fatal) errors using the following func
 	// that logs the error, sends a slack message and an email, cleans up, and then exits.
@@ -136,7 +136,7 @@ func init() {
 	}
 
 	// Check that we're running as the right user
-	if err := checkUser(viper.GetString("global.authuser")); err != nil {
+	if err := utils.CheckUser(viper.GetString("global.authuser")); err != nil {
 		initErrorNotify(err.Error())
 	}
 
@@ -185,7 +185,7 @@ func main() {
 	defer cancel()
 
 	// Get list of experiments
-	exptConfigs := make([]experiment.ExptConfig, 0, len(viper.GetStringMap("experiments"))) // Slice of experiment configurations
+	exptConfigs := make([]utils.ExptConfig, 0, len(viper.GetStringMap("experiments"))) // Slice of experiment configurations
 	for k := range viper.GetStringMap("experiments") {
 		eConfig, err := createExptConfig(k)
 		if err != nil {
@@ -215,9 +215,10 @@ func main() {
 
 	for _, eConfig := range exptConfigs {
 		wg.Add(1)
-		go func(e experiment.ExptConfig) {
+		go func(e utils.ExptConfig) {
 			defer wg.Done()
 			for account := range e.Accounts {
+				// TODO Can we reuse code from proxy package?
 				var certFile, keyFile string
 
 				// Get cert, key paths

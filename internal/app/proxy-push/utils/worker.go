@@ -10,9 +10,9 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
+	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/internal/app/proxy-push/node"
+	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/internal/pkg/notifications"
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/internal/pkg/utils"
-	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/node"
-	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/notifications"
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/proxy"
 )
 

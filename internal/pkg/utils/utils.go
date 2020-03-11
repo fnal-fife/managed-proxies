@@ -14,16 +14,15 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 
-	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/experiment"
-	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/notifications"
+	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/internal/pkg/notifications"
 )
 
 var emailRegexp = regexp.MustCompile(`^[\w\._%+-]+@[\w\.-]+\.\w{2,}$`)
 
 // CreateExptConfig takes the config information from the global file and creates an exptConfig object
-func CreateExptConfig(expt string) (experiment.ExptConfig, error) {
+func CreateExptConfig(expt string) (ExptConfig, error) {
 	var vomsprefix, certfile, keyfile string
-	var c experiment.ExptConfig
+	var c ExptConfig
 
 	exptKey := "experiments." + expt
 	if !viper.IsSet(exptKey) {
@@ -49,7 +48,7 @@ func CreateExptConfig(expt string) (experiment.ExptConfig, error) {
 		keyfile = exptSubConfig.GetString("keyfile")
 	}
 
-	c = experiment.ExptConfig{
+	c = ExptConfig{
 		Name:           expt,
 		CertBaseDir:    viper.GetString("global.cert_base_dir"),
 		Accounts:       exptSubConfig.GetStringMapString("accounts"),

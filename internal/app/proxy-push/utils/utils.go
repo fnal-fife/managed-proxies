@@ -12,8 +12,8 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 
+	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/internal/pkg/notifications"
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/internal/pkg/utils"
-	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/notifications"
 )
 
 const rsyncArgs = "-p -e \"{{.SSHExe}} {{.SSHOpts}}\" --chmod=u=r,go= {{.SourcePath}} {{.Account}}@{{.Node}}.fnal.gov:{{.DestPath}}"

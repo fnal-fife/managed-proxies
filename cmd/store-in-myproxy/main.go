@@ -17,11 +17,11 @@ import (
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 
-	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/experiment"
-	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/notifications"
+	smutils "cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/internal/app/store-in-myproxy/utils"
+	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/internal/pkg/notifications"
+	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/internal/pkg/utils"
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/packaging"
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/proxy"
-	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/utils"
 )
 
 const configFile string = "managedProxies"
@@ -132,7 +132,7 @@ func init() {
 	}
 
 	// Check that we're running as the right user
-	if err := checkUser(viper.GetString("global.authuser")); err != nil {
+	if err := CheckUser(viper.GetString("global.authuser")); err != nil {
 		initErrorNotify(err.Error())
 	}
 
@@ -200,10 +200,10 @@ func main() {
 	defer close(nMgr)
 
 	// Get list of experiments
-	exptConfigs := make([]experiment.ExptConfig, 0, len(viper.GetStringMap("experiments"))) // Slice of experiment configurations
+	exptConfigs := make([]utils.ExptConfig, 0, len(viper.GetStringMap("experiments"))) // Slice of experiment configurations
 	if viper.GetString("experiment") != "" {
 		// If experiment is passed in on command line
-		eConfig, err := createExptConfig(viper.GetString("experiment"))
+		eConfig, err := utils.CreateExptConfig(viper.GetString("experiment"))
 		if err != nil {
 			log.WithFields(log.Fields{
 				"experiment": viper.GetString("experiment"),
@@ -215,7 +215,7 @@ func main() {
 	} else {
 		// No experiment on command line, so use all expts in config file
 		for k := range viper.GetStringMap("experiments") {
-			eConfig, err := createExptConfig(k)
+			eConfig, err := utils.CreateExptConfig(k)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"experiment": k,
@@ -227,16 +227,16 @@ func main() {
 	}
 
 	// Get jobsub server information
-	utils.StartHTTPSClient(viper.GetString("global.capath"))
+	smutils.StartHTTPSClient(viper.GetString("global.capath"))
 
 	// Get and check our retrievers list
-	retrievers, err := utils.GetRetrievers(ctx, viper.GetString("global.jobsubserver"), viper.GetString("global.cigetcertoptsendpoint"))
+	retrievers, err := smutils.GetRetrievers(ctx, viper.GetString("global.jobsubserver"), viper.GetString("global.cigetcertoptsendpoint"))
 	if err != nil {
 		log.WithField("caller", "main").Error("Error getting trusted retrievers from cigetcertopts file")
 		os.Exit(1)
 	}
 
-	if err := utils.CheckRetrievers(retrievers, viper.GetString("global.defaultretrievers")); err != nil {
+	if err := smutils.CheckRetrievers(retrievers, viper.GetString("global.defaultretrievers")); err != nil {
 		log.WithField("caller", "main").Error(err)
 	}
 
@@ -257,9 +257,10 @@ func main() {
 
 	for _, eConfig := range exptConfigs {
 		wg.Add(1)
-		go func(e experiment.ExptConfig) {
+		go func(e utils.ExptConfig) {
 			defer wg.Done()
 			for account := range e.Accounts {
+				//TODO CAN WE REUSE CODE FROM package proxy here?
 				var certFile, keyFile string
 
 				// Get cert, key paths
