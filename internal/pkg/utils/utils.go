@@ -1,23 +1,98 @@
 package utils
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"os/exec"
+	"os/user"
 	"reflect"
-	"strconv"
+	"regexp"
 	"strings"
-	"text/template"
 
 	"github.com/google/shlex"
 	"github.com/olekukonko/tablewriter"
 	log "github.com/sirupsen/logrus"
+	"github.com/spf13/viper"
+
+	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/experiment"
+	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/notifications"
 )
 
-const rsyncArgs = "-p -e \"{{.SSHExe}} {{.SSHOpts}}\" --chmod=u=r,go= {{.SourcePath}} {{.Account}}@{{.Node}}.fnal.gov:{{.DestPath}}"
+var emailRegexp = regexp.MustCompile(`^[\w\._%+-]+@[\w\.-]+\.\w{2,}$`)
 
-var rsyncTemplate = template.Must(template.New("rsync").Parse(rsyncArgs))
+// CreateExptConfig takes the config information from the global file and creates an exptConfig object
+func CreateExptConfig(expt string) (experiment.ExptConfig, error) {
+	var vomsprefix, certfile, keyfile string
+	var c experiment.ExptConfig
+
+	exptKey := "experiments." + expt
+	if !viper.IsSet(exptKey) {
+		err := errors.New("Experiment is not configured in the configuration file")
+		log.WithFields(log.Fields{
+			"experiment": expt,
+		}).Error(err)
+		return c, err
+	}
+
+	exptSubConfig := viper.Sub(exptKey)
+
+	if exptSubConfig.IsSet("vomsgroup") {
+		vomsprefix = exptSubConfig.GetString("vomsgroup")
+	} else {
+		vomsprefix = viper.GetString("vomsproxyinit.defaultvomsprefixroot") + expt + "/"
+	}
+
+	if exptSubConfig.IsSet("certfile") {
+		certfile = exptSubConfig.GetString("certfile")
+	}
+	if exptSubConfig.IsSet("keyfile") {
+		keyfile = exptSubConfig.GetString("keyfile")
+	}
+
+	c = experiment.ExptConfig{
+		Name:           expt,
+		CertBaseDir:    viper.GetString("global.cert_base_dir"),
+		Accounts:       exptSubConfig.GetStringMapString("accounts"),
+		VomsPrefix:     vomsprefix,
+		CertFile:       certfile,
+		KeyFile:        keyfile,
+		TimeoutsConfig: tConfig,
+		IsTest:         viper.GetBool("test"),
+	}
+
+	log.WithField("experiment", c.Name).Debug("Set up experiment config")
+	return c, nil
+
+}
+
+// SetAdminEmail sets the notifications config objects' From and To fields to the config file's admin value
+func SetAdminEmail(pnConfig *notifications.Config) {
+	var toEmail string
+	pnConfig.From = pnConfig.ConfigInfo["admin_email"]
+
+	if viper.GetString("admin") != "" {
+		toEmail = viper.GetString("admin")
+	} else {
+		toEmail = pnConfig.ConfigInfo["admin_email"]
+	}
+
+	pnConfig.To = []string{toEmail}
+	log.Debug("Set notifications config email values to admin values")
+	return
+}
+
+// CheckUser makes sure that the user running the executable is the authorized user.
+func CheckUser(authuser string) error {
+	cuser, err := user.Current()
+	if err != nil {
+		return errors.New("Could not lookup current user.  Exiting")
+	}
+	log.Debug("Running script as ", cuser.Username)
+	if cuser.Username != authuser {
+		return fmt.Errorf("This must be run as %s.  Trying to run as %s", authuser, cuser.Username)
+	}
+	return nil
+}
 
 // GetArgsFromTemplate takes a template string and breaks it into a slice of args
 func GetArgsFromTemplate(s string) ([]string, error) {
@@ -50,24 +125,6 @@ func CheckForExecutables(exeMap map[string]string) error {
 	return nil
 }
 
-// DoubleMapToTableSlice takes a map and creates a slice of row slices for use with tablewriters like github.com/olekukonko/tablewriter
-// Hopefully deprecate!
-func DoubleMapToTableSlice(m map[string]map[string]fmt.Stringer) [][]string {
-	table := make([][]string, 0)
-
-	for k, valMap := range m {
-		row := []string{k}
-		for vKey, vVal := range valMap {
-			rowStage := append([]string(nil), row...)
-			rowStage = append(rowStage, vKey)
-			rowStage = append(rowStage, vVal.String())
-			table = append(table, rowStage)
-		}
-	}
-
-	return table
-}
-
 // DoubleErrorMapToTable takes a map[string]map[string]error and generates a table using the provided header slice
 func DoubleErrorMapToTable(myMap map[string]map[string]error, header []string) string {
 	var b strings.Builder
@@ -82,7 +139,6 @@ func DoubleErrorMapToTable(myMap map[string]map[string]error, header []string) s
 }
 
 // WrapMapToTableData wraps MapToTable by taking a map, getting its value, and then passing that to MapToTable with the proper initialization parameters.  This or a function like it should be used by external APIs as opposed to MapToTable.
-// func WrapMapToTableData(myMap map[string]map[string]error) [][]string {
 func WrapMapToTableData(myObject interface{}) [][]string {
 	defer func() {
 		if r := recover(); r != nil {
@@ -159,61 +215,4 @@ func MapToTableData(v reflect.Value, curData [][]string, curRow []string) [][]st
 		}
 	}
 	return curData
-}
-
-// RsyncFile runs rsync on a file at source, and syncs it with the destination account@node:dest
-func RsyncFile(ctx context.Context, source, node, account, dest string, sshOptions string) error {
-	rsyncExecutables := map[string]string{
-		"rsync": "",
-		"ssh":   "",
-	}
-
-	CheckForExecutables(rsyncExecutables)
-
-	var b strings.Builder
-
-	cArgs := struct{ SSHExe, SSHOpts, SourcePath, Account, Node, DestPath string }{
-		SSHExe:     rsyncExecutables["ssh"],
-		SSHOpts:    sshOptions,
-		SourcePath: source,
-		Account:    account,
-		Node:       node,
-		DestPath:   dest,
-	}
-
-	if err := rsyncTemplate.Execute(&b, cArgs); err != nil {
-		err := fmt.Sprintf("Could not execute rsync template: %s", err.Error())
-		log.WithField("source", source).Error(err)
-		return errors.New(err)
-	}
-
-	args, err := GetArgsFromTemplate(b.String())
-	if err != nil {
-		err := fmt.Sprintf("Could not get rsync command arguments from template: %s", err.Error())
-		log.WithField("source", source).Error(err)
-		return errors.New(err)
-	}
-
-	cmd := exec.CommandContext(ctx, rsyncExecutables["rsync"], args...)
-	if err := cmd.Run(); err != nil {
-		err := fmt.Sprintf("rsync command failed: %s", err.Error())
-		log.WithFields(log.Fields{
-			"sshOpts":    sshOptions,
-			"sourcePath": source,
-			"account":    account,
-			"node":       node,
-			"destPath":   dest,
-			"command":    strings.Join(cmd.Args, " "),
-		}).Error(err)
-
-		return errors.New(err)
-	}
-
-	log.WithFields(log.Fields{
-		"account":  account,
-		"node":     node,
-		"destPath": dest,
-	}).Debug("rsync successful")
-	return nil
-
 }

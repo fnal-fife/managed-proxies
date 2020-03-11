@@ -1,4 +1,4 @@
-package main
+package utils
 
 import (
 	"context"
@@ -12,29 +12,35 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 
-	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/experiment"
+	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/internal/pkg/utils"
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/notifications"
 )
 
-var emailRegexp = regexp.MustCompile(`^[\w\._%+-]+@[\w\.-]+\.\w{2,}$`)
+const rsyncArgs = "-p -e \"{{.SSHExe}} {{.SSHOpts}}\" --chmod=u=r,go= {{.SourcePath}} {{.Account}}@{{.Node}}.fnal.gov:{{.DestPath}}"
 
-// manageExperimentChannels starts up the various experimentutil.Workers and listens for their response.  It puts these
+var (
+	rsyncTemplate = template.Must(template.New("rsync").Parse(rsyncArgs))
+	emailRegexp   = regexp.MustCompile(`^[\w\._%+-]+@[\w\.-]+\.\w{2,}$`)
+)
+
+// ManageExperimentChannels starts up the various workers and listens for their response.  It puts these
 // statuses into an aggregate channel.
-func manageExperimentChannels(ctx context.Context, exptConfigs []experiment.ExptConfig) <-chan experiment.Success {
-	agg := make(chan experiment.Success, len(exptConfigs))
-	configChan := make(chan experiment.ExptConfig) // chan of configurations to send to workerSlots
+func ManageExperimentChannels(ctx context.Context, exptConfigs []utils.ExptConfig) <-chan Success {
+	agg := make(chan Success, len(exptConfigs))
+	configChan := make(chan utils.ExptConfig) // chan of configurations to send to workerSlots
 	var wg, wwg, nwg sync.WaitGroup
+	// Couple all these waitgroups so their collective status drives logic
 	waitGroups := waitGroupCollection{
-		&wg,  // experiment workers
-		&wwg, // Worker slots
-		&nwg, // Notification managers
+		&wg,  // increment this when experiment ProxyPushJobs are started
+		&wwg, // increment this when worker slots are started
+		&nwg, // increment this when notification.Managers are started
 	}
 
 	wg.Add(len(exptConfigs)) // Get number of experiments to run on
 
 	// Get number of workers from config, launch workers
 	wwg.Add(viper.GetInt("global.numPushWorkers"))
-	log.WithField("numPushWorkers", viper.GetInt("global.numPushWorkers")).Debug("Starting Workers")
+	log.WithField("numPushWorkers", viper.GetInt("global.numPushWorkers")).Debug("Starting workers")
 	go func() {
 		for i := 0; i < viper.GetInt("global.numPushWorkers"); i++ {
 			go workerSlot(ctx, i, configChan, agg, &wwg, &wg, &nwg)
@@ -67,9 +73,9 @@ func manageExperimentChannels(ctx context.Context, exptConfigs []experiment.Expt
 	return agg
 }
 
-// workerSlot is a slot into which experiment.Workers can be assigned.  global.numPushWorkers defines the number of these that manageExperimentChannels will create.
+// workerSlot is a slot into which workers can be assigned.  global.numPushWorkers defines the number of these that manageExperimentChannels will create.
 // Listens on configChan and writes to aggChan
-func workerSlot(ctx context.Context, workerID int, configChan <-chan experiment.ExptConfig, aggChan chan<- experiment.Success, wwg, ewg, nwg *sync.WaitGroup) {
+func workerSlot(ctx context.Context, workerID int, configChan <-chan utils.ExptConfig, aggChan chan<- Success, wwg, ewg, nwg *sync.WaitGroup) {
 
 	defer func() {
 		log.WithField("workerId", workerID).Debug("Worker Slot shutting down")
@@ -77,7 +83,7 @@ func workerSlot(ctx context.Context, workerID int, configChan <-chan experiment.
 	}()
 
 	for eConfig := range configChan {
-		func(eConfig experiment.ExptConfig) {
+		func(eConfig utils.ExptConfig) {
 			/* Order of operations in cleanup:
 			* Experiment finishes processing, closes notification Manager and experiment success channel
 			* Notifications get sent, then nwg is decremented
@@ -95,7 +101,7 @@ func workerSlot(ctx context.Context, workerID int, configChan <-chan experiment.
 			}
 			n.Subject = n.Subject + " - " + eConfig.Name
 
-			// Don't let this func return (and thus the aggregate waitgroup decrement) until emails are sent
+			// Record that we've started a notification manager so any relevant goroutines that rely on all notifications being sent are blocked appropriately
 			nwg.Add(1)
 			nMgr := notifications.NewManager(ctx, nwg, n)
 
@@ -107,7 +113,7 @@ func workerSlot(ctx context.Context, workerID int, configChan <-chan experiment.
 			// Expt channel is buffered anyway, so if the worker tries to send later and there's no receiver,
 			// garbage collection will take care of it
 			log.WithFields(log.Fields{"experiment": eConfig.Name}).Debug("Starting worker")
-			c := experiment.Worker(exptContext, eConfig, promPush, nMgr)
+			c := worker(exptContext, eConfig, promPush, nMgr)
 			for {
 				select {
 				case status, chanOpen := <-c: // Grab status from channel
@@ -135,85 +141,8 @@ func workerSlot(ctx context.Context, workerID int, configChan <-chan experiment.
 
 }
 
-// createExptConfig takes the config information from the global file and creates an exptConfig object
-func createExptConfig(expt string) (experiment.ExptConfig, error) {
-	var vomsprefix, certfile, keyfile string
-	var c experiment.ExptConfig
-
-	exptKey := "experiments." + expt
-	if !viper.IsSet(exptKey) {
-		err := errors.New("Experiment is not configured in the configuration file")
-		log.WithFields(log.Fields{
-			"experiment": expt,
-		}).Error(err)
-		return c, err
-	}
-
-	exptSubConfig := viper.Sub(exptKey)
-
-	if exptSubConfig.IsSet("vomsgroup") {
-		vomsprefix = exptSubConfig.GetString("vomsgroup")
-	} else {
-		vomsprefix = viper.GetString("global.defaultvomsprefixroot") + expt + "/"
-	}
-
-	if exptSubConfig.IsSet("certfile") {
-		certfile = exptSubConfig.GetString("certfile")
-	}
-	if exptSubConfig.IsSet("keyfile") {
-		keyfile = exptSubConfig.GetString("keyfile")
-	}
-
-	c = experiment.ExptConfig{
-		Name:           expt,
-		CertBaseDir:    viper.GetString("global.cert_base_dir"),
-		DestDir:        exptSubConfig.GetString("dir"),
-		Nodes:          exptSubConfig.GetStringSlice("nodes"),
-		Accounts:       exptSubConfig.GetStringMapString("accounts"),
-		VomsPrefix:     vomsprefix,
-		CertFile:       certfile,
-		KeyFile:        keyfile,
-		TimeoutsConfig: tConfig,
-		KerbConfig:     krbConfig,
-		IsTest:         viper.GetBool("test"),
-	}
-
-	log.WithField("experiment", c.Name).Debug("Set up experiment config")
-	return c, nil
-
-}
-
-// checkUser verifies that the current user is the authorized user to run this executable
-func checkUser(authuser string) error {
-	cuser, err := user.Current()
-	if err != nil {
-		return errors.New("Could not lookup current user.  Exiting")
-	}
-	log.Debug("Running script as ", cuser.Username)
-	if cuser.Username != authuser {
-		return fmt.Errorf("This must be run as %s.  Trying to run as %s", authuser, cuser.Username)
-	}
-	return nil
-}
-
-// setAdminEmail sets the notifications config objects' From and To fields to the config file's admin value
-func setAdminEmail(pnConfig *notifications.Config) {
-	var toEmail string
-	pnConfig.From = pnConfig.ConfigInfo["admin_email"]
-
-	if viper.GetString("admin") != "" {
-		toEmail = viper.GetString("admin")
-	} else {
-		toEmail = pnConfig.ConfigInfo["admin_email"]
-	}
-
-	pnConfig.To = []string{toEmail}
-	log.Debug("Set notifications config email values to admin values")
-	return
-}
-
-// checkNumWorkers makes sure there is at least one worker configured to handle the proxy pushes
-func checkNumWorkers() {
+// CheckNumWorkers makes sure there is at least one worker configured to handle the proxy pushes
+func CheckNumWorkers() {
 	if viper.GetInt("global.numpushworkers") < 1 {
 		msg := fmt.Sprintf("Must have at least 1 Proxy Push Worker Slot.  The current number configured is %d", viper.GetInt("global.numpushworkers"))
 		log.Panic(msg)
@@ -241,4 +170,61 @@ func (w *waitGroupCollection) Wait() {
 	}
 
 	masterWg.Wait()
+}
+
+// RsyncFile runs rsync on a file at source, and syncs it with the destination account@node:dest
+func RsyncFile(ctx context.Context, source, node, account, dest string, sshOptions string) error {
+	rsyncExecutables := map[string]string{
+		"rsync": "",
+		"ssh":   "",
+	}
+
+	CheckForExecutables(rsyncExecutables)
+
+	var b strings.Builder
+
+	cArgs := struct{ SSHExe, SSHOpts, SourcePath, Account, Node, DestPath string }{
+		SSHExe:     rsyncExecutables["ssh"],
+		SSHOpts:    sshOptions,
+		SourcePath: source,
+		Account:    account,
+		Node:       node,
+		DestPath:   dest,
+	}
+
+	if err := rsyncTemplate.Execute(&b, cArgs); err != nil {
+		err := fmt.Sprintf("Could not execute rsync template: %s", err.Error())
+		log.WithField("source", source).Error(err)
+		return errors.New(err)
+	}
+
+	args, err := GetArgsFromTemplate(b.String())
+	if err != nil {
+		err := fmt.Sprintf("Could not get rsync command arguments from template: %s", err.Error())
+		log.WithField("source", source).Error(err)
+		return errors.New(err)
+	}
+
+	cmd := exec.CommandContext(ctx, rsyncExecutables["rsync"], args...)
+	if err := cmd.Run(); err != nil {
+		err := fmt.Sprintf("rsync command failed: %s", err.Error())
+		log.WithFields(log.Fields{
+			"sshOpts":    sshOptions,
+			"sourcePath": source,
+			"account":    account,
+			"node":       node,
+			"destPath":   dest,
+			"command":    strings.Join(cmd.Args, " "),
+		}).Error(err)
+
+		return errors.New(err)
+	}
+
+	log.WithFields(log.Fields{
+		"account":  account,
+		"node":     node,
+		"destPath": dest,
+	}).Debug("rsync successful")
+	return nil
+
 }

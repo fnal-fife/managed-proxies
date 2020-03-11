@@ -1,4 +1,4 @@
-package experiment
+package utils
 
 import (
 	"context"
@@ -13,8 +13,8 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
+	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/internal/pkg/utils"
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/proxy"
-	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/utils"
 )
 
 // Functions and types are roughly presented in the order they'll be called during a proxy push
@@ -62,7 +62,7 @@ type certKeyPair struct{ certPath, keyPath string }
 
 // getVomsProxyersForExperiment takes a map of roles and *certKeyPairs, and creates a map of role: proxy.GetVomsProxyer objects for that experiment
 func ingestServiceCertsForExperiment(ctx context.Context, certMap map[string]*certKeyPair) (map[string]*proxy.ServiceCert, error) {
-	m := make(map[string]*proxy.ServicecErt, len(certMap))
+	m := make(map[string]*proxy.ServiceCert, len(certMap))
 	var e error
 	var once sync.Once
 
@@ -223,22 +223,22 @@ func copyAllProxies(ctx context.Context, copyConfigs []copyFileConfig) <-chan co
 
 // getCertKeyPair takes the configured certPath, keyPath (or lack thereof), and certBaseDir, and sets the paths to look for the service certificate and key
 func getCertKeyPair(certBaseDir, certPath, keyPath, account string) *certKeyPair {
-	var c certKeyPair
 	if certPath != "" && keyPath != "" {
-		return &c{certPath, keyPath}
+		return &certKeyPair{certPath, keyPath}
 	}
-	c.certPath = path.Join(certBaseDir, account+".cert")
-	c.keyPath = path.Join(certBaseDir, account+".key")
-	return &c
+	return &certKeyPair{
+		path.Join(certBaseDir, account+".cert"),
+		path.Join(certBaseDir, account+".key"),
+	}
 }
 
 //TODO
 func copyToNodeViaConfig(ctx context.Context, c copyFileConfig) error {
-	return proxy.CopyToNode(ctx, c.VomsProxy, c.node, c.acct, c.destPath)
+	return proxy.CopyToNode(ctx, c.VomsProxy, c.node, c.account, c.destPath)
 }
 
 // checkKeys looks at the portion of the configuration passed in and makes sure the required keys are present
-func checkKeys(ctx context.Context, eConfig ExptConfig) error {
+func checkKeys(ctx context.Context, eConfig utils.ExptConfig) error {
 	if e := ctx.Err(); e != nil {
 		log.WithField("caller", "checkKeys").Error(e)
 		return e

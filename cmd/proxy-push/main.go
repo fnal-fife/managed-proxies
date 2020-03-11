@@ -17,8 +17,9 @@ import (
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 
-	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/experiment"
-	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/notifications"
+	pputils "cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/internal/app/proxy-push/utils"
+	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/internal/pkg/notifications"
+	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/internal/pkg/utils"
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/packaging"
 )
 
@@ -27,9 +28,9 @@ const configFile string = "managedProxies"
 // Sub-config types
 
 var (
-	tConfig   experiment.TimeoutsConfig
+	tConfig   utils.TimeoutsConfig
 	nConfig   notifications.Config
-	krbConfig experiment.KerbConfig
+	krbConfig utils.KerbConfig
 
 	promPush       notifications.BasicPromPush
 	prometheusUp   = true
@@ -101,7 +102,7 @@ func init() {
 	}, &log.TextFormatter{FullTimestamp: true}))
 
 	// Make sure we have a reasonable amount of workers
-	checkNumWorkers()
+	utils.CheckNumWorkers()
 
 	log.Debugf("Using config file %s", viper.ConfigFileUsed())
 
@@ -121,7 +122,7 @@ func init() {
 	nConfig.IsTest = viper.GetBool("test")
 	timestamp := time.Now().Format(time.RFC822)
 	nConfig.Subject = fmt.Sprintf("Managed Proxy Service Errors - Proxy Push - %s", timestamp)
-	setAdminEmail(&nConfig)
+	SetAdminEmail(&nConfig)
 
 	// Now that our log is set up and we've got a valid config, handle all init (fatal) errors using the following func
 	// that logs the error, sends a slack message and an email, cleans up, and then exits.
@@ -152,7 +153,7 @@ func init() {
 	}
 
 	// Parse our timeouts, store them into timeoutDurationMap for later use
-	tConfig = make(experiment.TimeoutsConfig)
+	tConfig = make(utils.TimeoutsConfig)
 
 	for timeoutName, timeoutString := range viper.GetStringMapString("times") {
 		value, err := time.ParseDuration(timeoutString)
@@ -164,7 +165,7 @@ func init() {
 		tConfig[newName] = value
 	}
 
-	krbConfig = make(experiment.KerbConfig)
+	krbConfig = make(utils.KerbConfig)
 	for key, value := range viper.GetStringMapString("kerberos") {
 		krbConfig[key] = value
 	}
@@ -172,7 +173,6 @@ func init() {
 	log.WithFields(log.Fields{"caller": "main.init"}).Debug("Read in config file to config structs")
 
 	// Set up prometheus pusher
-
 	if _, err := http.Get(viper.GetString("prometheus.host")); err != nil {
 		log.Errorf("Error contacting prometheus pushgateway %s: %s.  The rest of prometheus operations will fail. "+
 			"To limit error noise, "+
@@ -271,13 +271,13 @@ func main() {
 		}
 	}()
 
-	exptConfigs := make([]experiment.ExptConfig, 0, len(viper.GetStringMap("experiments"))) // Slice of experiment configurations we will actually process
+	exptConfigs := make([]utils.ExptConfig, 0, len(viper.GetStringMap("experiments"))) // Slice of experiment configurations we will actually process
 	expts := make([]string, 0, len(exptConfigs))
 
 	// Get our list of experiments from the config file, create exptConfig objects
 	if viper.GetString("experiment") != "" {
 		// If experiment is passed in on command line
-		eConfig, err := createExptConfig(viper.GetString("experiment"))
+		eConfig, err := utils.CreateExptConfig(viper.GetString("experiment"))
 		if err != nil {
 			log.WithFields(log.Fields{
 				"experiment": viper.GetString("experiment"),
@@ -290,7 +290,7 @@ func main() {
 	} else {
 		// No experiment on command line, so use all expts in config file
 		for k := range viper.GetStringMap("experiments") {
-			eConfig, err := createExptConfig(k)
+			eConfig, err := utils.CreateExptConfig(k)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"experiment": k,
@@ -309,7 +309,7 @@ func main() {
 
 	startProxyPush = time.Now()
 	// Start up the expt manager
-	c := manageExperimentChannels(ctx, exptConfigs)
+	c := pputils.ManageExperimentChannels(ctx, exptConfigs)
 	// Listen on the manager channel
 	for {
 		select {

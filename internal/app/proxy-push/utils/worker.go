@@ -1,27 +1,20 @@
-// Package experiment contains all of the operations needed to push a VOMS X509 proxy as a part of the USDC Managed Proxy service that are
-// experiment-specific.
-package experiment
+package utils
 
 import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"sort"
 	"strings"
 	"time"
 
 	log "github.com/sirupsen/logrus"
 
+	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/internal/pkg/utils"
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/node"
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/notifications"
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/proxy"
 )
-
-//TODO
-// Errors should be custom types - not generic errors.new with different strings
-// Can we interface anything?  Maybe the promPusher?
-// Interface the config like https://nathanleclaire.com/blog/2015/03/09/youre-not-using-this-enough-part-one-go-interfaces/  See if that works well here
 
 var kinitExecutable = "/usr/krb5/bin/kinit"
 
@@ -32,40 +25,18 @@ type Success struct {
 	Successful bool
 }
 
-type (
-	// TimeoutsConfig is a map of the timeouts passed in from the config file
-	TimeoutsConfig map[string]time.Duration
-	// KerbConfig contains information needed to run kinit
-	KerbConfig map[string]string
-)
-
-// ExptConfig is a mega struct containing all the information the Worker needs to have or pass onto lower level funcs.
-type ExptConfig struct {
-	Name        string
-	CertBaseDir string
-	DestDir     string
-	Nodes       []string
-	Accounts    map[string]string
-	VomsPrefix  string
-	CertFile    string
-	KeyFile     string
-	IsTest      bool
-	TimeoutsConfig
-	KerbConfig
-}
-
 // Experiment worker-specific functions
 
-// Worker is the main function that manages the processes involved in generating and copying VOMS proxies to
+// worker is the main function that manages the processes involved in generating and copying VOMS proxies to
 // an experiment's nodes.  It returns a channel on which it reports the status of that experiment's proxy push.
-func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPush, nMgr notifications.Manager) <-chan Success {
+func worker(ctx context.Context, eConfig utils.ExptConfig, b notifications.BasicPromPush, nMgr notifications.Manager) <-chan Success {
 	c := make(chan Success, 2)
 	expt := Success{eConfig.Name, true} // Initialize
 	genericTimeoutError := errors.New(genericTimeoutErrorString)
 
 	log.WithField("experiment", eConfig.Name).Debug("Now processing experiment to push proxies")
 
-	teardownMultiple = func(funcs []func() error) error {
+	teardownMultiple := func(funcs []func() error) error {
 		var errExists bool
 		c := make(chan error, len(funcs))
 		for _, f := range funcs {
@@ -342,7 +313,7 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 				vpRole := vpiStatus.vomsProxy.Role
 				// We won't try to push proxies for this role.  Set all nodes' errors in table to be VPI error
 				for node := range failedCopies[vpRole] {
-					failedCopies[vpRole][node] = VomsProxyInitError{vpiStatus.vomsProxy}
+					failedCopies[vpRole][node] = &VomsProxyInitError{}
 				}
 			}
 
@@ -400,7 +371,6 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 
 						for _, n := range badNodesSlice {
 							if pushproxy.node == n {
-								//copyProxyErrorf = copyProxyErrorf + " The node was not pingable earlier, so please look into the status of that node to make sure it's up and working."
 								copyProxyErrorSlice = append(copyProxyErrorSlice, "Node not pingable earlier")
 								break
 							}
@@ -491,12 +461,10 @@ func Worker(ctx context.Context, eConfig ExptConfig, b notifications.BasicPromPu
 }
 
 // VomsProxyInitError is an error returned by any caller trying to generate a proxy.VomsProxy
-type VomsProxyInitError struct {
-	vp *proxy.ServiceCert
-}
+type VomsProxyInitError struct{}
 
 func (v *VomsProxyInitError) Error() string {
-	return fmt.Sprintf("Failed to generate VOMS proxy from %v", v.vp)
+	return "Failed to generate VOMS proxy"
 }
 
 // Notifications messages
@@ -506,5 +474,4 @@ const (
 			exist for this experiment). Please check the config file on fifeutilgpvm01.
 			 I will skip this experiment for now`
 	genericTimeoutErrorString = "Timeout error"
-	genericVpiErrorString     = "Failed to generate VOMS proxy"
 )
