@@ -6,14 +6,12 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"time"
 
 	log "github.com/sirupsen/logrus"
 
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/internal/app/proxy-push/node"
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/internal/pkg/notifications"
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/internal/pkg/utils"
-	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/proxy"
 )
 
 var kinitExecutable = "/usr/krb5/bin/kinit"
@@ -29,7 +27,7 @@ type Success struct {
 
 // worker is the main function that manages the processes involved in generating and copying VOMS proxies to
 // an experiment's nodes.  It returns a channel on which it reports the status of that experiment's proxy push.
-func worker(ctx context.Context, eConfig utils.ExptConfig, b notifications.BasicPromPush, nMgr notifications.Manager) <-chan Success {
+func worker(ctx context.Context, eConfig *utils.ExptConfig, b notifications.BasicPromPush, nMgr notifications.Manager) <-chan Success {
 	c := make(chan Success, 2)
 	expt := Success{eConfig.Name, true} // Initialize
 	genericTimeoutError := errors.New(genericTimeoutErrorString)
@@ -304,7 +302,7 @@ func worker(ctx context.Context, eConfig utils.ExptConfig, b notifications.Basic
 			return
 		}
 
-		vomsProxies := make([]*proxy.VomsProxy, 0, len(eConfig.Accounts))
+		vomsProxies := make([]*vomsProxy, 0, len(eConfig.Accounts))
 
 		for _, vpiStatus := range vomsProxyStatuses {
 			if vpiStatus.err == nil {
@@ -320,7 +318,7 @@ func worker(ctx context.Context, eConfig utils.ExptConfig, b notifications.Basic
 		}
 
 		// Proxy transfer
-		copyCfgs := createCopyFileConfigs(vomsProxies, eConfig.Accounts, eConfig.Nodes, eConfig.DestDir)
+		copyCfgs := createCopyFileConfigs(vomsProxies, eConfig.Accounts, eConfig.Nodes, eConfig.DestDir, eConfig.SSHOpts)
 		copyCtx, copyCancel := context.WithTimeout(ctx, eConfig.TimeoutsConfig["copytimeoutDuration"])
 		copyChan := copyAllProxies(copyCtx, copyCfgs)
 
@@ -460,7 +458,7 @@ func worker(ctx context.Context, eConfig utils.ExptConfig, b notifications.Basic
 	return c
 }
 
-// VomsProxyInitError is an error returned by any caller trying to generate a proxy.VomsProxy
+// VomsProxyInitError is an error returned by any caller trying to generate a vomsProxy
 type VomsProxyInitError struct{}
 
 func (v *VomsProxyInitError) Error() string {

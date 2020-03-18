@@ -21,7 +21,6 @@ import (
 const (
 	vomsProxyInitArgs = "-dont-verify-ac -rfc -valid 24:00 -voms {{.VomsFQAN}} -cert {{.CertFile}} -key {{.KeyFile}} -out {{.OutfilePath}}"
 	vomsProxyInfoArgs = "-fqan -file {{.ProxyPath}}"
-	sshOpts           = "-o ConnectTimeout=30 -o ServerAliveInterval=30 -o ServerAliveCountMax=1"
 )
 
 var (
@@ -36,19 +35,6 @@ var (
 // getVomsProxyer encapsulates the method to obtain a VOMS proxy from an object
 type getVomsProxyer interface {
 	getVomsProxy(ctx context.Context, vomsFQAN string) (*VomsProxy, error)
-}
-
-// copyProxyer encapsulates the method to copy an object to a destination node
-type copyProxyer interface {
-	copyProxy(ctx context.Context, node, account, dest string) error
-}
-
-// CopyToNode copies a copyProxyer to a specified destination on a remote node using the specified account
-func CopyToNode(ctx context.Context, cp copyProxyer, node, acct, dest string) error {
-	if err := cp.copyProxy(ctx, node, acct, dest); err != nil {
-		return &CopyProxyError{"Could not copy copyProxyer to node"}
-	}
-	return nil
 }
 
 // VomsProxy contains the information generally needed from a VOMS proxy, along with the Cert object used to create the VomsProxy itself
@@ -172,20 +158,6 @@ func (v *VomsProxy) Remove() error {
 	return nil
 }
 
-// copyProxy copies the proxy from VomsProxy.Path to account@node:dest
-func (v *VomsProxy) copyProxy(ctx context.Context, node, account, dest string) error {
-	err := utils.RsyncFile(ctx, v.Path, node, account, dest, sshOpts)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"sourcePath": v.Path,
-			"destPath":   dest,
-			"node":       node,
-			"account":    account,
-		}).Error("Could not copy VOMS proxy to destination node")
-	}
-	return err
-}
-
 // getVomsProxy obtains a VOMS proxy from a ServiceCert by running voms-proxy-init
 func (s *ServiceCert) getVomsProxy(ctx context.Context, vomsFQAN string) (*VomsProxy, error) {
 	var b strings.Builder
@@ -251,11 +223,6 @@ func getRoleFromFQAN(fqan string) string {
 	pattern := regexp.MustCompile("^.+Role=([a-zA-Z]+)(/Capability=NULL)?$")
 	return pattern.FindStringSubmatch(fqan)[1]
 }
-
-// CopyProxyError TODO
-type CopyProxyError struct{ message string }
-
-func (c *CopyProxyError) Error() string { return c.message }
 
 // NewVomsProxyError TODO
 type NewVomsProxyError struct{ message string }

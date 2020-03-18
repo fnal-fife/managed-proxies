@@ -7,6 +7,7 @@ import (
 	"os/user"
 	"reflect"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/google/shlex"
@@ -17,51 +18,21 @@ import (
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/internal/pkg/notifications"
 )
 
-var emailRegexp = regexp.MustCompile(`^[\w\._%+-]+@[\w\.-]+\.\w{2,}$`)
+//EmailRegexp TODO
+var EmailRegexp = regexp.MustCompile(`^[\w\._%+-]+@[\w\.-]+\.\w{2,}$`)
 
 // CreateExptConfig takes the config information from the global file and creates an exptConfig object
-func CreateExptConfig(expt string) (ExptConfig, error) {
-	var vomsprefix, certfile, keyfile string
-	var c ExptConfig
-
-	exptKey := "experiments." + expt
-	if !viper.IsSet(exptKey) {
-		err := errors.New("Experiment is not configured in the configuration file")
-		log.WithFields(log.Fields{
-			"experiment": expt,
-		}).Error(err)
-		return c, err
+func CreateExptConfig(expt string, options ...func(*ExptConfig)) (*ExptConfig, error) {
+	c := ExptConfig{
+		Name: expt,
 	}
 
-	exptSubConfig := viper.Sub(exptKey)
-
-	if exptSubConfig.IsSet("vomsgroup") {
-		vomsprefix = exptSubConfig.GetString("vomsgroup")
-	} else {
-		vomsprefix = viper.GetString("vomsproxyinit.defaultvomsprefixroot") + expt + "/"
-	}
-
-	if exptSubConfig.IsSet("certfile") {
-		certfile = exptSubConfig.GetString("certfile")
-	}
-	if exptSubConfig.IsSet("keyfile") {
-		keyfile = exptSubConfig.GetString("keyfile")
-	}
-
-	c = ExptConfig{
-		Name:           expt,
-		CertBaseDir:    viper.GetString("global.cert_base_dir"),
-		Accounts:       exptSubConfig.GetStringMapString("accounts"),
-		VomsPrefix:     vomsprefix,
-		CertFile:       certfile,
-		KeyFile:        keyfile,
-		TimeoutsConfig: tConfig,
-		IsTest:         viper.GetBool("test"),
+	for _, option := range options {
+		option(&c)
 	}
 
 	log.WithField("experiment", c.Name).Debug("Set up experiment config")
-	return c, nil
-
+	return &c, nil
 }
 
 // SetAdminEmail sets the notifications config objects' From and To fields to the config file's admin value

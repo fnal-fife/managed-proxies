@@ -20,7 +20,7 @@ import (
 // Functions and types are roughly presented in the order they'll be called during a proxy push
 
 // getKerbTicket runs kinit to get a kerberos ticket
-func getKerbTicket(ctx context.Context, krbConfig KerbConfig) error {
+func getKerbTicket(ctx context.Context, krbConfig utils.KerbConfig) error {
 	var kinitExecutable = kinitExecutable // Local kinitExecutable = global kinitExecutablej
 
 	// If we can't find the kinit executable there, then try to find it in $PATH
@@ -53,7 +53,7 @@ func getKerbTicket(ctx context.Context, krbConfig KerbConfig) error {
 // vomsProxyInitStatus stores information about an attempt to run voms-proxy-init to generate a VOMS proxy.
 // If there was an error, it's stored in err.
 type vomsProxyInitStatus struct {
-	vomsProxy    *proxy.VomsProxy
+	vomsProxy    *vomsProxy
 	teardownFunc func() error
 	err          error
 }
@@ -102,7 +102,7 @@ func generateVomsProxiesForExperiment(ctx context.Context, certMap map[string]*p
 
 			v, teardown, err := proxy.NewVomsProxy(ctx, cert, fqan)
 			if err != nil {
-				certi := vomsProxyInitStatus{v, teardown, err}
+				certi := vomsProxyInitStatus{newWrappedVomsProxy(v), teardown, err}
 				c <- certi
 				return
 			}
@@ -114,7 +114,7 @@ func generateVomsProxiesForExperiment(ctx context.Context, certMap map[string]*p
 					"DN":   v.DN,
 				}).Debug("Successfully checked new VOMS Proxy")
 			}
-			vpiStatus := vomsProxyInitStatus{v, teardown, checkErr}
+			vpiStatus := vomsProxyInitStatus{newWrappedVomsProxy(v), teardown, checkErr}
 			c <- vpiStatus
 
 		}(role, cert)
@@ -130,10 +130,10 @@ func generateVomsProxiesForExperiment(ctx context.Context, certMap map[string]*p
 
 }
 
-// copyFileConfig holds the information needed to copy a proxy.Transferer to a destination node
+// copyFileConfig holds the information needed to copy a vomsProxy to a destination node as specified in rsyncSetup
 type copyFileConfig struct {
-	node, account, destPath, role string
-	*proxy.VomsProxy
+	*rsyncSetup
+	*vomsProxy
 }
 
 // copyProxiesStatus stores information that uniquely identifies a VOMS proxy within an experiment (account, role) and
@@ -148,17 +148,24 @@ func (c *copyFileConfig) createCopyProxiesStatus() copyProxiesStatus {
 	return copyProxiesStatus{
 		account: c.account,
 		node:    c.node,
-		role:    c.role,
+		role:    c.Role,
 		err:     nil,
 	}
 }
 
 // createCopyFileConfigs creates a slice of copyFileConfig objects for the experiment
-func createCopyFileConfigs(vp []*proxy.VomsProxy, accountMap map[string]string, nodes []string, destDir string) []copyFileConfig {
+func createCopyFileConfigs(vp []*vomsProxy, accountMap map[string]string, nodes []string, destDir string, sshOptsfromConfig string) []copyFileConfig {
 	c := make([]copyFileConfig, 0)
 	invertAcct := make(map[string]string) // accountMap is account:role; we want role:account
 	for acct, role := range accountMap {
 		invertAcct[role] = acct
+	}
+
+	var _sshOpts string
+	if sshOptsfromConfig != "" {
+		_sshOpts = sshOptsfromConfig
+	} else {
+		_sshOpts = sshOpts
 	}
 
 	for _, v := range vp {
@@ -168,11 +175,13 @@ func createCopyFileConfigs(vp []*proxy.VomsProxy, accountMap map[string]string, 
 
 		for _, n := range nodes {
 			_c := copyFileConfig{
-				account:   acct,
-				node:      n,
-				destPath:  finalProxyPath,
-				role:      v.Role,
-				VomsProxy: v,
+				rsyncSetup: &rsyncSetup{
+					account:     acct,
+					node:        n,
+					destination: finalProxyPath,
+					sshOpts:     _sshOpts,
+				},
+				vomsProxy: v,
 			}
 			c = append(c, _c)
 		}
@@ -194,14 +203,14 @@ func copyAllProxies(ctx context.Context, copyConfigs []copyFileConfig) <-chan co
 			cps := cp.createCopyProxiesStatus()
 			defer wg.Done()
 
-			cps.err = copyToNodeViaConfig(ctx, cp)
+			cps.err = cp.copyToNodeViaConfig(ctx)
 			if cps.err != nil {
 				if e := ctx.Err(); e == nil {
 					log.WithFields(log.Fields{
 						"node":            cp.node,
 						"account":         cp.account,
-						"role":            cp.role,
-						"destinationPath": cp.destPath,
+						"role":            cp.Role,
+						"destinationPath": cp.destination,
 					}).Error("Could not copy proxy to destination")
 				}
 			}
@@ -232,13 +241,13 @@ func getCertKeyPair(certBaseDir, certPath, keyPath, account string) *certKeyPair
 	}
 }
 
-//TODO
-func copyToNodeViaConfig(ctx context.Context, c copyFileConfig) error {
-	return proxy.CopyToNode(ctx, c.VomsProxy, c.node, c.account, c.destPath)
+// copyToNodeViaConfig copies a VOMS Proxy to a desination
+func (c *copyFileConfig) copyToNodeViaConfig(ctx context.Context) error {
+	return copySourceToDestination(ctx, c.vomsProxy, c.rsyncSetup)
 }
 
 // checkKeys looks at the portion of the configuration passed in and makes sure the required keys are present
-func checkKeys(ctx context.Context, eConfig utils.ExptConfig) error {
+func checkKeys(ctx context.Context, eConfig *utils.ExptConfig) error {
 	if e := ctx.Err(); e != nil {
 		log.WithField("caller", "checkKeys").Error(e)
 		return e
@@ -249,38 +258,4 @@ func checkKeys(ctx context.Context, eConfig utils.ExptConfig) error {
 		return errors.New(checkKeysErrorString)
 	}
 	return nil
-}
-
-// failedPrettifyRolesNodesMap formats a map of failed nodes and roles into node, role columns and appends a message onto the beginning
-func failedPrettifyRolesNodesMap(roleNodesMap map[string]map[string]error) string {
-	empty := true
-
-	for _, nodeMap := range roleNodesMap {
-		if len(nodeMap) > 0 {
-			empty = false
-			break
-		}
-	}
-
-	if empty {
-		return ""
-	}
-
-	table := utils.DoubleErrorMapToTable(roleNodesMap, []string{"Role", "Node", "Error"})
-
-	finalTable := fmt.Sprintf("The following is a list of nodes on which all proxies were not refreshed, and the corresponding roles for those failed proxy refreshes:\n\n%s", table)
-	return finalTable
-
-}
-
-// generateNewErrorStringForTable is meant to change an error string based on whether it is currently equal to the defaultError.  If the testError and defaultError match, this func will return an error with the text of errStringSlice.  If they don't, then this func will append the contents of errStringSlice onto the testError text, and return a new error with the combined string.  The separator formats how different error strings should be distinguished.   This func should only be used to concatenate error strings
-func generateNewErrorStringForTable(defaultError, testError error, errStringSlice []string, separator string) error {
-	var newErrStringSlice []string
-	if testError == defaultError {
-		newErrStringSlice = errStringSlice
-	} else {
-		newErrStringSlice = append([]string{testError.Error()}, errStringSlice...)
-	}
-
-	return errors.New(strings.Join(newErrStringSlice, separator))
 }

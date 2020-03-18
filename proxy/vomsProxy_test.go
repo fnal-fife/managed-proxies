@@ -19,10 +19,6 @@ func (f *fakeVomsProxy) getVomsProxy(ctx context.Context, vomsFQAN string) (*Vom
 	return &VomsProxy{}, f.err
 }
 
-func (f *fakeVomsProxy) copyProxy(ctx context.Context, node, acct, dest string) error {
-	return f.err
-}
-
 // TestNewVomsProxy ensures that NewVomsProxy returns the appropriate errors given valid/invalid input
 func TestNewVomsProxy(t *testing.T) {
 	tests := []struct {
@@ -74,30 +70,6 @@ func TestRemoveVomsProxy(t *testing.T) {
 		err := test.v.Remove()
 		if reflect.TypeOf(err) != reflect.TypeOf(test.err) {
 			t.Errorf("Expected and actual errors do not match.  Expected %T, got %T", test.err, err)
-		}
-	}
-}
-
-func TestCopyToNode(t *testing.T) {
-	tests := []struct {
-		v   CopyProxyer
-		err error
-	}{
-		{
-			v:   &fakeVomsProxy{errors.New("This failed for some reason")},
-			err: &CopyProxyError{"Could not copy a VOMS proxy"},
-		},
-		{
-			v:   &fakeVomsProxy{err: nil},
-			err: nil,
-		},
-	}
-
-	ctx := context.Background()
-	for _, test := range tests {
-		err := CopyToNode(ctx, test.v, "node", "acct", "dest")
-		if reflect.TypeOf(err) != reflect.TypeOf(test.err) {
-			t.Errorf("NewVomsProxy test should have returned %T; got %T instead", test.err, err)
 		}
 	}
 }

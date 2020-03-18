@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os/user"
+	"os/exec"
 	"regexp"
+	"strings"
 	"sync"
+	"text/template"
 
 	"github.com/jinzhu/copier"
 	log "github.com/sirupsen/logrus"
@@ -14,20 +16,27 @@ import (
 
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/internal/pkg/notifications"
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/internal/pkg/utils"
+	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/proxy"
 )
 
-const rsyncArgs = "-p -e \"{{.SSHExe}} {{.SSHOpts}}\" --chmod=u=r,go= {{.SourcePath}} {{.Account}}@{{.Node}}.fnal.gov:{{.DestPath}}"
+const (
+	rsyncArgs = "-p -e \"{{.SSHExe}} {{.SSHOpts}}\" --chmod=u=r,go= {{.SourcePath}} {{.Account}}@{{.Node}}.fnal.gov:{{.DestPath}}"
+	sshOpts   = "-o ConnectTimeout=30 -o ServerAliveInterval=30 -o ServerAliveCountMax=1"
+)
 
 var (
 	rsyncTemplate = template.Must(template.New("rsync").Parse(rsyncArgs))
-	emailRegexp   = regexp.MustCompile(`^[\w\._%+-]+@[\w\.-]+\.\w{2,}$`)
+	// EmailRegexp is a regexp that validates email addresses
+	EmailRegexp = regexp.MustCompile(`^[\w\._%+-]+@[\w\.-]+\.\w{2,}$`)
 )
+
+// Funcs to manage the workflow of the proxy-push cmd
 
 // ManageExperimentChannels starts up the various workers and listens for their response.  It puts these
 // statuses into an aggregate channel.
-func ManageExperimentChannels(ctx context.Context, exptConfigs []utils.ExptConfig) <-chan Success {
+func ManageExperimentChannels(ctx context.Context, exptConfigs []*utils.ExptConfig, globalnConfig notifications.Config, tConfig utils.TimeoutsConfig, promPush notifications.BasicPromPush) <-chan Success {
 	agg := make(chan Success, len(exptConfigs))
-	configChan := make(chan utils.ExptConfig) // chan of configurations to send to workerSlots
+	configChan := make(chan *utils.ExptConfig) // chan of configurations to send to workerSlots
 	var wg, wwg, nwg sync.WaitGroup
 	// Couple all these waitgroups so their collective status drives logic
 	waitGroups := waitGroupCollection{
@@ -43,7 +52,7 @@ func ManageExperimentChannels(ctx context.Context, exptConfigs []utils.ExptConfi
 	log.WithField("numPushWorkers", viper.GetInt("global.numPushWorkers")).Debug("Starting workers")
 	go func() {
 		for i := 0; i < viper.GetInt("global.numPushWorkers"); i++ {
-			go workerSlot(ctx, i, configChan, agg, &wwg, &wg, &nwg)
+			go workerSlot(ctx, i, configChan, agg, &wwg, &wg, &nwg, globalnConfig, tConfig, promPush)
 		}
 	}()
 
@@ -75,7 +84,7 @@ func ManageExperimentChannels(ctx context.Context, exptConfigs []utils.ExptConfi
 
 // workerSlot is a slot into which workers can be assigned.  global.numPushWorkers defines the number of these that manageExperimentChannels will create.
 // Listens on configChan and writes to aggChan
-func workerSlot(ctx context.Context, workerID int, configChan <-chan utils.ExptConfig, aggChan chan<- Success, wwg, ewg, nwg *sync.WaitGroup) {
+func workerSlot(ctx context.Context, workerID int, configChan <-chan *utils.ExptConfig, aggChan chan<- Success, wwg, ewg, nwg *sync.WaitGroup, globalnConfig notifications.Config, tConfig utils.TimeoutsConfig, promPush notifications.BasicPromPush) {
 
 	defer func() {
 		log.WithField("workerId", workerID).Debug("Worker Slot shutting down")
@@ -83,7 +92,7 @@ func workerSlot(ctx context.Context, workerID int, configChan <-chan utils.ExptC
 	}()
 
 	for eConfig := range configChan {
-		func(eConfig utils.ExptConfig) {
+		func(eConfig *utils.ExptConfig) {
 			/* Order of operations in cleanup:
 			* Experiment finishes processing, closes notification Manager and experiment success channel
 			* Notifications get sent, then nwg is decremented
@@ -94,7 +103,7 @@ func workerSlot(ctx context.Context, workerID int, configChan <-chan utils.ExptC
 
 			// Notifications setup
 			n := notifications.Config{}
-			copier.Copy(&n, &nConfig)
+			copier.Copy(&n, &globalnConfig)
 			n.Experiment = eConfig.Name
 			if !viper.GetBool("test") {
 				n.To = exptSubConfig.GetStringSlice("emails")
@@ -172,14 +181,71 @@ func (w *waitGroupCollection) Wait() {
 	masterWg.Wait()
 }
 
-// RsyncFile runs rsync on a file at source, and syncs it with the destination account@node:dest
-func RsyncFile(ctx context.Context, source, node, account, dest string, sshOptions string) error {
+// Funcs to manage the actual copying of proxies
+
+// CopyFileError is an error type that is returned when a file cannot be copied, either locally or remotely.
+type CopyFileError struct{ message string }
+
+func (c *CopyFileError) Error() string { return c.message }
+
+type sourcePather interface {
+	sourcePath() string
+}
+
+// vomsProxy is an extended and locally-used proxy.VomsProxy
+type vomsProxy proxy.VomsProxy
+
+// sourcePath gets the path where the vomsProxy is stored
+func (v *vomsProxy) sourcePath() string { return v.Path }
+
+func newWrappedVomsProxy(v *proxy.VomsProxy) *vomsProxy {
+	_p := *v
+	_vp := vomsProxy(_p)
+	return &_vp
+}
+
+type copyToDestinationer interface {
+	copyToDestination(ctx context.Context, source string) error
+}
+
+// copySourceToDestination copies a sourcePather to a copyToDestinationer, as directed in the latter.
+func copySourceToDestination(ctx context.Context, s sourcePather, c copyToDestinationer) error {
+	if err := c.copyToDestination(ctx, s.sourcePath()); err != nil {
+		return &CopyFileError{"Could not copy source to destination"}
+	}
+	return nil
+}
+
+// Type rsyncSetup contains the information needed to rsync a file to a certain destination
+type rsyncSetup struct {
+	account     string
+	node        string
+	destination string
+	sshOpts     string
+}
+
+// copyToDestination copies a file from the path at source to a destination according to the rsyncSetup struct
+func (r *rsyncSetup) copyToDestination(ctx context.Context, source string) error {
+	err := rsyncFile(ctx, source, r.node, r.account, r.destination, r.sshOpts)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"sourcePath": source,
+			"destPath":   r.destination,
+			"node":       r.node,
+			"account":    r.account,
+		}).Error("Could not copy source file to destination node")
+	}
+	return err
+}
+
+// rsyncFile runs rsync on a file at source, and syncs it with the destination account@node:dest
+func rsyncFile(ctx context.Context, source, node, account, dest string, sshOptions string) error {
 	rsyncExecutables := map[string]string{
 		"rsync": "",
 		"ssh":   "",
 	}
 
-	CheckForExecutables(rsyncExecutables)
+	utils.CheckForExecutables(rsyncExecutables)
 
 	var b strings.Builder
 
@@ -198,7 +264,7 @@ func RsyncFile(ctx context.Context, source, node, account, dest string, sshOptio
 		return errors.New(err)
 	}
 
-	args, err := GetArgsFromTemplate(b.String())
+	args, err := utils.GetArgsFromTemplate(b.String())
 	if err != nil {
 		err := fmt.Sprintf("Could not get rsync command arguments from template: %s", err.Error())
 		log.WithField("source", source).Error(err)

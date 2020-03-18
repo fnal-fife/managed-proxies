@@ -1,5 +1,7 @@
 package utils
 
+import "time"
+
 type (
 	// TimeoutsConfig is a map of the timeouts passed in from the config file
 	TimeoutsConfig map[string]time.Duration
@@ -18,6 +20,7 @@ type ExptConfig struct {
 	CertFile    string
 	KeyFile     string
 	IsTest      bool
+	SSHOpts     string
 	TimeoutsConfig
 	KerbConfig
 }
