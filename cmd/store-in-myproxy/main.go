@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -28,7 +29,7 @@ const configFile string = "managedProxies"
 
 var (
 	nConfig notifications.Config
-	tConfig map[string]time.Duration
+	tConfig utils.TimeoutsConfig
 
 	startSetup      time.Time
 	startProcessing time.Time
@@ -57,8 +58,8 @@ func init() {
 	}
 
 	if viper.GetString("admin") != "" {
-		if !emailRegexp.MatchString(viper.GetString("admin")) {
-			fmt.Printf("Admin email address %s is invalid!  It must follow the regexp %s\n", viper.GetString("admin"), emailRegexp.String())
+		if !utils.EmailRegexp.MatchString(viper.GetString("admin")) {
+			fmt.Printf("Admin email address %s is invalid!  It must follow the regexp %s\n", viper.GetString("admin"), utils.EmailRegexp.String())
 			os.Exit(1)
 		}
 	}
@@ -116,7 +117,7 @@ func init() {
 	timestamp := time.Now().Format(time.RFC822)
 	nConfig.Subject = fmt.Sprintf("Managed Proxy Service Errors - push to MyProxy - %s", timestamp)
 
-	setAdminEmail(&nConfig)
+	utils.SetAdminEmail(&nConfig)
 
 	// Now that our log is set up and we've got a valid config, handle all init (fatal) errors using the following func
 	// that logs the error, sends a slack message and an email, cleans up, and then exits.
@@ -127,17 +128,18 @@ func init() {
 		// Durations are hard-coded here since we haven't parsed them out yet
 		slackInitCtx, slackInitCancel := context.WithTimeout(context.Background(), time.Duration(15*time.Second))
 		defer slackInitCancel()
-		notifications.SendSlackMessage(slackInitCtx, nConfig, m)
+		s := notifications.SlackMessage{}
+		s.SendMessage(slackInitCtx, m, nConfig.ConfigInfo)
 		os.Exit(1)
 	}
 
 	// Check that we're running as the right user
-	if err := CheckUser(viper.GetString("global.authuser")); err != nil {
+	if err := utils.CheckUser(viper.GetString("global.authuser")); err != nil {
 		initErrorNotify(err.Error())
 	}
 
 	// Parse our timeouts, store them into timeoutDurationMap for later use
-	tConfig = make(map[string]time.Duration)
+	tConfig = make(utils.TimeoutsConfig)
 
 	for timeoutName, timeoutString := range viper.GetStringMapString("times") {
 		value, err := time.ParseDuration(timeoutString)
@@ -200,10 +202,59 @@ func main() {
 	defer close(nMgr)
 
 	// Get list of experiments
-	exptConfigs := make([]utils.ExptConfig, 0, len(viper.GetStringMap("experiments"))) // Slice of experiment configurations
+	exptConfigs := make([]*utils.ExptConfig, 0, len(viper.GetStringMap("experiments"))) // Slice of experiment configurations
+	expts := make([]string, 0, len(exptConfigs))
+
+	getExptKey := func(expt string) string {
+		exptKey := "experiments." + expt
+		if !viper.IsSet(exptKey) {
+			err := errors.New("Experiment is not configured in the configuration file")
+			log.WithFields(log.Fields{
+				"experiment": expt,
+			}).Panic(err)
+		}
+		return exptKey
+	}
+
+	// Functional options to send to CreateExptConfig
+	setGlobalCertBaseDir := func(e *utils.ExptConfig) {
+		e.CertBaseDir = viper.GetString("global.cert_base_dir")
+	}
+
+	setExptConfigAccounts := func(e *utils.ExptConfig) {
+		key := getExptKey(e.Name) + ".accounts"
+		e.Accounts = viper.GetStringMapString(key)
+	}
+
+	setExptCertandKeyFile := func(e *utils.ExptConfig) {
+		exptSubConfig := viper.Sub(getExptKey(e.Name))
+		if exptSubConfig.IsSet("certfile") && exptSubConfig.IsSet("keyfile") {
+			e.CertFile = exptSubConfig.GetString("certfile")
+			e.KeyFile = exptSubConfig.GetString("keyfile")
+		}
+	}
+
+	withTimeoutsConfig := func(e *utils.ExptConfig) {
+		e.TimeoutsConfig = tConfig
+	}
+
+	setTestModebyFlag := func(e *utils.ExptConfig) {
+		if viper.GetBool("test") {
+			e.IsTest = true
+		}
+	}
+
+	// Get our list of experiments from the config file, create exptConfig objects
 	if viper.GetString("experiment") != "" {
 		// If experiment is passed in on command line
-		eConfig, err := utils.CreateExptConfig(viper.GetString("experiment"))
+		eConfig, err := utils.CreateExptConfig(
+			viper.GetString("experiment"),
+			setGlobalCertBaseDir,
+			setExptConfigAccounts,
+			setExptCertandKeyFile,
+			withTimeoutsConfig,
+			setTestModebyFlag,
+		)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"experiment": viper.GetString("experiment"),
@@ -212,10 +263,18 @@ func main() {
 			os.Exit(1)
 		}
 		exptConfigs = append(exptConfigs, eConfig)
+		expts = append(expts, eConfig.Name)
 	} else {
 		// No experiment on command line, so use all expts in config file
 		for k := range viper.GetStringMap("experiments") {
-			eConfig, err := utils.CreateExptConfig(k)
+			eConfig, err := utils.CreateExptConfig(
+				k,
+				setGlobalCertBaseDir,
+				setExptConfigAccounts,
+				setExptCertandKeyFile,
+				withTimeoutsConfig,
+				setTestModebyFlag,
+			)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"experiment": k,
@@ -223,6 +282,7 @@ func main() {
 				}).Error("Error setting up experiment configuration slice")
 			}
 			exptConfigs = append(exptConfigs, eConfig)
+			expts = append(expts, eConfig.Name)
 		}
 	}
 
@@ -257,10 +317,10 @@ func main() {
 
 	for _, eConfig := range exptConfigs {
 		wg.Add(1)
-		go func(e utils.ExptConfig) {
+		go func(e *utils.ExptConfig) {
 			defer wg.Done()
 			for account := range e.Accounts {
-				//TODO CAN WE REUSE CODE FROM package proxy here?
+				//TODO CAN WE REUSE CODE FROM package proxy here?  Let's assume no.
 				var certFile, keyFile string
 
 				// Get cert, key paths
@@ -295,7 +355,7 @@ func main() {
 				// Create grid proxies from those service certs
 				gCtx, gCancel := context.WithTimeout(ctx, tConfig["gpitimeoutDuration"])
 				defer gCancel()
-				g, err := proxy.NewGridProxy(gCtx, s, tConfig["gpivalidDuration"])
+				g, teardown, err := proxy.NewGridProxy(gCtx, s, tConfig["gpivalidDuration"])
 				if err != nil {
 					msg := "Could not generate grid proxy object"
 					log.WithFields(log.Fields{
@@ -317,14 +377,22 @@ func main() {
 						log.WithFields(log.Fields{
 							"experiment": e.Name,
 							"account":    account,
-						}).Error("r")
+						}).Error(r)
 						nMsg := msg + " for experiment " + e.Name + " and account " + account
 						nMgr <- notifications.Notification{
 							Message:          nMsg,
 							NotificationType: notifications.SetupError,
 						}
 					}
-					g.Remove()
+					if err := teardown(); err != nil {
+						nMsg := "Error deleting grid proxies.  Please check machine"
+						log.Errorf(nMsg)
+						nMgr <- notifications.Notification{
+							Message:          nMsg,
+							NotificationType: notifications.SetupError,
+						}
+					}
+
 				}()
 
 				if viper.GetBool("test") {
@@ -342,11 +410,6 @@ func main() {
 					msg := "Could not store grid proxy in myproxy"
 					log.WithField("experiment", e.Name).Error(msg)
 					exptFailures[e.Name][account] = err
-					// nMsg := msg + " for experiment " + e.Name
-					//					nMgr <- notifications.Notification{
-					//						Message:       nMsg,
-					//						AdminOnly: true,
-					//}
 				} else {
 					log.WithFields(log.Fields{
 						"experiment":    e.Name,
