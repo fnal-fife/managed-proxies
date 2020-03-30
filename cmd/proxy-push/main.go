@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -62,8 +63,8 @@ func init() {
 	}
 
 	if viper.GetString("admin") != "" {
-		if !emailRegexp.MatchString(viper.GetString("admin")) {
-			fmt.Printf("Admin email address %s is invalid!  It must follow the regexp %s\n", viper.GetString("admin"), emailRegexp.String())
+		if !utils.EmailRegexp.MatchString(viper.GetString("admin")) {
+			fmt.Printf("Admin email address %s is invalid!  It must follow the regexp %s\n", viper.GetString("admin"), utils.EmailRegexp.String())
 			os.Exit(1)
 		}
 	}
@@ -102,7 +103,7 @@ func init() {
 	}, &log.TextFormatter{FullTimestamp: true}))
 
 	// Make sure we have a reasonable amount of workers
-	utils.CheckNumWorkers()
+	pputils.CheckNumWorkers()
 
 	log.Debugf("Using config file %s", viper.ConfigFileUsed())
 
@@ -122,7 +123,7 @@ func init() {
 	nConfig.IsTest = viper.GetBool("test")
 	timestamp := time.Now().Format(time.RFC822)
 	nConfig.Subject = fmt.Sprintf("Managed Proxy Service Errors - Proxy Push - %s", timestamp)
-	SetAdminEmail(&nConfig)
+	utils.SetAdminEmail(&nConfig)
 
 	// Now that our log is set up and we've got a valid config, handle all init (fatal) errors using the following func
 	// that logs the error, sends a slack message and an email, cleans up, and then exits.
@@ -132,11 +133,17 @@ func init() {
 
 		// Durations are hard-coded here since we haven't parsed them out yet
 		slackInitCtx, slackInitCancel := context.WithTimeout(context.Background(), time.Duration(15*time.Second))
-		notifications.SendSlackMessage(slackInitCtx, nConfig, m)
+		s := notifications.SlackMessage{}
+		s.SendMessage(slackInitCtx, m, nConfig.ConfigInfo)
 		slackInitCancel()
 
 		emailInitCtx, emailInitCancel := context.WithTimeout(context.Background(), time.Duration(30*time.Second))
-		notifications.SendEmail(emailInitCtx, nConfig, m)
+		e := notifications.Email{
+			From:    nConfig.From,
+			To:      nConfig.To,
+			Subject: nConfig.Subject,
+		}
+		e.SendMessage(emailInitCtx, m, nConfig.ConfigInfo)
 		emailInitCancel()
 
 		if _, err := os.Stat(viper.GetString("logs.errfile")); !os.IsNotExist(err) {
@@ -148,7 +155,7 @@ func init() {
 	}
 
 	// Check that we're running as the right user
-	if err := checkUser(viper.GetString("global.authuser")); err != nil {
+	if err := utils.CheckUser(viper.GetString("global.authuser")); err != nil {
 		initErrorNotify(err.Error())
 	}
 
@@ -230,7 +237,8 @@ func cleanup(exptStatus map[string]bool, expts []string) error {
 	// Defining this defer func here so we have the correct failure count
 	if err := promPush.PushCountErrors(len(f)); err != nil {
 		log.Error(err.Error())
-		notifications.SendSlackMessage(context.Background(), nConfig, err.Error())
+		s := notifications.SlackMessage{}
+		s.SendMessage(context.Background(), err.Error(), nConfig.ConfigInfo)
 	}
 
 	return nil
@@ -271,13 +279,82 @@ func main() {
 		}
 	}()
 
-	exptConfigs := make([]utils.ExptConfig, 0, len(viper.GetStringMap("experiments"))) // Slice of experiment configurations we will actually process
+	exptConfigs := make([]*utils.ExptConfig, 0, len(viper.GetStringMap("experiments"))) // Slice of experiment configurations we will actually process
 	expts := make([]string, 0, len(exptConfigs))
+
+	getExptKey := func(expt string) string {
+		exptKey := "experiments." + expt
+		if !viper.IsSet(exptKey) {
+			err := errors.New("Experiment is not configured in the configuration file")
+			log.WithFields(log.Fields{
+				"experiment": expt,
+			}).Panic(err)
+		}
+		return exptKey
+	}
+
+	// Functional options to send to CreateExptConfig
+	setGlobalCertBaseDir := func(e *utils.ExptConfig) {
+		e.CertBaseDir = viper.GetString("global.cert_base_dir")
+	}
+
+	setExptConfigAccounts := func(e *utils.ExptConfig) {
+		key := getExptKey(e.Name) + ".accounts"
+		e.Accounts = viper.GetStringMapString(key)
+	}
+
+	setExptVomsPrefix := func(e *utils.ExptConfig) {
+		var vomsprefix string
+		exptSubConfig := viper.Sub(getExptKey(e.Name))
+		if exptSubConfig.IsSet("vomsgroup") {
+			vomsprefix = exptSubConfig.GetString("vomsgroup")
+		} else {
+			vomsprefix = viper.GetString("vomsproxyinit.defaultvomsprefixroot") + e.Name + "/"
+		}
+		e.VomsPrefix = vomsprefix
+	}
+
+	setExptCertandKeyFile := func(e *utils.ExptConfig) {
+		exptSubConfig := viper.Sub(getExptKey(e.Name))
+		if exptSubConfig.IsSet("certfile") && exptSubConfig.IsSet("keyfile") {
+			e.CertFile = exptSubConfig.GetString("certfile")
+			e.KeyFile = exptSubConfig.GetString("keyfile")
+		}
+	}
+
+	// setExptSSHOpts := func(e *utils.ExptConfig) {
+	// 	var sshopts string
+	// 	exptSubConfig := viper.Sub(getExptKey(e.Name))
+	// 	if exptSubConfig.IsSet("sshopts") {
+	// 		sshopts = exptSubConfig.GetString("sshopts")
+	// 	} else {
+	// 		sshopts = viper.GetString("global.sshopts")
+	// 	}
+	// 	e.SSHOpts = sshopts
+	// }
+
+	withTimeoutsConfig := func(e *utils.ExptConfig) {
+		e.TimeoutsConfig = tConfig
+	}
+
+	setTestModebyFlag := func(e *utils.ExptConfig) {
+		if viper.GetBool("test") {
+			e.IsTest = true
+		}
+	}
 
 	// Get our list of experiments from the config file, create exptConfig objects
 	if viper.GetString("experiment") != "" {
 		// If experiment is passed in on command line
-		eConfig, err := utils.CreateExptConfig(viper.GetString("experiment"))
+		eConfig, err := utils.CreateExptConfig(
+			viper.GetString("experiment"),
+			setGlobalCertBaseDir,
+			setExptConfigAccounts,
+			setExptCertandKeyFile,
+			setExptVomsPrefix,
+			withTimeoutsConfig,
+			setTestModebyFlag,
+		)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"experiment": viper.GetString("experiment"),
@@ -290,7 +367,15 @@ func main() {
 	} else {
 		// No experiment on command line, so use all expts in config file
 		for k := range viper.GetStringMap("experiments") {
-			eConfig, err := utils.CreateExptConfig(k)
+			eConfig, err := utils.CreateExptConfig(
+				k,
+				setGlobalCertBaseDir,
+				setExptConfigAccounts,
+				setExptCertandKeyFile,
+				setExptVomsPrefix,
+				withTimeoutsConfig,
+				setTestModebyFlag,
+			)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"experiment": k,
@@ -309,7 +394,7 @@ func main() {
 
 	startProxyPush = time.Now()
 	// Start up the expt manager
-	c := pputils.ManageExperimentChannels(ctx, exptConfigs)
+	c := pputils.ManageExperimentChannels(ctx, exptConfigs, nConfig, tConfig, promPush)
 	// Listen on the manager channel
 	for {
 		select {
