@@ -19,6 +19,7 @@ import (
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 
+	ccutils "cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/internal/app/check-certs/utils"
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/internal/pkg/notifications"
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/internal/pkg/utils"
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/packaging"
@@ -31,7 +32,7 @@ const (
 
 var (
 	nConfig notifications.Config
-	tConfig map[string]time.Duration
+	tConfig utils.TimeoutsConfig
 
 	startSetup      time.Time
 	startProcessing time.Time
@@ -46,6 +47,7 @@ func init() {
 	viper.SetDefault("notifications.admin_email", "fife-group@fnal.gov")
 
 	pflag.StringP("configfile", "c", "", "Specify alternate config file")
+	pflag.StringP("experiment", "e", "", "Name of single experiment whose service cert should be checked")
 	pflag.BoolP("test", "t", false, "Test mode (no email sent)")
 	pflag.Bool("version", false, "Version of Managed Proxies library")
 	pflag.String("admin", "", "Override the config file admin email")
@@ -131,7 +133,8 @@ func init() {
 		// Durations are hard-coded here since we haven't parsed them out yet
 		slackInitCtx, slackInitCancel := context.WithTimeout(context.Background(), time.Duration(15*time.Second))
 		defer slackInitCancel()
-		notifications.SendSlackMessage(slackInitCtx, nConfig, m)
+		s := notifications.SlackMessage{}
+		s.SendMessage(slackInitCtx, m, nConfig.ConfigInfo)
 		os.Exit(1)
 	}
 
@@ -180,21 +183,92 @@ func main() {
 	mux := &sync.Mutex{}
 	var needAlarm bool
 	var templateFile = viper.GetString("checkcerts.templateOK")
-	cNotes := make([]notifications.CertExpirationNotification, 0)
+	cNotes := make([]ccutils.CertExpirationNotification, 0)
 	ctx, cancel := context.WithTimeout(context.Background(), tConfig["globaltimeoutDuration"])
 	defer cancel()
 
 	// Get list of experiments
-	exptConfigs := make([]utils.ExptConfig, 0, len(viper.GetStringMap("experiments"))) // Slice of experiment configurations
-	for k := range viper.GetStringMap("experiments") {
-		eConfig, err := createExptConfig(k)
+	exptConfigs := make([]*utils.ExptConfig, 0, len(viper.GetStringMap("experiments"))) // Slice of experiment configurations
+
+	getExptKey := func(expt string) string {
+		exptKey := "experiments." + expt
+		if !viper.IsSet(exptKey) {
+			err := errors.New("Experiment is not configured in the configuration file")
+			log.WithFields(log.Fields{
+				"experiment": expt,
+			}).Panic(err)
+		}
+		return exptKey
+	}
+
+	// Functional options to send to CreateExptConfig
+	setGlobalCertBaseDir := func(e *utils.ExptConfig) {
+		e.CertBaseDir = viper.GetString("global.cert_base_dir")
+	}
+
+	setExptConfigAccounts := func(e *utils.ExptConfig) {
+		key := getExptKey(e.Name) + ".accounts"
+		e.Accounts = viper.GetStringMapString(key)
+	}
+
+	setExptCertandKeyFile := func(e *utils.ExptConfig) {
+		exptSubConfig := viper.Sub(getExptKey(e.Name))
+		if exptSubConfig.IsSet("certfile") && exptSubConfig.IsSet("keyfile") {
+			e.CertFile = exptSubConfig.GetString("certfile")
+			e.KeyFile = exptSubConfig.GetString("keyfile")
+		}
+	}
+
+	withTimeoutsConfig := func(e *utils.ExptConfig) {
+		e.TimeoutsConfig = tConfig
+	}
+
+	setTestModebyFlag := func(e *utils.ExptConfig) {
+		if viper.GetBool("test") {
+			e.IsTest = true
+		}
+	}
+
+	// Get our list of experiments from the config file, create exptConfig objects
+	if viper.GetString("experiment") != "" {
+		// If experiment is passed in on command line
+		eConfig, err := utils.CreateExptConfig(
+			viper.GetString("experiment"),
+			setGlobalCertBaseDir,
+			setExptConfigAccounts,
+			setExptCertandKeyFile,
+			withTimeoutsConfig,
+			setTestModebyFlag,
+		)
 		if err != nil {
 			log.WithFields(log.Fields{
-				"experiment": k,
+				"experiment": viper.GetString("experiment"),
 				"caller":     "main",
-			}).Error("Error setting up experiment configuration slice")
+			}).Error("Error setting up experiment configuration slice.  As this is the only experiment, we will cleanup now.")
+			os.Exit(1)
 		}
 		exptConfigs = append(exptConfigs, eConfig)
+		expts = append(expts, eConfig.Name)
+	} else {
+		// No experiment on command line, so use all expts in config file
+		for k := range viper.GetStringMap("experiments") {
+			eConfig, err := utils.CreateExptConfig(
+				k,
+				setGlobalCertBaseDir,
+				setExptConfigAccounts,
+				setExptCertandKeyFile,
+				withTimeoutsConfig,
+				setTestModebyFlag,
+			)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"experiment": k,
+					"caller":     "main",
+				}).Error("Error setting up experiment configuration slice")
+			}
+			exptConfigs = append(exptConfigs, eConfig)
+			expts = append(expts, eConfig.Name)
+		}
 	}
 
 	// Setup is done here.  Push the time
@@ -215,10 +289,9 @@ func main() {
 
 	for _, eConfig := range exptConfigs {
 		wg.Add(1)
-		go func(e utils.ExptConfig) {
+		go func(e *utils.ExptConfig) {
 			defer wg.Done()
 			for account := range e.Accounts {
-				// TODO Can we reuse code from proxy package?
 				var certFile, keyFile string
 
 				// Get cert, key paths
@@ -245,7 +318,7 @@ func main() {
 				// Figure out how much time is left
 				timeLeft := time.Until(s.Expiration)
 				numDays := int(math.Round(timeLeft.Hours() / 24.0))
-				c := notifications.CertExpirationNotification{
+				c := ccutils.CertExpirationNotification{
 					Account:  account,
 					DN:       s.DN,
 					DaysLeft: numDays,
@@ -289,7 +362,7 @@ func main() {
 		nConfig.Subject = nConfig.Subject + " - no issues"
 	}
 
-	if err := notifications.SendCertAlarms(ctx, nConfig, fNotes, templateFile); err != nil {
+	if err := ccutils.SendCertAlarms(ctx, nConfig, fNotes, templateFile); err != nil {
 		log.WithField("caller", "main").Error("Error sending Cert Alarms")
 	}
 

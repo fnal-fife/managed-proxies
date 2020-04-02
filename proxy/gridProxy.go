@@ -45,7 +45,7 @@ type GridProxy struct {
 	Cert
 }
 
-// NewGridProxyError TODO
+// NewGridProxyError indicates that there was an error in creating a new GridProxy from a getGridProxyer object
 type NewGridProxyError struct {
 	message string
 }
@@ -88,60 +88,6 @@ func NewGridProxy(ctx context.Context, gp getGridProxyer, valid time.Duration) (
 	}
 
 	return g, teardown, nil
-}
-
-// storeInMyProxy stores a GridProxy object on a myproxy server by using myproxy-store
-func (g *GridProxy) storeInMyProxy(ctx context.Context, retrievers, myProxyServer string, valid time.Duration) error {
-	var b strings.Builder
-
-	hours := strconv.FormatFloat(valid.Hours(), 'f', -1, 32)
-
-	owner := g.Subject()
-
-	cArgs := struct{ CertFile, KeyFile, Server, Retrievers, Owner, Hours string }{
-		CertFile:   g.Path,
-		KeyFile:    g.Path,
-		Server:     myProxyServer,
-		Retrievers: retrievers,
-		Owner:      owner,
-		Hours:      hours,
-	}
-
-	if err := myproxystoreTemplate.Execute(&b, cArgs); err != nil {
-		err := fmt.Sprintf("Could not execute myproxy-store template: %s", err.Error())
-		log.WithField("gridProxy", g.DN).Error(err)
-		return errors.New(err)
-	}
-
-	args, err := utils.GetArgsFromTemplate(b.String())
-	if err != nil {
-		err := fmt.Sprintf("Could not get myproxy-store command arguments from template: %s", err.Error())
-		log.WithField("gridProxy", g.DN).Error(err)
-		return errors.New(err)
-	}
-
-	env := []string{
-		fmt.Sprintf("X509_USER_CERT=%s", g.CertPath()),
-		fmt.Sprintf("X509_USER_KEY=%s", g.KeyPath()),
-	}
-
-	cmd := exec.CommandContext(ctx, gridProxyExecutables["myproxy-store"], args...)
-	cmd.Env = env
-	if stdOutstdErr, err := cmd.CombinedOutput(); err != nil {
-		err := fmt.Sprintf("Could not execute myproxy-store command: %s", stdOutstdErr)
-		log.WithFields(log.Fields{
-			"gridProxy": g.DN,
-			"command":   strings.Join(cmd.Args, " "),
-		}).Error(err)
-		return errors.New(err)
-	}
-	log.WithFields(log.Fields{
-		"gridProxy":     g.DN,
-		"myProxyServer": myProxyServer,
-		"validHours":    hours,
-	}).Debug("Successfully stored grid proxy in myproxy")
-
-	return nil
 }
 
 // getGridProxy returns a GridProxy given a ServiceCert object
@@ -196,6 +142,60 @@ func (s *ServiceCert) getGridProxy(ctx context.Context, valid time.Duration) (*G
 		"subject": g.DN,
 	}).Debug("Successfully generated grid proxy")
 	return &g, nil
+}
+
+// storeInMyProxy stores a GridProxy object on a myproxy server by using myproxy-store
+func (g *GridProxy) storeInMyProxy(ctx context.Context, retrievers, myProxyServer string, valid time.Duration) error {
+	var b strings.Builder
+
+	hours := strconv.FormatFloat(valid.Hours(), 'f', -1, 32)
+
+	owner := g.Subject()
+
+	cArgs := struct{ CertFile, KeyFile, Server, Retrievers, Owner, Hours string }{
+		CertFile:   g.Path,
+		KeyFile:    g.Path,
+		Server:     myProxyServer,
+		Retrievers: retrievers,
+		Owner:      owner,
+		Hours:      hours,
+	}
+
+	if err := myproxystoreTemplate.Execute(&b, cArgs); err != nil {
+		err := fmt.Sprintf("Could not execute myproxy-store template: %s", err.Error())
+		log.WithField("gridProxy", g.DN).Error(err)
+		return errors.New(err)
+	}
+
+	args, err := utils.GetArgsFromTemplate(b.String())
+	if err != nil {
+		err := fmt.Sprintf("Could not get myproxy-store command arguments from template: %s", err.Error())
+		log.WithField("gridProxy", g.DN).Error(err)
+		return errors.New(err)
+	}
+
+	env := []string{
+		fmt.Sprintf("X509_USER_CERT=%s", g.CertPath()),
+		fmt.Sprintf("X509_USER_KEY=%s", g.KeyPath()),
+	}
+
+	cmd := exec.CommandContext(ctx, gridProxyExecutables["myproxy-store"], args...)
+	cmd.Env = env
+	if stdOutstdErr, err := cmd.CombinedOutput(); err != nil {
+		err := fmt.Sprintf("Could not execute myproxy-store command: %s", stdOutstdErr)
+		log.WithFields(log.Fields{
+			"gridProxy": g.DN,
+			"command":   strings.Join(cmd.Args, " "),
+		}).Error(err)
+		return errors.New(err)
+	}
+	log.WithFields(log.Fields{
+		"gridProxy":     g.DN,
+		"myProxyServer": myProxyServer,
+		"validHours":    hours,
+	}).Debug("Successfully stored grid proxy in myproxy")
+
+	return nil
 }
 
 // fmtDurationForGPI formats a time.Duration object into a string that is formatted for use in grid proxy commands. Modified from https://stackoverflow.com/questions/47341278/how-to-format-a-duration-in-golang/47342272#47342272

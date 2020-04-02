@@ -80,10 +80,10 @@ func NewVomsProxy(ctx context.Context, vp getVomsProxyer, vomsFQAN string) (*Vom
 	return v, teardown, nil
 }
 
-// VomsProxyCheckError TODO
-type VomsProxyCheckError struct{ message string }
+// NewVomsProxyError indicates that a new VomsProxy could not be created from a getVomsProxyer
+type NewVomsProxyError struct{ message string }
 
-func (v *VomsProxyCheckError) Error() string { return v.message }
+func (n *NewVomsProxyError) Error() string { return n.message }
 
 // Check runs voms-proxy-info to make sure that voms-proxy-init didn't lie to us...which it does way too often
 func (v *VomsProxy) Check(ctx context.Context) error {
@@ -144,6 +144,11 @@ func (v *VomsProxy) Check(ctx context.Context) error {
 
 	return nil
 }
+
+// VomsProxyCheckError indicates that the check on a VomsProxy failed
+type VomsProxyCheckError struct{ message string }
+
+func (v *VomsProxyCheckError) Error() string { return v.message }
 
 // Remove deletes the file at VomsProxy.Path
 func (v *VomsProxy) Remove() error {
@@ -223,8 +228,3 @@ func getRoleFromFQAN(fqan string) string {
 	pattern := regexp.MustCompile("^.+Role=([a-zA-Z]+)(/Capability=NULL)?$")
 	return pattern.FindStringSubmatch(fqan)[1]
 }
-
-// NewVomsProxyError TODO
-type NewVomsProxyError struct{ message string }
-
-func (n *NewVomsProxyError) Error() string { return n.message }

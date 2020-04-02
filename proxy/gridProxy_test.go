@@ -20,7 +20,7 @@ func (f *fakeGridProxy) getGridProxy(ctx context.Context, valid time.Duration) (
 // TestNewGridProxy tests that we get the expected errors back from NewGridProxy
 func TestNewGridProxy(t *testing.T) {
 	tests := []struct {
-		g   GetGridProxyer
+		g   getGridProxyer
 		err error
 	}{
 		{

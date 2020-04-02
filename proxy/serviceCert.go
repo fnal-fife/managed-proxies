@@ -72,18 +72,6 @@ func NewServiceCert(ctx context.Context, certPath, keyPath string) (*ServiceCert
 	return s, nil
 }
 
-// CertPath TODO
-func (s *ServiceCert) CertPath() string { return s.certPath }
-
-// KeyPath TODO
-func (s *ServiceCert) KeyPath() string { return s.keyPath }
-
-// Subject TODO
-func (s *ServiceCert) Subject() string { return s.dn }
-
-// Expires TODO
-func (s *ServiceCert) Expires() time.Time { return s.expiration }
-
 // IngestCertificate takes an io.Reader representing a DER-encoded x509 certificate and returns an x509.Certificate object
 func IngestCertificate(r io.Reader) (*x509.Certificate, error) {
 	certContent, err := ioutil.ReadAll(r)
@@ -106,6 +94,18 @@ func IngestCertificate(r io.Reader) (*x509.Certificate, error) {
 	}
 	return cert, nil
 }
+
+// CertPath provides the path of the ServiceCert file
+func (s *ServiceCert) CertPath() string { return s.certPath }
+
+// KeyPath provides the path to the ServiceCert's key file
+func (s *ServiceCert) KeyPath() string { return s.keyPath }
+
+// Subject gives the subject of the ServiceCert
+func (s *ServiceCert) Subject() string { return s.dn }
+
+// Expires gives the expiration date and time of the ServiceCert
+func (s *ServiceCert) Expires() time.Time { return s.expiration }
 
 // Thank you FERRY for this.  names can be *x509.Certificate.Subject.Names object
 // parsedn takes a []pkix.AttributeTypeAndValue slice (like the elements of a cert Subject), the separator, and returns a dn, formatted in the openssl format
@@ -138,16 +138,17 @@ func parseDN(names []pkix.AttributeTypeAndValue, sep string) string {
 	return sep + strings.Join(subject, sep)
 }
 
-// IngestError TODO
+// IngestError is an error that indicates that the ingestion of a file to create a ServiceCert failed
 type IngestError struct {
 	message string
 }
 
-func (oc *IngestError) Error() string {
-	return fmt.Sprintf("Could not ingest cert data: %s", oc.message)
+func (i *IngestError) Error() string {
+	return fmt.Sprintf("Could not ingest cert data: %s", i.message)
 }
 
-// OpenCertFileError TODO
+// OpenCertFileError is an error that indicates that the file containing certificate data to create a
+// ServiceCert could not be opened
 type OpenCertFileError struct {
 	message string
 }

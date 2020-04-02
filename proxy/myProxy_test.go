@@ -32,3 +32,11 @@ func TestStoreInMyProxy(t *testing.T) {
 	}
 
 }
+
+// Allow us to check values of nil errors against each other
+func errorString(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
+}
