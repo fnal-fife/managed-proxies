@@ -61,12 +61,13 @@ type SendMessager interface {
 	SendMessage(context.Context, string, map[string]string) error
 }
 
-// SendMessageError TODO
+// SendMessageError indicates that an error occurred sending a message
 type SendMessageError struct{ message string }
 
 func (s *SendMessageError) Error() string { return s.message }
 
-// SendMessage TODO Use THIS everywhere, then we can make a mock.
+// SendMessage sends a message (msg).  The kind of message and how that message is sent is determined
+// by the SendMessager, and the ConfigInfo gives supplemental information to send the message.
 func SendMessage(ctx context.Context, s SendMessager, msg string, ConfigInfo map[string]string) error {
 	err := s.SendMessage(ctx, msg, ConfigInfo)
 	if err != nil {
@@ -77,7 +78,7 @@ func SendMessage(ctx context.Context, s SendMessager, msg string, ConfigInfo map
 	return nil
 }
 
-// Email TODO
+// Email is an email message configuration
 type Email struct {
 	From    string
 	To      []string
@@ -129,7 +130,7 @@ func (e *Email) SendMessage(ctx context.Context, message string, ConfigInfo map[
 
 }
 
-// SlackMessage TODO
+// SlackMessage is a Slack message placeholder
 type SlackMessage struct{}
 
 // SendMessage sends message as a Slack message based on the Config
