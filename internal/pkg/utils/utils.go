@@ -18,10 +18,21 @@ import (
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/internal/pkg/notifications"
 )
 
-//EmailRegexp TODO
+// EmailRegexp is the regexp that all email addresses must satisfy
 var EmailRegexp = regexp.MustCompile(`^[\w\._%+-]+@[\w\.-]+\.\w{2,}$`)
 
 // CreateExptConfig takes the config information from the global file and creates an exptConfig object
+// To create functional options, simply define functions that operate on an *ExptConfig.  E.g.
+// func foo(e *ExptConfig) { e.Name = "bar" }.  You can then pass in foo to CreateExptConfig (e.g.
+// CreateExptConfig("my_expt", foo), to set the ExptConfig.Name to "bar".
+//
+// To pass in something that's dynamic, define a function that returns a func(*ExptConfig).   e.g.:
+// func foo(bar int, e *ExptConfig) func(*ExptConfig) {
+//     baz = bar + 3
+//     return func(*ExptConfig) {
+//	  e.spam = baz
+//	}
+// If you then pass in foo(3), like CreateExptConfig("my_expt", foo(3)), then ExptConfig.spam will be set to 6
 func CreateExptConfig(expt string, options ...func(*ExptConfig)) (*ExptConfig, error) {
 	c := ExptConfig{
 		Name: expt,

@@ -2,12 +2,11 @@ package utils
 
 import "time"
 
-type (
-	// TimeoutsConfig is a map of the timeouts passed in from the config file
-	TimeoutsConfig map[string]time.Duration
-	// KerbConfig contains information needed to run kinit
-	KerbConfig map[string]string
-)
+// TimeoutsConfig is a map of the timeouts passed in from the config file
+type TimeoutsConfig map[string]time.Duration
+
+// KerbConfig contains information needed to run kinit
+type KerbConfig map[string]string
 
 // ExptConfig is a mega struct containing all the information the Worker needs to have or pass onto lower level funcs.
 type ExptConfig struct {
