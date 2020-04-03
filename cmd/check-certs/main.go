@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"net/http"
@@ -61,8 +62,8 @@ func init() {
 	}
 
 	if viper.GetString("admin") != "" {
-		if !emailRegexp.MatchString(viper.GetString("admin")) {
-			fmt.Printf("Admin email address %s is invalid!  It must follow the regexp %s\n", viper.GetString("admin"), emailRegexp.String())
+		if !utils.EmailRegexp.MatchString(viper.GetString("admin")) {
+			fmt.Printf("Admin email address %s is invalid!  It must follow the regexp %s\n", viper.GetString("admin"), utils.EmailRegexp.String())
 			os.Exit(1)
 		}
 	}
@@ -189,6 +190,7 @@ func main() {
 
 	// Get list of experiments
 	exptConfigs := make([]*utils.ExptConfig, 0, len(viper.GetStringMap("experiments"))) // Slice of experiment configurations
+	expts := make([]string, 0, len(exptConfigs))
 
 	getExptKey := func(expt string) string {
 		exptKey := "experiments." + expt
@@ -316,18 +318,18 @@ func main() {
 				}
 
 				// Figure out how much time is left
-				timeLeft := time.Until(s.Expiration)
+				timeLeft := time.Until(s.Expires())
 				numDays := int(math.Round(timeLeft.Hours() / 24.0))
 				c := ccutils.CertExpirationNotification{
 					Account:  account,
-					DN:       s.DN,
+					DN:       s.Subject(),
 					DaysLeft: numDays,
 				}
 
 				if timeLeft < tConfig["expirewarningcutoffDuration"] {
 					log.WithFields(log.Fields{
 						"experiment": e.Name,
-						"DN":         s.DN,
+						"DN":         s.Subject(),
 						"daysLeft":   numDays,
 					}).Warn("Service cert expiring soon")
 					c.Warn = true
@@ -344,7 +346,7 @@ func main() {
 	wg.Wait()
 
 	// Send notification
-	fNotes := make([]notifications.CertExpirationNotification, 0)
+	fNotes := make([]ccutils.CertExpirationNotification, 0)
 
 	if needAlarm {
 		templateFile = viper.GetString("checkcerts.templateAlarm")
