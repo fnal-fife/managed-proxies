@@ -78,9 +78,9 @@ type PingNodeStatus struct {
 
 // PingAllNodes will launch goroutines, which each ping a PingNoder from the nodes variadic.  It returns a channel,
 // on which it reports the pingNodeStatuses signifying success or error
-func PingAllNodes(ctx context.Context, nodes ...PingNoder) <-chan pingNodeStatus {
+func PingAllNodes(ctx context.Context, nodes ...PingNoder) <-chan PingNodeStatus {
 	// Buffered Channel to report on
-	c := make(chan pingNodeStatus, len(nodes))
+	c := make(chan PingNodeStatus, len(nodes))
 
 	var wg sync.WaitGroup
 	wg.Add(len(nodes))
@@ -88,7 +88,7 @@ func PingAllNodes(ctx context.Context, nodes ...PingNoder) <-chan pingNodeStatus
 	for _, n := range nodes {
 		go func(n PingNoder) {
 			defer wg.Done()
-			p := pingNodeStatus{n, n.PingNode(ctx)}
+			p := PingNodeStatus{n, n.PingNode(ctx)}
 			c <- p
 		}(n)
 	}
