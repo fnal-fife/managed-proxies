@@ -320,7 +320,6 @@ func main() {
 		go func(e *utils.ExptConfig) {
 			defer wg.Done()
 			for account := range e.Accounts {
-				//TODO CAN WE REUSE CODE FROM package proxy here?  Let's assume no.
 				var certFile, keyFile string
 
 				// Get cert, key paths
