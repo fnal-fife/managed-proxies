@@ -29,13 +29,14 @@ type PingNoder interface {
 	String() string
 }
 
-type node string
+// Node is an interactive node
+type Node string
 
-// NewNode returns a node object when given a string.  This allows us to keep node unexported.
-func NewNode(s string) node { return node(s) }
+// NewNode returns a Node object when given a string
+func NewNode(s string) Node { return Node(s) }
 
-// pingNode pings a node (described by a node object) with a 5-second timeout.  It returns an error
-func (n node) PingNode(ctx context.Context) error {
+// PingNode pings a node (described by a Node object) with a 5-second timeout.  It returns an error
+func (n Node) PingNode(ctx context.Context) error {
 	var b strings.Builder
 	var pArgs = map[string]string{
 		"Node": string(n),
@@ -66,11 +67,11 @@ func (n node) PingNode(ctx context.Context) error {
 	return nil
 }
 
-// String converts a node object into a string
-func (n node) String() string { return string(n) }
+// String converts a Node object into a string
+func (n Node) String() string { return string(n) }
 
-// pingNodeStatus stores information about an attempt to ping a node.  If there was an error, it's stored in Err.
-type pingNodeStatus struct {
+// PingNodeStatus stores information about an attempt to ping a Node.  If there was an error, it's stored in Err.
+type PingNodeStatus struct {
 	PingNoder
 	Err error
 }
