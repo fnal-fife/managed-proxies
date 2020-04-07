@@ -1,4 +1,4 @@
-package node
+package utils
 
 import (
 	"context"
@@ -43,7 +43,7 @@ func TestPingNode(t *testing.T) {
 	if testing.Verbose() {
 		t.Log("Running control test")
 	}
-	g := node(goodhost)
+	g := Node(goodhost)
 	if err := g.PingNode(ctx); err != nil {
 		t.Errorf("Expected error to be nil but got %s", err)
 		t.Errorf("Our \"reliable\" host, %s, is probably down or just not responding", goodhost)
@@ -53,7 +53,7 @@ func TestPingNode(t *testing.T) {
 	if testing.Verbose() {
 		t.Log("Running bogus host test")
 	}
-	b := node(badhost)
+	b := Node(badhost)
 	if err := b.PingNode(ctx); err != nil {
 		lowerErr := strings.ToLower(err.Error())
 		if !strings.Contains(lowerErr, "unknown host") && !strings.Contains(lowerErr, badhost) {

@@ -3,77 +3,14 @@ package utils
 import (
 	"errors"
 	"fmt"
-	"os/exec"
-	"os/user"
 	"reflect"
-	"regexp"
 	"strconv"
 	"strings"
 
 	"github.com/google/shlex"
 	"github.com/olekukonko/tablewriter"
-	log "github.com/sirupsen/logrus"
-	"github.com/spf13/viper"
-
-	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/internal/pkg/notifications"
+	"github.com/sirupsen/logrus"
 )
-
-// EmailRegexp is the regexp that all email addresses must satisfy
-var EmailRegexp = regexp.MustCompile(`^[\w\._%+-]+@[\w\.-]+\.\w{2,}$`)
-
-// CreateExptConfig takes the config information from the global file and creates an exptConfig object
-// To create functional options, simply define functions that operate on an *ExptConfig.  E.g.
-// func foo(e *ExptConfig) { e.Name = "bar" }.  You can then pass in foo to CreateExptConfig (e.g.
-// CreateExptConfig("my_expt", foo), to set the ExptConfig.Name to "bar".
-//
-// To pass in something that's dynamic, define a function that returns a func(*ExptConfig).   e.g.:
-// func foo(bar int, e *ExptConfig) func(*ExptConfig) {
-//     baz = bar + 3
-//     return func(*ExptConfig) {
-//	  e.spam = baz
-//	}
-// If you then pass in foo(3), like CreateExptConfig("my_expt", foo(3)), then ExptConfig.spam will be set to 6
-func CreateExptConfig(expt string, options ...func(*ExptConfig)) (*ExptConfig, error) {
-	c := ExptConfig{
-		Name: expt,
-	}
-
-	for _, option := range options {
-		option(&c)
-	}
-
-	log.WithField("experiment", c.Name).Debug("Set up experiment config")
-	return &c, nil
-}
-
-// SetAdminEmail sets the notifications config objects' From and To fields to the config file's admin value
-func SetAdminEmail(pnConfig *notifications.Config) {
-	var toEmail string
-	pnConfig.From = pnConfig.ConfigInfo["admin_email"]
-
-	if viper.GetString("admin") != "" {
-		toEmail = viper.GetString("admin")
-	} else {
-		toEmail = pnConfig.ConfigInfo["admin_email"]
-	}
-
-	pnConfig.To = []string{toEmail}
-	log.Debug("Set notifications config email values to admin values")
-	return
-}
-
-// CheckUser makes sure that the user running the executable is the authorized user.
-func CheckUser(authuser string) error {
-	cuser, err := user.Current()
-	if err != nil {
-		return errors.New("Could not lookup current user.  Exiting")
-	}
-	log.Debug("Running script as ", cuser.Username)
-	if cuser.Username != authuser {
-		return fmt.Errorf("This must be run as %s.  Trying to run as %s", authuser, cuser.Username)
-	}
-	return nil
-}
 
 // GetArgsFromTemplate takes a template string and breaks it into a slice of args
 func GetArgsFromTemplate(s string) ([]string, error) {
@@ -91,19 +28,6 @@ func GetArgsFromTemplate(s string) ([]string, error) {
 	log.Debugf("Enumerated args to command are: %s", debugSlice)
 
 	return args, nil
-}
-
-// CheckForExecutables takes a map of executables of the form {"name_of_executable": "whatever"} and
-// checks if each executable is in $PATH.  If so, it saves the path in the map.  If not, it returns an error
-func CheckForExecutables(exeMap map[string]string) error {
-	for exe := range exeMap {
-		pth, err := exec.LookPath(exe)
-		if err != nil {
-			return fmt.Errorf("%s was not found in $PATH", exe)
-		}
-		exeMap[exe] = pth
-	}
-	return nil
 }
 
 // DoubleErrorMapToTable takes a map[string]map[string]error and generates a table using the provided header slice
@@ -196,4 +120,38 @@ func MapToTableData(v reflect.Value, curData [][]string, curRow []string) [][]st
 		}
 	}
 	return curData
+}
+
+// failedPrettifyRolesNodesMap formats a map of failed nodes and roles into node, role columns and appends a message onto the beginning
+func failedPrettifyRolesNodesMap(roleNodesMap map[string]map[string]error) string {
+	empty := true
+
+	for _, nodeMap := range roleNodesMap {
+		if len(nodeMap) > 0 {
+			empty = false
+			break
+		}
+	}
+
+	if empty {
+		return ""
+	}
+
+	table := DoubleErrorMapToTable(roleNodesMap, []string{"Role", "Node", "Error"})
+
+	finalTable := fmt.Sprintf("The following is a list of nodes on which all proxies were not refreshed, and the corresponding roles for those failed proxy refreshes:\n\n%s", table)
+	return finalTable
+
+}
+
+// generateNewErrorStringForTable is meant to change an error string based on whether it is currently equal to the defaultError.  If the testError and defaultError match, this func will return an error with the text of errStringSlice.  If they don't, then this func will append the contents of errStringSlice onto the testError text, and return a new error with the combined string.  The separator formats how different error strings should be distinguished.   This func should only be used to concatenate error strings
+func generateNewErrorStringForTable(defaultError, testError error, errStringSlice []string, separator string) error {
+	var newErrStringSlice []string
+	if testError == defaultError {
+		newErrStringSlice = errStringSlice
+	} else {
+		newErrStringSlice = append([]string{testError.Error()}, errStringSlice...)
+	}
+
+	return errors.New(strings.Join(newErrStringSlice, separator))
 }

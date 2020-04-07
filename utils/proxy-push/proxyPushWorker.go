@@ -9,7 +9,6 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/internal/app/proxy-push/node"
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/internal/pkg/notifications"
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/internal/pkg/utils"
 )
@@ -148,11 +147,11 @@ func worker(ctx context.Context, eConfig *utils.ExptConfig, b notifications.Basi
 
 		// Ping nodes to make sure they're up
 		pingCtx, pingCancel := context.WithTimeout(ctx, eConfig.TimeoutsConfig["pingtimeoutDuration"])
-		configNodes := make([]node.PingNoder, 0, len(eConfig.Nodes))
+		configNodes := make([]PingNoder, 0, len(eConfig.Nodes))
 		for _, n := range eConfig.Nodes {
-			configNodes = append(configNodes, node.NewNode(n))
+			configNodes = append(configNodes, NewNode(n))
 		}
-		pingChannel := node.PingAllNodes(pingCtx, configNodes...)
+		pingChannel := PingAllNodes(pingCtx, configNodes...)
 
 		// Listen until we either timeout or the pingChannel is closed
 		func() {

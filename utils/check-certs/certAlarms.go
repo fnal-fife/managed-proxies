@@ -12,7 +12,7 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/internal/pkg/notifications"
+	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/notifications"
 )
 
 // CertExpirationNotification holds information about a service certificate, its expiration date, and whether or not the admins should be warned about that certificate's expiration.
