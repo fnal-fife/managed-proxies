@@ -5,10 +5,7 @@ import (
 	"fmt"
 	"os/exec"
 	"os/user"
-	"reflect"
 	"regexp"
-	"strconv"
-	"strings"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"

@@ -9,7 +9,7 @@ import (
 
 	"github.com/google/shlex"
 	"github.com/olekukonko/tablewriter"
-	"github.com/sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 )
 
 // GetArgsFromTemplate takes a template string and breaks it into a slice of args
@@ -122,8 +122,8 @@ func MapToTableData(v reflect.Value, curData [][]string, curRow []string) [][]st
 	return curData
 }
 
-// failedPrettifyRolesNodesMap formats a map of failed nodes and roles into node, role columns and appends a message onto the beginning
-func failedPrettifyRolesNodesMap(roleNodesMap map[string]map[string]error) string {
+// FailedPrettifyRolesNodesMap formats a map of failed nodes and roles into node, role columns and appends a message onto the beginning
+func FailedPrettifyRolesNodesMap(roleNodesMap map[string]map[string]error) string {
 	empty := true
 
 	for _, nodeMap := range roleNodesMap {
@@ -144,8 +144,8 @@ func failedPrettifyRolesNodesMap(roleNodesMap map[string]map[string]error) strin
 
 }
 
-// generateNewErrorStringForTable is meant to change an error string based on whether it is currently equal to the defaultError.  If the testError and defaultError match, this func will return an error with the text of errStringSlice.  If they don't, then this func will append the contents of errStringSlice onto the testError text, and return a new error with the combined string.  The separator formats how different error strings should be distinguished.   This func should only be used to concatenate error strings
-func generateNewErrorStringForTable(defaultError, testError error, errStringSlice []string, separator string) error {
+// GenerateNewErrorStringForTable is meant to change an error string based on whether it is currently equal to the defaultError.  If the testError and defaultError match, this func will return an error with the text of errStringSlice.  If they don't, then this func will append the contents of errStringSlice onto the testError text, and return a new error with the combined string.  The separator formats how different error strings should be distinguished.   This func should only be used to concatenate error strings
+func GenerateNewErrorStringForTable(defaultError, testError error, errStringSlice []string, separator string) error {
 	var newErrStringSlice []string
 	if testError == defaultError {
 		newErrStringSlice = errStringSlice
