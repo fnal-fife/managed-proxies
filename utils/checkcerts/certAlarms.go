@@ -1,4 +1,4 @@
-package utils
+package checkcerts
 
 import (
 	"context"
