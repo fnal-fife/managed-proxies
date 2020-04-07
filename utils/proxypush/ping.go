@@ -11,7 +11,7 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/internal/pkg/utils"
+	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/utils"
 )
 
 const pingArgs = "-W 5 -c 1 {{.Node}}"

@@ -9,8 +9,8 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/internal/pkg/notifications"
-	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/internal/pkg/utils"
+	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/notifications"
+	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/utils"
 )
 
 var kinitExecutable = "/usr/krb5/bin/kinit"
@@ -343,7 +343,7 @@ func worker(ctx context.Context, eConfig *utils.ExptConfig, b notifications.Basi
 						msg := []string{generalContextErrorString}
 						for role, nodeMap := range failedCopies {
 							for node, err := range nodeMap {
-								failedCopies[role][node] = generateNewErrorStringForTable(
+								failedCopies[role][node] = utils.GenerateNewErrorStringForTable(
 									genericTimeoutError,
 									err,
 									msg,
@@ -381,7 +381,7 @@ func worker(ctx context.Context, eConfig *utils.ExptConfig, b notifications.Basi
 							"action":  "copy proxies",
 						}).Error(pushproxy.err)
 
-						failedCopies[pushproxy.role][pushproxy.node] = generateNewErrorStringForTable(
+						failedCopies[pushproxy.role][pushproxy.node] = utils.GenerateNewErrorStringForTable(
 							genericTimeoutError,
 							failedCopies[pushproxy.role][pushproxy.node],
 							copyProxyErrorSlice,
@@ -420,7 +420,7 @@ func worker(ctx context.Context, eConfig *utils.ExptConfig, b notifications.Basi
 			}).Debugf("Successful copies")
 		}
 
-		failedMsg := failedPrettifyRolesNodesMap(failedCopies)
+		failedMsg := utils.FailedPrettifyRolesNodesMap(failedCopies)
 		if len(failedMsg) > 0 {
 			nMgr <- notifications.Notification{
 				Message:          failedMsg,

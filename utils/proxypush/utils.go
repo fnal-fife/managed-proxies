@@ -2,11 +2,8 @@ package utils
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"os/exec"
 	"regexp"
-	"strings"
 	"sync"
 
 	"github.com/jinzhu/copier"
@@ -15,6 +12,7 @@ import (
 
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/notifications"
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/proxy"
+	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/utils"
 )
 
 var (
