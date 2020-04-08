@@ -20,11 +20,11 @@ import (
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 
-	ccutils "cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/internal/app/check-certs/utils"
-	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/internal/pkg/notifications"
-	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/internal/pkg/utils"
+	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/notifications"
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/packaging"
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/proxy"
+	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/utils"
+	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/utils/checkcerts"
 )
 
 const (
@@ -184,7 +184,7 @@ func main() {
 	mux := &sync.Mutex{}
 	var needAlarm bool
 	var templateFile = viper.GetString("checkcerts.templateOK")
-	cNotes := make([]ccutils.CertExpirationNotification, 0)
+	cNotes := make([]checkcerts.CertExpirationNotification, 0)
 	ctx, cancel := context.WithTimeout(context.Background(), tConfig["globaltimeoutDuration"])
 	defer cancel()
 
@@ -320,7 +320,7 @@ func main() {
 				// Figure out how much time is left
 				timeLeft := time.Until(s.Expires())
 				numDays := int(math.Round(timeLeft.Hours() / 24.0))
-				c := ccutils.CertExpirationNotification{
+				c := checkcerts.CertExpirationNotification{
 					Account:  account,
 					DN:       s.Subject(),
 					DaysLeft: numDays,
@@ -346,7 +346,7 @@ func main() {
 	wg.Wait()
 
 	// Send notification
-	fNotes := make([]ccutils.CertExpirationNotification, 0)
+	fNotes := make([]checkcerts.CertExpirationNotification, 0)
 
 	if needAlarm {
 		templateFile = viper.GetString("checkcerts.templateAlarm")
@@ -364,7 +364,7 @@ func main() {
 		nConfig.Subject = nConfig.Subject + " - no issues"
 	}
 
-	if err := ccutils.SendCertAlarms(ctx, nConfig, fNotes, templateFile); err != nil {
+	if err := checkcerts.SendCertAlarms(ctx, nConfig, fNotes, templateFile); err != nil {
 		log.WithField("caller", "main").Error("Error sending Cert Alarms")
 	}
 
