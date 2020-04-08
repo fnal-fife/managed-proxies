@@ -37,7 +37,7 @@ func worker(ctx context.Context, eConfig *utils.ExptConfig, b notifications.Basi
 		var errExists bool
 		c := make(chan error, len(funcs))
 		for _, f := range funcs {
-			go func(fn func() error) {
+			func(fn func() error) {
 				c <- fn()
 			}(f)
 		}
