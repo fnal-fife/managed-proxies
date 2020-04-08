@@ -304,6 +304,11 @@ func main() {
 		e.Accounts = viper.GetStringMapString(key)
 	}
 
+	setExptConfigNodes := func(e *utils.ExptConfig) {
+		key := getExptKey(e.Name) + ".nodes"
+		e.Nodes = viper.GetStringSlice(key)
+	}
+
 	setExptVomsPrefix := func(e *utils.ExptConfig) {
 		var vomsprefix string
 		exptSubConfig := viper.Sub(getExptKey(e.Name))
@@ -321,6 +326,10 @@ func main() {
 			e.CertFile = exptSubConfig.GetString("certfile")
 			e.KeyFile = exptSubConfig.GetString("keyfile")
 		}
+	}
+
+	setKerbConfig := func(e *utils.ExptConfig) {
+		e.KerbConfig = krbConfig
 	}
 
 	// setExptSSHOpts := func(e *utils.ExptConfig) {
@@ -351,8 +360,10 @@ func main() {
 			viper.GetString("experiment"),
 			setGlobalCertBaseDir,
 			setExptConfigAccounts,
+			setExptConfigNodes,
 			setExptCertandKeyFile,
 			setExptVomsPrefix,
+			setKerbConfig,
 			withTimeoutsConfig,
 			setTestModebyFlag,
 		)
@@ -372,8 +383,10 @@ func main() {
 				k,
 				setGlobalCertBaseDir,
 				setExptConfigAccounts,
+				setExptConfigNodes,
 				setExptCertandKeyFile,
 				setExptVomsPrefix,
+				setKerbConfig,
 				withTimeoutsConfig,
 				setTestModebyFlag,
 			)
