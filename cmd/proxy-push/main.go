@@ -315,7 +315,7 @@ func main() {
 		if exptSubConfig.IsSet("vomsgroup") {
 			vomsprefix = exptSubConfig.GetString("vomsgroup")
 		} else {
-			vomsprefix = viper.GetString("vomsproxyinit.defaultvomsprefixroot") + e.Name + "/"
+			vomsprefix = viper.GetString("global.defaultvomsprefixroot") + e.Name + "/"
 		}
 		e.VomsPrefix = vomsprefix
 	}
