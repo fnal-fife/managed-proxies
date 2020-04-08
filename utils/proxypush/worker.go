@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 
 	log "github.com/sirupsen/logrus"
 
@@ -35,12 +36,16 @@ func worker(ctx context.Context, eConfig *utils.ExptConfig, b notifications.Basi
 
 	teardownMultiple := func(funcs []func() error) error {
 		var errExists bool
+		var wg sync.WaitGroup
 		c := make(chan error, len(funcs))
 		for _, f := range funcs {
-			func(fn func() error) {
+			wg.Add(1)
+			go func(fn func() error) {
 				c <- fn()
+				wg.Done()
 			}(f)
 		}
+		wg.Wait()
 		close(c)
 
 		for err := range c {
@@ -374,11 +379,12 @@ func worker(ctx context.Context, eConfig *utils.ExptConfig, b notifications.Basi
 						}
 
 						log.WithFields(log.Fields{
-							"caller":  "experiment.Worker",
-							"account": pushproxy.account,
-							"node":    pushproxy.node,
-							"role":    pushproxy.role,
-							"action":  "copy proxies",
+							"caller":     "experiment.Worker",
+							"experiment": eConfig.Name,
+							"account":    pushproxy.account,
+							"node":       pushproxy.node,
+							"role":       pushproxy.role,
+							"action":     "copy proxies",
 						}).Error(pushproxy.err)
 
 						failedCopies[pushproxy.role][pushproxy.node] = utils.GenerateNewErrorStringForTable(
