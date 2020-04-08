@@ -10,9 +10,9 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 
-	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/notifications"
-	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/proxy"
-	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/utils"
+	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v4/notifications"
+	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v4/proxy"
+	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v4/utils"
 )
 
 var (

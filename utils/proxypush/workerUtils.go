@@ -13,8 +13,8 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/proxy"
-	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/utils"
+	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v4/proxy"
+	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v4/utils"
 )
 
 // Functions and types are roughly presented in the order they'll be called during a proxy push
