@@ -18,11 +18,11 @@ import (
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 
-	smutils "cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/internal/app/store-in-myproxy/utils"
-	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/internal/pkg/notifications"
-	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/internal/pkg/utils"
+	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/notifications"
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/packaging"
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/proxy"
+	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/utils"
+	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/utils/storeinmyproxy"
 )
 
 const configFile string = "managedProxies"
@@ -35,6 +35,7 @@ var (
 	startProcessing time.Time
 	prometheusUp    bool
 	promPush        notifications.BasicPromPush
+	buildTimestamp  string
 )
 
 func init() {
@@ -53,7 +54,7 @@ func init() {
 	viper.BindPFlags(pflag.CommandLine)
 
 	if viper.GetBool("version") {
-		fmt.Printf("Managed Proxies Version %s, Build %s\n", packaging.Version, packaging.Build)
+		fmt.Printf("Managed Proxies Version %s, Build %s\n", packaging.Version, buildTimestamp)
 		os.Exit(0)
 	}
 
@@ -287,16 +288,16 @@ func main() {
 	}
 
 	// Get jobsub server information
-	smutils.StartHTTPSClient(viper.GetString("global.capath"))
+	storeinmyproxy.StartHTTPSClient(viper.GetString("global.capath"))
 
 	// Get and check our retrievers list
-	retrievers, err := smutils.GetRetrievers(ctx, viper.GetString("global.jobsubserver"), viper.GetString("global.cigetcertoptsendpoint"))
+	retrievers, err := storeinmyproxy.GetRetrievers(ctx, viper.GetString("global.jobsubserver"), viper.GetString("global.cigetcertoptsendpoint"))
 	if err != nil {
 		log.WithField("caller", "main").Error("Error getting trusted retrievers from cigetcertopts file")
 		os.Exit(1)
 	}
 
-	if err := smutils.CheckRetrievers(retrievers, viper.GetString("global.defaultretrievers")); err != nil {
+	if err := storeinmyproxy.CheckRetrievers(retrievers, viper.GetString("global.defaultretrievers")); err != nil {
 		log.WithField("caller", "main").Error(err)
 	}
 

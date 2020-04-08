@@ -14,7 +14,7 @@ SOURCEDIR=${STARTDIR}/${DIRNAME}
 DESTSOURCESDIR=${HOME}/rpmbuild/SOURCES
 DESTSPECSDIR=${HOME}/rpmbuild/SPECS
 PACKAGEFILES="${STARTDIR}/cmd/check-certs/check-certs ${STARTDIR}/cmd/proxy-push/proxy-push ${STARTDIR}/cmd/store-in-myproxy/store-in-myproxy ${STARTDIR}/managedProxies.yml ${STARTDIR}/packaging/${NAME}.cron ${STARTDIR}/packaging/${NAME}.logrotate"
-BUILD=`date -u +%Y-%m-%dT%H:%M:%SZ`
+export BUILD=`date -u +%Y-%m-%dT%H:%M:%SZ`
 
 
 # Rebuild executables
@@ -23,7 +23,7 @@ for dir in `ls -1`
 do
   echo ${dir}
   cd ${STARTDIR}/cmd/${dir}
-  GOOS=linux go build -ldflags="-X cdcvs.fnal.gov/discompsupp/ken_proxy_push/packaging.Build=${BUILD}"
+  GOOS=linux go build -ldflags="-X main.buildTimestamp=${BUILD}"
 
   if [[ $? -ne 0 ]] ; then
     echo "Could not build executable in directory $dir"

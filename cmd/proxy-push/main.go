@@ -38,6 +38,7 @@ var (
 	startSetup     time.Time
 	startProxyPush time.Time
 	startCleanup   time.Time
+	buildTimestamp string
 )
 
 func init() {
@@ -58,7 +59,7 @@ func init() {
 	viper.BindPFlags(pflag.CommandLine)
 
 	if viper.GetBool("version") {
-		fmt.Printf("Managed Proxies Version %s, Build %s\n", packaging.Version, packaging.Build)
+		fmt.Printf("Managed Proxies Version %s, Build %s\n", packaging.Version, buildTimestamp)
 		os.Exit(0)
 	}
 
