@@ -22,9 +22,9 @@ var (
 
 // Funcs to manage the workflow of the proxy-push cmd
 
-// ManageExperimentChannels starts up the various workers and listens for their response.  It puts these
+// ExperimentChannelManager starts up the various workers and listens for their response.  It puts these
 // statuses into an aggregate channel.
-func ManageExperimentChannels(ctx context.Context, exptConfigs []*utils.ExptConfig, globalnConfig notifications.Config, tConfig utils.TimeoutsConfig, promPush notifications.BasicPromPush) <-chan Success {
+func ExperimentChannelManager(ctx context.Context, exptConfigs []*utils.ExptConfig, globalnConfig notifications.Config, tConfig utils.TimeoutsConfig, promPush notifications.BasicPromPush) <-chan Success {
 	agg := make(chan Success, len(exptConfigs))
 	configChan := make(chan *utils.ExptConfig) // chan of configurations to send to workerSlots
 	var wg, wwg, nwg sync.WaitGroup

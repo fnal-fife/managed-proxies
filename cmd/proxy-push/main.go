@@ -18,10 +18,10 @@ import (
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 
-	pputils "cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/internal/app/proxy-push/utils"
-	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/internal/pkg/notifications"
-	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/internal/pkg/utils"
+	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/notifications"
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/packaging"
+	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/utils"
+	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v3/utils/proxypush"
 )
 
 const configFile string = "managedProxies"
@@ -103,7 +103,7 @@ func init() {
 	}, &log.TextFormatter{FullTimestamp: true}))
 
 	// Make sure we have a reasonable amount of workers
-	pputils.CheckNumWorkers()
+	proxypush.CheckNumWorkers()
 
 	log.Debugf("Using config file %s", viper.ConfigFileUsed())
 
@@ -394,7 +394,7 @@ func main() {
 
 	startProxyPush = time.Now()
 	// Start up the expt manager
-	c := pputils.ManageExperimentChannels(ctx, exptConfigs, nConfig, tConfig, promPush)
+	c := proxypush.ExperimentChannelManager(ctx, exptConfigs, nConfig, tConfig, promPush)
 	// Listen on the manager channel
 	for {
 		select {
