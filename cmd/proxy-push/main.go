@@ -332,6 +332,11 @@ func main() {
 		e.KerbConfig = krbConfig
 	}
 
+	setDestDir := func(e *utils.ExptConfig) {
+		exptSubConfig := viper.Sub(getExptKey(e.Name))
+		e.DestDir = exptSubConfig.GetString("dir")
+	}
+
 	// setExptSSHOpts := func(e *utils.ExptConfig) {
 	// 	var sshopts string
 	// 	exptSubConfig := viper.Sub(getExptKey(e.Name))
@@ -363,6 +368,7 @@ func main() {
 			setExptConfigNodes,
 			setExptCertandKeyFile,
 			setExptVomsPrefix,
+			setDestDir,
 			setKerbConfig,
 			withTimeoutsConfig,
 			setTestModebyFlag,
@@ -386,6 +392,7 @@ func main() {
 				setExptConfigNodes,
 				setExptCertandKeyFile,
 				setExptVomsPrefix,
+				setDestDir,
 				setKerbConfig,
 				withTimeoutsConfig,
 				setTestModebyFlag,
