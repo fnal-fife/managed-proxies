@@ -124,7 +124,13 @@ func init() {
 	timestamp := time.Now().Format(time.RFC822)
 	nConfig.Subject = fmt.Sprintf("Managed Proxy Service - check-certs report %s", timestamp)
 
-	utils.SetAdminEmail(&nConfig)
+	// Set From and To to admin email
+	nConfig.From = nConfig.ConfigInfo["admin_email"]
+	nConfig.To = []string{nConfig.ConfigInfo["admin_email"]}
+	if flagAdminEmail := viper.GetString("admin"); flagAdminEmail != "" {
+		nConfig.To = []string{flagAdminEmail}
+	}
+	log.Debug("Set notifications config email values to admin values")
 
 	// Now that our log is set up and we've got a valid config, handle all init (fatal) errors using the following func
 	// that logs the error, sends a slack message and an email, cleans up, and then exits.

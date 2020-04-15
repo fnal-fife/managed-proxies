@@ -8,29 +8,10 @@ import (
 	"regexp"
 
 	log "github.com/sirupsen/logrus"
-	"github.com/spf13/viper"
-
-	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v4/notifications"
 )
 
 // EmailRegexp is the regexp that all email addresses must satisfy
 var EmailRegexp = regexp.MustCompile(`^[\w\._%+-]+@[\w\.-]+\.\w{2,}$`)
-
-// SetAdminEmail sets the notifications config objects' From and To fields to the config file's admin value
-func SetAdminEmail(pnConfig *notifications.Config) {
-	var toEmail string
-	pnConfig.From = pnConfig.ConfigInfo["admin_email"]
-
-	if viper.GetString("admin") != "" {
-		toEmail = viper.GetString("admin")
-	} else {
-		toEmail = pnConfig.ConfigInfo["admin_email"]
-	}
-
-	pnConfig.To = []string{toEmail}
-	log.Debug("Set notifications config email values to admin values")
-	return
-}
 
 // CheckUser makes sure that the user running the executable is the authorized user.
 func CheckUser(authuser string) error {
