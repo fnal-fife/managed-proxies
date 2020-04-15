@@ -104,7 +104,10 @@ func init() {
 	}, &log.TextFormatter{FullTimestamp: true}))
 
 	// Make sure we have a reasonable amount of workers
-	proxypush.CheckNumWorkers()
+	if viper.GetInt("global.numpushworkers") < 1 {
+		msg := fmt.Sprintf("Must have at least 1 Proxy Push Worker Slot.  The current number configured is %d", viper.GetInt("global.numpushworkers"))
+		log.Panic(msg)
+	}
 
 	log.Debugf("Using config file %s", viper.ConfigFileUsed())
 
@@ -280,8 +283,8 @@ func main() {
 		}
 	}()
 
-	exptConfigs := make([]*utils.ExptConfig, 0, len(viper.GetStringMap("experiments"))) // Slice of experiment configurations we will actually process
-	expts := make([]string, 0, len(exptConfigs))
+	exptConfigWithEmails := make([]*proxypush.ExptConfigWithEmails, 0, len(viper.GetStringMap("experiments"))) // Slice of experiment configurations we will actually process
+	expts := make([]string, 0, len(exptConfigWithEmails))
 
 	getExptKey := func(expt string) string {
 		exptKey := "experiments." + expt
@@ -380,7 +383,11 @@ func main() {
 			}).Error("Error setting up experiment configuration slice.  As this is the only experiment, we will cleanup now.")
 			os.Exit(1)
 		}
-		exptConfigs = append(exptConfigs, eConfig)
+		exptConfigWithEmail = &proxypush.ExptConfigWithEmails{
+			ExptConfig: eConfig,
+			Emails:     viper.GetStringSlice("experiments." + eConfig.Name + ".emails"),
+		}
+		exptConfigWithEmails = append(exptConfigWithEmails, exptConfigWithEmail)
 		expts = append(expts, eConfig.Name)
 	} else {
 		// No experiment on command line, so use all expts in config file
@@ -403,7 +410,11 @@ func main() {
 					"caller":     "main",
 				}).Error("Error setting up experiment configuration slice")
 			}
-			exptConfigs = append(exptConfigs, eConfig)
+			exptConfigWithEmail = &proxypush.ExptConfigWithEmails{
+				ExptConfig: eConfig,
+				Emails:     viper.GetStringSlice("experiments." + eConfig.Name + ".emails"),
+			}
+			exptConfigWithEmails = append(exptConfigWithEmails, exptConfigWithEmail)
 			expts = append(expts, eConfig.Name)
 		}
 	}
@@ -415,7 +426,7 @@ func main() {
 
 	startProxyPush = time.Now()
 	// Start up the expt manager
-	c := proxypush.ExperimentChannelManager(ctx, exptConfigs, nConfig, tConfig, promPush)
+	c := proxypush.ExperimentChannelManager(ctx, exptConfigWithEmails, nConfig, tConfig, promPush)
 	// Listen on the manager channel
 	for {
 		select {

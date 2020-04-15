@@ -2,13 +2,11 @@ package proxypush
 
 import (
 	"context"
-	"fmt"
 	"regexp"
 	"sync"
 
 	"github.com/jinzhu/copier"
 	log "github.com/sirupsen/logrus"
-	"github.com/spf13/viper"
 
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v4/notifications"
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v4/proxy"
@@ -20,13 +18,19 @@ var (
 	EmailRegexp = regexp.MustCompile(`^[\w\._%+-]+@[\w\.-]+\.\w{2,}$`)
 )
 
+// ExptConfigWithEmails simply groups an ExptConfig with its email recipient list for passing into workerSlot
+type ExptConfigWithEmails struct {
+	*utils.ExptConfig
+	Emails []string
+}
+
 // Funcs to manage the workflow of the proxy-push cmd
 
 // ExperimentChannelManager starts up the various workers and listens for their response.  It puts these
 // statuses into an aggregate channel.
-func ExperimentChannelManager(ctx context.Context, exptConfigs []*utils.ExptConfig, globalnConfig notifications.Config, tConfig utils.TimeoutsConfig, promPush notifications.BasicPromPush) <-chan Success {
-	agg := make(chan Success, len(exptConfigs))
-	configChan := make(chan *utils.ExptConfig) // chan of configurations to send to workerSlots
+func ExperimentChannelManager(ctx context.Context, numPushWorkers int, exptConfigwithEmails []*ExptConfigWithEmails, globalnConfig notifications.Config, tConfig utils.TimeoutsConfig, promPush notifications.BasicPromPush) <-chan Success {
+	agg := make(chan Success, len(exptConfigwithEmails))
+	configChan := make(chan *ExptConfigWithEmails) // chan of configurations to send to workerSlots
 	var wg, wwg, nwg sync.WaitGroup
 	// Couple all these waitgroups so their collective status drives logic
 	waitGroups := waitGroupCollection{
@@ -35,13 +39,13 @@ func ExperimentChannelManager(ctx context.Context, exptConfigs []*utils.ExptConf
 		&nwg, // increment this when notification.Managers are started
 	}
 
-	wg.Add(len(exptConfigs)) // Get number of experiments to run on
+	wg.Add(len(exptConfigwithEmails)) // Get number of experiments to run on
 
 	// Get number of workers from config, launch workers
-	wwg.Add(viper.GetInt("global.numPushWorkers"))
-	log.WithField("numPushWorkers", viper.GetInt("global.numPushWorkers")).Debug("Starting workers")
+	wwg.Add(numPushWorkers)
+	log.WithField("numPushWorkers", numPushWorkers).Debug("Starting workers")
 	go func() {
-		for i := 0; i < viper.GetInt("global.numPushWorkers"); i++ {
+		for i := 0; i < numPushWorkers; i++ {
 			go workerSlot(ctx, i, configChan, agg, &wwg, &wg, &nwg, globalnConfig, tConfig, promPush)
 		}
 	}()
@@ -49,7 +53,7 @@ func ExperimentChannelManager(ctx context.Context, exptConfigs []*utils.ExptConf
 	// Put our expt configs into the configChan so workers can start processing experiments
 	go func() {
 		defer close(configChan)
-		for _, eConfig := range exptConfigs {
+		for _, eConfig := range exptConfigwithEmails {
 			configChan <- eConfig
 		}
 	}()
@@ -74,7 +78,7 @@ func ExperimentChannelManager(ctx context.Context, exptConfigs []*utils.ExptConf
 
 // workerSlot is a slot into which workers can be assigned.  global.numPushWorkers defines the number of these that manageExperimentChannels will create.
 // Listens on configChan and writes to aggChan
-func workerSlot(ctx context.Context, workerID int, configChan <-chan *utils.ExptConfig, aggChan chan<- Success, wwg, ewg, nwg *sync.WaitGroup, globalnConfig notifications.Config, tConfig utils.TimeoutsConfig, promPush notifications.BasicPromPush) {
+func workerSlot(ctx context.Context, workerID int, configChan <-chan *ExptConfigWithEmails, aggChan chan<- Success, wwg, ewg, nwg *sync.WaitGroup, globalnConfig notifications.Config, tConfig utils.TimeoutsConfig, promPush notifications.BasicPromPush) {
 
 	defer func() {
 		log.WithField("workerId", workerID).Debug("Worker Slot shutting down")
@@ -82,21 +86,20 @@ func workerSlot(ctx context.Context, workerID int, configChan <-chan *utils.Expt
 	}()
 
 	for eConfig := range configChan {
-		func(eConfig *utils.ExptConfig) {
+		func(eConfig *ExptConfigWithEmails) {
 			/* Order of operations in cleanup:
 			* Experiment finishes processing, closes notification Manager and experiment success channel
 			* Notifications get sent, then nwg is decremented
 			* Once nwg and wg are down to 0, we close the agg channel to tell main to cleanup
 			 */
 			defer ewg.Done()
-			exptSubConfig := viper.Sub("experiments." + eConfig.Name)
 
 			// Notifications setup
 			n := notifications.Config{}
 			copier.Copy(&n, &globalnConfig)
 			n.Experiment = eConfig.Name
-			if !viper.GetBool("test") {
-				n.To = exptSubConfig.GetStringSlice("emails")
+			if !eConfig.IsTest {
+				n.To = eConfig.Emails
 			}
 			n.Subject = n.Subject + " - " + eConfig.Name
 
@@ -112,7 +115,7 @@ func workerSlot(ctx context.Context, workerID int, configChan <-chan *utils.Expt
 			// Expt channel is buffered anyway, so if the worker tries to send later and there's no receiver,
 			// garbage collection will take care of it
 			log.WithFields(log.Fields{"experiment": eConfig.Name}).Debug("Starting worker")
-			c := worker(exptContext, eConfig, promPush, nMgr)
+			c := worker(exptContext, eConfig.ExptConfig, promPush, nMgr)
 			for {
 				select {
 				case status, chanOpen := <-c: // Grab status from channel
@@ -138,14 +141,6 @@ func workerSlot(ctx context.Context, workerID int, configChan <-chan *utils.Expt
 		}(eConfig)
 	}
 
-}
-
-// CheckNumWorkers makes sure there is at least one worker configured to handle the proxy pushes
-func CheckNumWorkers() {
-	if viper.GetInt("global.numpushworkers") < 1 {
-		msg := fmt.Sprintf("Must have at least 1 Proxy Push Worker Slot.  The current number configured is %d", viper.GetInt("global.numpushworkers"))
-		log.Panic(msg)
-	}
 }
 
 // waitGroupCollection is a slice of pointers to WaitGroups.  The main reason I created this was for the waitGroupCollection.Wait() method
