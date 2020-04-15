@@ -127,7 +127,6 @@ func init() {
 	nConfig.IsTest = viper.GetBool("test")
 	timestamp := time.Now().Format(time.RFC822)
 	nConfig.Subject = fmt.Sprintf("Managed Proxy Service Errors - Proxy Push - %s", timestamp)
-	utils.SetAdminEmail(&nConfig)
 
 	// Set From and To to admin email
 	nConfig.From = nConfig.ConfigInfo["admin_email"]
@@ -391,7 +390,7 @@ func main() {
 			}).Error("Error setting up experiment configuration slice.  As this is the only experiment, we will cleanup now.")
 			os.Exit(1)
 		}
-		exptConfigWithEmail = &proxypush.ExptConfigWithEmails{
+		exptConfigWithEmail := &proxypush.ExptConfigWithEmails{
 			ExptConfig: eConfig,
 			Emails:     viper.GetStringSlice("experiments." + eConfig.Name + ".emails"),
 		}
@@ -418,7 +417,7 @@ func main() {
 					"caller":     "main",
 				}).Error("Error setting up experiment configuration slice")
 			}
-			exptConfigWithEmail = &proxypush.ExptConfigWithEmails{
+			exptConfigWithEmail := &proxypush.ExptConfigWithEmails{
 				ExptConfig: eConfig,
 				Emails:     viper.GetStringSlice("experiments." + eConfig.Name + ".emails"),
 			}
@@ -434,7 +433,7 @@ func main() {
 
 	startProxyPush = time.Now()
 	// Start up the expt manager
-	c := proxypush.ExperimentChannelManager(ctx, exptConfigWithEmails, nConfig, tConfig, promPush)
+	c := proxypush.ExperimentChannelManager(ctx, viper.GetInt("global.numpushworkers"), exptConfigWithEmails, nConfig, tConfig, promPush)
 	// Listen on the manager channel
 	for {
 		select {
