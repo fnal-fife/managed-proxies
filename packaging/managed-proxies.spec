@@ -1,5 +1,5 @@
 Name:           managed-proxies
-Version:        4.0
+Version:        4.1
 Release:        1
 Summary:        Service to create VOMS proxies from service certificates and distribute them to experiment nodes
 
