@@ -79,7 +79,7 @@ cp ${PWD}/packaging/${NAME}.spec ${DESTSPECSDIR}/
 
 # Build our RPM
 cd $DESTSPECSDIR
-rpmbuild -ba --target $RPMARCH ${NAME}.spec
+rpmbuild -ba ${NAME}.spec
 
 # Clean up
 cd $STARTDIR

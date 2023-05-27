@@ -1,5 +1,6 @@
+%undefine _missing_build_ids_terminate_build
 Name:           managed-proxies
-Version:        4.1.1
+Version:        4.1.2
 Release:        1
 Summary:        Service to create VOMS proxies from service certificates and distribute them to experiment nodes
 
