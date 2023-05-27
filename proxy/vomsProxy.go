@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	vomsProxyInitArgs = "-dont-verify-ac -rfc -valid 24:00 -voms {{.VomsFQAN}} -cert {{.CertFile}} -key {{.KeyFile}} -out {{.OutfilePath}}"
+	vomsProxyInitArgs = "-dont-verify-ac -rfc -valid 167:00 -voms {{.VomsFQAN}} -cert {{.CertFile}} -key {{.KeyFile}} -out {{.OutfilePath}}"
 	vomsProxyInfoArgs = "-fqan -file {{.ProxyPath}}"
 )
 
