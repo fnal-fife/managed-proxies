@@ -1,4 +1,3 @@
-%undefine _missing_build_ids_terminate_build
 Name:           managed-proxies
 Version:        4.1.2
 Release:        1

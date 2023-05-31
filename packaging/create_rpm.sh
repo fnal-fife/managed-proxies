@@ -23,7 +23,7 @@ for dir in `ls -1`
 do
   echo ${dir}
   cd ${STARTDIR}/cmd/${dir}
-  GOOS=linux go build -ldflags="-X main.buildTimestamp=${BUILD}"
+  go build -ldflags="-X main.buildTimestamp=${BUILD} -linkmode=external"
 
   if [[ $? -ne 0 ]] ; then
     echo "Could not build executable in directory $dir"
