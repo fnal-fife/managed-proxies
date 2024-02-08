@@ -1,6 +1,6 @@
 Name:           managed-proxies
 Version:        4.1.2
-Release:        1
+Release:        1%{?dist}
 Summary:        Service to create VOMS proxies from service certificates and distribute them to experiment nodes
 
 Group:          Applications/System
@@ -10,6 +10,8 @@ Source0:        %{name}-%{version}.tar.gz
 BuildRoot:      %(mktemp -ud %{_tmppath}/%{name}-%{version}-XXXXXX)
 
 BuildArch:      x86_64
+
+%global debug_package %{nil}
 
 # Requires:       fermilab-util_kx509
 # Requires:       cigetcert

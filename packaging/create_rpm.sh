@@ -1,7 +1,6 @@
 #/bin/bash
 
 NAME=managed-proxies
-RPMARCH=i696-redhat-linux 
 
 # Thank you https://stackoverflow.com/a/246128
 PWD="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
@@ -23,7 +22,7 @@ for dir in `ls -1`
 do
   echo ${dir}
   cd ${STARTDIR}/cmd/${dir}
-  go build -ldflags="-X main.buildTimestamp=${BUILD} -linkmode=external"
+  go build -ldflags="-X main.buildTimestamp=${BUILD}"
 
   if [[ $? -ne 0 ]] ; then
     echo "Could not build executable in directory $dir"
