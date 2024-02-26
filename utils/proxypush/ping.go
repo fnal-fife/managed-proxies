@@ -14,7 +14,7 @@ import (
 	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v4/utils"
 )
 
-const pingArgs = "-W 5 -c 1 {{.Node}}"
+const pingArgs = "-W 5 -c 1 -4 {{.Node}}"
 
 var (
 	pingExecutables = map[string]string{
