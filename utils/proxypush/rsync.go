@@ -40,7 +40,7 @@ func (r *rsyncSetup) copyToDestination(ctx context.Context, source string) error
 		"account":    r.account,
 	})
 	for i := 0; i <= int(r.numRetries); i++ {
-		funcLogger.Debug("Try %i of %i", i+1, r.numRetries+1)
+		funcLogger.Debugf("Try %d of %d", i+1, r.numRetries+1)
 
 		err := rsyncFile(ctx, source, r.node, r.account, r.destination, r.sshOpts)
 
