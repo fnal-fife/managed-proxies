@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"strings"
 	"text/template"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 
@@ -15,7 +16,7 @@ import (
 
 const (
 	rsyncArgs = "-p -e \"{{.SSHExe}} {{.SSHOpts}}\" --chmod=u=r,go= {{.SourcePath}} {{.Account}}@{{.Node}}.fnal.gov:{{.DestPath}}"
-	sshOpts   = "-o ConnectTimeout=30 -o ServerAliveInterval=30 -o ServerAliveCountMax=1 -o AddressFamily=inet"
+	sshOpts   = "-o ConnectTimeout=5 -o ServerAliveInterval=30 -o ServerAliveCountMax=1 -o AddressFamily=inet"
 )
 
 var rsyncTemplate = template.Must(template.New("rsync").Parse(rsyncArgs))
@@ -26,20 +27,37 @@ type rsyncSetup struct {
 	node        string
 	destination string
 	sshOpts     string
+	numRetries  uint
+	retrySleep  time.Duration
 }
 
 // copyToDestination copies a file from the path at source to a destination according to the rsyncSetup struct
 func (r *rsyncSetup) copyToDestination(ctx context.Context, source string) error {
-	err := rsyncFile(ctx, source, r.node, r.account, r.destination, r.sshOpts)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"sourcePath": source,
-			"destPath":   r.destination,
-			"node":       r.node,
-			"account":    r.account,
-		}).Error("Could not copy source file to destination node")
+	funcLogger := log.WithFields(log.Fields{
+		"sourcePath": source,
+		"destPath":   r.destination,
+		"node":       r.node,
+		"account":    r.account,
+	})
+	for i := 0; i <= int(r.numRetries); i++ {
+		funcLogger.Debug("Try %i of %i", i+1, r.numRetries+1)
+
+		err := rsyncFile(ctx, source, r.node, r.account, r.destination, r.sshOpts)
+
+		if err == nil {
+			// Success
+			break
+		}
+		// Error condition
+		funcLogger.Error("Could not copy source file to destination node")
+		if i == int(r.numRetries) {
+			funcLogger.Error("Will not retry")
+			return err
+		}
+		funcLogger.Debug("Will retry after sleep")
+		time.Sleep(r.retrySleep)
 	}
-	return err
+	return nil
 }
 
 // rsyncFile runs rsync on a file at source, and syncs it with the destination account@node:dest

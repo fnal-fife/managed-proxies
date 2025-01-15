@@ -173,6 +173,8 @@ func createCopyFileConfigs(vp []*vomsProxy, accountMap map[string]string, nodes 
 		proxyFileName := acct + "." + v.Role + ".proxy"
 		finalProxyPath := path.Join(destDir, acct, proxyFileName)
 
+		// TODO For now, we're going to hardcode 3 retries, with a 30s sleep between them. This product will
+		// soon be retired, so we're not going to spend a lot of time on this making it configurable
 		for _, n := range nodes {
 			_c := copyFileConfig{
 				rsyncSetup: &rsyncSetup{
@@ -180,6 +182,8 @@ func createCopyFileConfigs(vp []*vomsProxy, accountMap map[string]string, nodes 
 					node:        n,
 					destination: finalProxyPath,
 					sshOpts:     _sshOpts,
+					numRetries:  3,
+					retrySleep:  30 * time.Second,
 				},
 				vomsProxy: v,
 			}
