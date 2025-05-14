@@ -1,0 +1,98 @@
+# Global config items
+global:
+  authUser: serviceuser       # User that can run this service
+  CERT_BASE_DIR: "/where/service-certs/live"                      # base location for certs/keys
+  caPath: "/etc/grid-security/certificates/"
+  smtphost: localhost
+  smtpport: 25
+  defaultVomsPrefixRoot: "fermilab:/fermilab/"      # Default VOMS prefix for experiments
+  jobsubServer: "webserver-deprecated.example.com"
+  cigetcertoptsEndpoint: "cigetcertopts.txt"
+  defaultRetrievers: "/DC=org/DC=FAKE/O=Not Real DN/OU=Services/CN=SomeGlobOfCNs"      # Default retrievers list we should check against when storing proxies in myproxy
+  myProxyServer: "myproxy.example.com"
+  numPushWorkers: 5
+
+
+# Times and Timeouts
+times:
+  globalTimeout: 300s # Global timeout
+  exptTimeout:   60s # Experiment timeout
+  pingTimeout:   20s # Ping timeout (for all pings per experiment)
+  gpiTimeout:    10s # grid-proxy-init timoeut (total for gpis per experiment)
+  vpiTimeout:    10s # voms-proxy-init timeout (total for vpis per experiment)
+  myproxyStoreTimeout: 30s  # Timeout to run myproxy-store for all grid proxies for an experiment
+  copyTimeout:   30s # copy proxy timeout (total for all copies per experiment)
+  slackTimeout:  15s # Slack message timeout
+  emailTimeout:  30s # Email timeout (per email)
+  gpiValid: 675h  # Validity for grid proxies
+  expireWarningCutoff: 720h # If a cert will expire sooner than this, warn us
+
+
+# Logfiles
+logs:
+  logfile:  "/var/log/managed-proxies/managed-proxies.log"
+  debugfile: "/var/log/managed-proxies/managed-proxies.debug.log"
+
+
+# Global email and slack notification parameters
+notifications:
+  SLACK_ALERTS_URL: "https://slack.com/something"      # Slack url for alerts
+  admin_email: email@example.com
+  admin_template: "/usr/share/managed-proxies/templates/adminErrors.txt"
+  experiment_template: "/usr/share/managed-proxies/templates/proxyPushExperimentError.txt"
+
+
+# Same as above, but used in test runs
+notifications_test:
+  SLACK_ALERTS_URL: "https://slack.com/channelHook"     # Slack url for test alerts
+  admin_email: email@example.com
+  admin_template: "/usr/local/share/managed-proxies/templates/adminErrors.txt"
+  experiment_template: "/usr/local/share/managed-proxies/templates/proxyPushExperimentError.txt"
+
+
+# Experiments
+# Note: accounts entries should be of the form "account_name: Role_name"
+# Note: Unless there is a certfile and/or keyfile override below in a given stanza, the proxy_push assumes that the cert/key for each experiment/role is located at CERT_BASE_DIR/<account>.{cert|key}.  e.g. exptpro.cert and exptpro.key
+experiments:
+  experiment1:
+    dir: /opt
+    emails: [recipient1@example.com, recipient2@example.com]
+    nodes: [node1, node2]
+    accounts:
+      accountname: Rolename
+  experiment2:
+    dir: /opt
+    emails: [recipient3@example.com, recipient4@example.com]
+    nodes: [node3, node2]
+    accounts:
+      accountname: Rolename
+      account2name: Role2name
+    vomsgroup: "override:/fromdefault"
+  experiment3:
+    dir: /opt
+    emails: [recipient3@example.com, recipient4@example.com]
+    nodes: [node3, node2]
+    accounts:
+      accountname: Rolename
+    vomsgroup: "override:/fromdefault"
+    certfile: "/path/to/nondefault/cert"
+    keyfile: "/path/to/nondefault/key"
+
+
+# Prometheus monitoring config
+prometheus:
+  host: "prometheus_host"
+  jobname: "proxy_push_tracker"
+
+# Other stuff
+
+# Options to control how kinit is run in proxy-push
+kerberos:
+  kinitArgs: "-k -t /path/to/keytab principal@OFKEYTAB.com"
+  KRB5CCNAME:  "FILE:/tmp/krb5cc_push_proxy"  # What the env variable KRB5CCNAME should be set to
+
+#  Templates for check-certs alarms
+checkcerts:
+  templateOK: "/usr/local/share/managed-proxies/templates/checkCertsOK.txt"
+  templateAlarm: "/usr/local/share/managed-proxies/templates/checkCertsAlarm.txt"
+
