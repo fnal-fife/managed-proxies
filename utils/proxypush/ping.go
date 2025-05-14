@@ -11,7 +11,7 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v4/utils"
+	"github.com/fnal-fife/managed-proxies/v5/utils"
 )
 
 const pingArgs = "-W 5 -c 1 -4 {{.Node}}"

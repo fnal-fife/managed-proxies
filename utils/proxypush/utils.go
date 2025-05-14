@@ -8,9 +8,9 @@ import (
 	"github.com/jinzhu/copier"
 	log "github.com/sirupsen/logrus"
 
-	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v4/notifications"
-	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v4/proxy"
-	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v4/utils"
+	"github.com/fnal-fife/managed-proxies/v5/notifications"
+	"github.com/fnal-fife/managed-proxies/v5/proxy"
+	"github.com/fnal-fife/managed-proxies/v5/utils"
 )
 
 var (

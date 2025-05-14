@@ -18,11 +18,11 @@ import (
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 
-	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v4/notifications"
-	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v4/packaging"
-	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v4/proxy"
-	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v4/utils"
-	"cdcvs.fnal.gov/discompsupp/ken_proxy_push/v4/utils/storeinmyproxy"
+	"github.com/fnal-fife/managed-proxies/v5/notifications"
+	"github.com/fnal-fife/managed-proxies/v5/packaging"
+	"github.com/fnal-fife/managed-proxies/v5/proxy"
+	"github.com/fnal-fife/managed-proxies/v5/utils"
+	"github.com/fnal-fife/managed-proxies/v5/utils/storeinmyproxy"
 )
 
 const configFile string = "managedProxies"

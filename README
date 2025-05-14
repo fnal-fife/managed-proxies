@@ -16,6 +16,6 @@ Alternatively, if your machine is able to build RPMs, you can simply build the t
 5)  An empty log directory will be created at /var/log/managed-proxies
 
 Development:
-Clone the git repo or run go get cdcvs.fnal.gov/discompsupp/ken_proxy_push for imports to work correctly.
+Clone the git repo or run go get github.com/fnal-fife/managed-proxies for imports to work correctly.
 
-Then have at it.  The central repository is held at https://cdcvs.fnal.gov/redmine/projects/discompsupp/repository/ken_proxy_push and requires ssh access to be able to write.
+Then have at it.  The central repository is held at https://github.com/fnal-fife/managed-proxies.
