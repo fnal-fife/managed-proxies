@@ -1,4 +1,4 @@
-module cdcvs.fnal.gov/discompsupp/ken_proxy_push/v4
+module github.com/fnal-fife/managed-proxies/v5
 
 go 1.20
 
