@@ -33,9 +33,15 @@ type Config struct {
 	ConfigInfo map[string]string
 	Experiment string
 	IsTest     bool
-	From       string
-	To         []string
-	Subject    string
+	// Ideally, we would not have this bool in the Config struct, but it is the quickest
+	// way to implement this without a major refactor, especially when this code base is
+	// expected to be deprecated soon. If I'm wrong about this, then in the future, the
+	// logic of whether or not to instantiate a notification should be set by the caller/importer
+	// of this package.
+	DisableNotifications bool
+	From                 string
+	To                   []string
+	Subject              string
 }
 
 // AdminData stores the information needed to generate the Admin notifications
