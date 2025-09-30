@@ -54,6 +54,7 @@ func init() {
 	pflag.BoolP("test", "t", false, "Test mode")
 	pflag.Bool("version", false, "Version of Managed Proxies library")
 	pflag.String("admin", "", "Override the config file admin email")
+	pflag.Bool("dont-notify", false, "Disable notifications")
 
 	pflag.Parse()
 	viper.BindPFlags(pflag.CommandLine)
@@ -70,6 +71,9 @@ func init() {
 		}
 	}
 
+	// Disable notifications if the flag is set
+	nConfig.DisableNotifications = viper.GetBool("dont-notify")
+
 	// Read the config file
 	if viper.GetString("configfile") != "" {
 		viper.SetConfigFile(viper.GetString("configfile"))
@@ -81,7 +85,7 @@ func init() {
 	viper.AddConfigPath("$HOME/managed-proxies/")
 	viper.AddConfigPath(".")
 	if err := viper.ReadInConfig(); err != nil {
-		panic(fmt.Errorf("Fatal error config file: %s", err))
+		panic(fmt.Errorf("fatal error config file: %s", err))
 	}
 
 	log.SetLevel(log.DebugLevel)
@@ -211,7 +215,7 @@ func init() {
 
 func cleanup(exptStatus map[string]bool, expts []string) error {
 	// Since cleanup happens in all cases after the proxy push starts, we stop that timer and push the metric here
-	if viper.GetString("experiment") == "" && !viper.GetBool("test") {
+	if viper.GetString("experiment") == "" && !viper.GetBool("test") && prometheusUp {
 		// Only push this metric if we ran for all experiments to keep data consistent
 		if err := promPush.PushPromDuration(startProxyPush, "proxy-push", "processing"); err != nil {
 			msg := "Error recording time to push proxies, " + err.Error()
@@ -296,7 +300,7 @@ func main() {
 	getExptKey := func(expt string) string {
 		exptKey := "experiments." + expt
 		if !viper.IsSet(exptKey) {
-			err := errors.New("Experiment is not configured in the configuration file")
+			err := errors.New("experiment is not configured in the configuration file")
 			log.WithFields(log.Fields{
 				"experiment": expt,
 			}).Panic(err)
