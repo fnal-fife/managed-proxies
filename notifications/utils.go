@@ -72,6 +72,11 @@ func NewManager(ctx context.Context, wg *sync.WaitGroup, nConfig Config) Manager
 
 // SendExperimentEmail sends an experiment-specific error message email based on nConfig.  It expects a valid template file configured at notifications.experiment_template
 func SendExperimentEmail(ctx context.Context, nConfig Config, errorTable string) (err error) {
+	if nConfig.DisableNotifications {
+		log.Info("Notifications are disabled.  Not sending experiment email.")
+		return nil
+	}
+
 	var wg sync.WaitGroup
 	var b strings.Builder
 
@@ -137,6 +142,11 @@ func SendExperimentEmail(ctx context.Context, nConfig Config, errorTable string)
 
 // SendAdminNotifications sends admin messages via email and Slack that have been collected in adminMsgSlice. It expects a valid template file configured at nConfig.ConfigInfo["admin_template"].
 func SendAdminNotifications(ctx context.Context, nConfig Config, operation string) error {
+	if nConfig.DisableNotifications {
+		log.Info("Notifications are disabled.  Not sending admin notifications.")
+		return nil
+	}
+
 	var wg sync.WaitGroup
 	var emailErr, slackErr error
 	var b strings.Builder
