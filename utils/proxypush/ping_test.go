@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	goodhost string = "www.google.com"
+	goodhost string = "localhost"
 	badhost  string = "thisisafakehostandwillneverbeusedever.example.com"
 )
 

@@ -473,7 +473,7 @@ func (v *VomsProxyInitError) Error() string {
 // Notifications messages
 const (
 	generalContextErrorString = "Context error for experiment"
-	checkKeysErrorString      = `Input file improperly formatted (accounts or nodes don't 
+	checkKeysErrorString      = `Input file improperly formatted (accounts or nodes don't
 			exist for this experiment). Please check the config file on fifeutilgpvm01.
 			 I will skip this experiment for now`
 	genericTimeoutErrorString = "Timeout error"
