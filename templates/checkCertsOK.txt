@@ -4,7 +4,7 @@
 {{ printf "%-20s" .Account }}{{ printf "\t%11d\t%-s" .DaysLeft .DN }}
 {{ end }}
 {{ end }}
-The Managed Proxies Service is reporting that no certs will be expiring within {{.ConfigNumDaysLeft}} days. The next cert to expire will be: 
+The Managed Proxies Service is reporting that no certs will be expiring within {{.ConfigNumDaysLeft}} days. The next cert to expire will be:
 
 {{template "certSlice" .CSlice}}
 

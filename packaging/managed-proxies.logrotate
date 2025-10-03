@@ -13,7 +13,7 @@
 ## Debug log
 #/var/log/managed-proxies/managed-proxies.debug.log {
 #    weekly
-#    rotate 2 
+#    rotate 2
 #    dateext
 #    compress
 #    missingok

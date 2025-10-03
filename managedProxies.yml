@@ -95,4 +95,3 @@ kerberos:
 checkcerts:
   templateOK: "/usr/local/share/managed-proxies/templates/checkCertsOK.txt"
   templateAlarm: "/usr/local/share/managed-proxies/templates/checkCertsAlarm.txt"
-

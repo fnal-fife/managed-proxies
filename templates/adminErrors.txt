@@ -2,7 +2,7 @@ The following errors were reported by the Managed Proxies service at {{.Timestam
 
 {{range $expt, $adminData := .AdminErrors}}
 {{ $expt }}
-{{ if $adminData.SetupErrors }}Setup errors: 
+{{ if $adminData.SetupErrors }}Setup errors:
 {{ range $adminData.SetupErrors }}
 {{ . }}
 {{end}}
