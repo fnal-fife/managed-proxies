@@ -18,7 +18,7 @@ export BUILD=`date -u +%Y-%m-%dT%H:%M:%SZ`
 
 # Rebuild executables
 cd ${STARTDIR}/cmd
-for dir in `ls -1` 
+for dir in `ls -1`
 do
   echo ${dir}
   cd ${STARTDIR}/cmd/${dir}
@@ -30,7 +30,7 @@ do
   fi
 
   echo "Built ${dir} executable"
-done 
+done
 
 
 # Rewrite spec with proper version
@@ -41,13 +41,13 @@ do
 	  echo "Version:        $VERSION"
   else
 	  echo "$line"
-  fi 
+  fi
 done < ${SPECFILE} > ${TEMPFILE}
 
 
 if [[ $? == 0 ]] ; then
 	mv ${TEMPFILE} ${SPECFILE}
-	echo "Set version in spec file"	
+	echo "Set version in spec file"
 else
 	echo "Could not set version in temp spec file"
 	rm ${TEMPFILE}
@@ -57,7 +57,7 @@ fi
 # Create the RPM
 cd $STARTDIR
 
-if  [ -d "$SOURCEDIR" ]; then 
+if  [ -d "$SOURCEDIR" ]; then
     rm -Rf $SOURCEDIR
 fi
 
