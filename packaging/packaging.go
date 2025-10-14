@@ -1,4 +1,4 @@
 package packaging
 
 // Version of Managed Proxies library
-const Version = "4.1.4"
+const Version = "v5.0.0"

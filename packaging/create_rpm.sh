@@ -7,7 +7,7 @@ PWD="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 STARTDIR=${PWD}/..
 PACKAGEINFOFILE=${STARTDIR}/packaging/packaging.go
 SPECFILE=${STARTDIR}/packaging/${NAME}.spec
-VERSION=`grep "Version = " ${PACKAGEINFOFILE} | cut -d \" -f 2`
+VERSION=`grep "Version = " ${PACKAGEINFOFILE} | cut -d \" -f 2 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+'` # The last grep regex extracts only the numeric part of the version
 DIRNAME=${NAME}-${VERSION}
 SOURCEDIR=${STARTDIR}/${DIRNAME}
 DESTSOURCESDIR=${HOME}/rpmbuild/SOURCES
